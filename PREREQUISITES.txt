@@ -1,0 +1,30 @@
+1) PostGRESQL: http://trac.osgeo.org/postgis/wiki/UsersWikiPostGIS21UbuntuPGSQL93Apt
+
+Setup additional repos.  Add these lines to /etc/apt/sources.list
+deb     http://qgis.org/debian precise main
+deb-src http://qgis.org/debian precise main
+deb http://apt.postgresql.org/pub/repos/apt/ precise-pgdg main
+
+Add GPG key:
+wget --quiet -O - http://apt.postgresql.org/pub/repos/apt/ACCC4CF8.asc | sudo apt-key add -
+
+sudo apt-get update
+sudo apt-get install Postgresql-9.3-postgis pgadmin3 postgresql-contrib
+
+2) Python libraries
+
+For scipy:
+sudo apt-get install gfortran libopenblas-dev liblapack-dev
+
+3) Plotting with QGIS
+
+Add these lines to /etc/apt/sources.list
+deb     http://qgis.org/debian precise main
+deb-src http://qgis.org/debian precise main
+
+Add GPG key:
+gpg --keyserver keyserver.ubuntu.com --recv 47765B75
+gpg --export --armor 47765B75 | sudo apt-key add -
+
+sudo apt-get update
+sudo apt-get install qgis python-qgis qgis-plugin-grass
