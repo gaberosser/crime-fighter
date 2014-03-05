@@ -1,6 +1,6 @@
 __author__ = 'gabriel'
 
-DATA_DIR = '/media/DATAPART1/data/'
+DATA_DIR = '/home/gabriel/data/'
 
 POSTGRES_USER = 'gabriel'
 POSTGRES_PASS = '1234'
