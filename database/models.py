@@ -62,7 +62,7 @@ class Cad(models.Model):
     att_bocu = models.ForeignKey('Ocu', help_text='MPS OCU', null=True, blank=True, related_name='cad_set')
     caller = models.CharField(help_text='Type of person reporting incident', max_length=1, choices=CALLER_CHOICES, null=True, blank=True)
     cris_entry = models.CharField(help_text='CRIS entry if exists', max_length=16, null=True, blank=True) # TODO: reference table
-    units_assigned_number = models.IntegerField(help_text='Incident number', null=True, blank=True)
+    units_assigned_number = models.IntegerField(help_text='Incident number', null=False, blank=False, default=0)
     grade = models.CharField(help_text='Operator grading of incident', max_length=1, choices=GRADE_CHOICES, null=True, blank=True, default=None)
     uc = models.BooleanField(help_text='Unknown', default=False)
     arrival_datetime = models.DateTimeField(help_text='Date and time of arrival', null=True, blank=True)
