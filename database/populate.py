@@ -8,6 +8,7 @@ import time
 import pytz
 import models
 from django.contrib.gis.geos import Point
+from django.contrib.gis.utils import LayerMapping
 from django.db import transaction
 
 UK_TZ = pytz.timezone('Europe/London')
@@ -91,14 +92,14 @@ def parse_cad_rows(row, all_nicl, all_ocu):
                 ('cl02', all_nicl.get(int(row[19] or -1))),
                 ('cl03', all_nicl.get(int(row[20] or -1))),
                 ('cris_entry', row[21] or None),
-                ('units_assigned_number', int(row[22]) if row[22] else None),
+                ('units_assigned_number', int(row[22]) if row[22] else 0),
                 ('grade', row[23] or None),
                 ('uc', row[24] == 'Y'),
                 ('arrival_datetime', get_datetime(row[25], row[26])),
                 ('response_time', row[28] or None),
-                ('att_map', get_point(row[11], row[12], 32631)),
-                ('inc_map', get_point(row[13], row[14], 32631)),
-                ('call_map', get_point(row[15], row[16], 32631)),
+                ('att_map', get_point(row[11], row[12], 27700)),
+                ('inc_map', get_point(row[13], row[14], 27700)),
+                ('call_map', get_point(row[15], row[16], 27700)),
                 ]
         )
 
@@ -112,11 +113,33 @@ def setup_cad():
     with open(CAD_CSV, 'r') as f:
         c = csv.reader(f)
         fields = c.next()
-        with transaction.atomic():
-            for row in c:
-                res = parse_cad_rows(row, all_nicl, all_ocu)
-                cad = models.Cad(**res)
-                try:
-                    cad.save()
-                except Exception as exc:
-                    print repr(exc)
+        # with transaction.atomic():
+        bulk_list = []
+        for row in c:
+            res = parse_cad_rows(row, all_nicl, all_ocu)
+            cad = models.Cad(**res)
+            bulk_list.append(cad)
+        print "Writing to database..."
+        models.Cad.objects.bulk_create(bulk_list)
+        print "Done"
+            # try:
+            #     cad.save()
+            # except Exception as exc:
+            #     print repr(exc)
+
+
+def setup_boroughs(verbose=True):
+    boroughs_mapping = {
+        'name': 'NAME',
+        'area': 'HECTARES',
+        'nonld_area': 'NONLD_AREA',
+        'mpoly': 'MULTIPOLYGON',
+    }
+
+    shp_file = os.path.abspath(os.path.join(os.path.dirname(__file__), 'opendata/borough/London_Borough_Excluding_MHW.shp'))
+    lm = LayerMapping(models.Borough, shp_file, boroughs_mapping, transform=False)
+    try:
+        lm.save(strict=True, verbose=verbose)
+    except Exception as exc:
+        print repr(exc)
+        raise

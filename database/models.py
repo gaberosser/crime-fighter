@@ -67,9 +67,23 @@ class Cad(models.Model):
     uc = models.BooleanField(help_text='Unknown', default=False)
     arrival_datetime = models.DateTimeField(help_text='Date and time of arrival', null=True, blank=True)
     response_time = models.DecimalField(help_text='Response time in seconds', max_digits=10, decimal_places=2, null=True, blank=True)
-    att_map = models.PointField(help_text='Location from resources GPS system', srid=32631, null=True, blank=True, default=None)
-    inc_map = models.PointField(help_text='Location of incident', srid=32631, null=True, blank=True, default=None)
-    call_map = models.PointField(help_text='Location of caller', srid=32631, null=True, blank=True, default=None)
+    att_map = models.PointField(help_text='Location from resources GPS system', srid=27700, null=True, blank=True, default=None)
+    inc_map = models.PointField(help_text='Location of incident', srid=27700, null=True, blank=True, default=None)
+    call_map = models.PointField(help_text='Location of caller', srid=27700, null=True, blank=True, default=None)
+
+    objects = models.GeoManager()
 
     def __str__(self):
         return "%u - %s - %s" % (self.inc_number, self.call_sign, str(self.inc_datetime))
+
+
+class Borough(models.Model):
+    name = models.CharField(help_text='Borough name', max_length=50, unique=True)
+    area = models.FloatField(help_text='Area in hectares')
+    nonld_area = models.FloatField(help_text='Unknown', default=0.)
+    mpoly = models.MultiPolygonField(srid=27700)
+
+    objects = models.GeoManager()
+
+    def __str__(self):
+        return self.name
