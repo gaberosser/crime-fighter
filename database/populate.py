@@ -143,3 +143,21 @@ def setup_boroughs(verbose=True):
     except Exception as exc:
         print repr(exc)
         raise
+
+
+def setup_all():
+    make_list = collections.OrderedDict([
+        ('OCU', setup_ocu),
+        ('NICL', setup_nicl),
+        ('BOROUGHS', setup_boroughs),
+        ('CAD', setup_cad),
+    ])
+    for name, func in make_list.items():
+        try:
+            print "Populating %s data..." % name
+            func()
+            print "Success."
+        except Exception as exc:
+            print "Failed"
+            print repr(exc)
+    print "Completed all tasks"

@@ -1,7 +1,5 @@
 __author__ = 'gabriel'
 
-DATA_DIR = '/home/gabriel/data/'
-
 POSTGRES_USER = 'gabriel'
 POSTGRES_PASS = '1234'
 POSTGRES_DB = 'gabsdb'
