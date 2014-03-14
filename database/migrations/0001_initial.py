@@ -54,18 +54,43 @@ class Migration(SchemaMigration):
         ))
         db.send_create_signal(u'database', ['Cad'])
 
-        # Adding model 'Borough'
-        db.create_table(u'database_borough', (
+        # Adding model 'DivisionType'
+        db.create_table(u'database_divisiontype', (
+            ('name', self.gf('django.db.models.fields.CharField')(max_length=128, primary_key=True)),
+            ('description', self.gf('django.db.models.fields.TextField')()),
+        ))
+        db.send_create_signal(u'database', ['DivisionType'])
+
+        # Adding model 'Division'
+        db.create_table(u'database_division', (
             (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
-            ('name', self.gf('django.db.models.fields.CharField')(unique=True, max_length=50)),
-            ('area', self.gf('django.db.models.fields.FloatField')()),
-            ('nonld_area', self.gf('django.db.models.fields.FloatField')(default=0.0)),
+            ('name', self.gf('django.db.models.fields.CharField')(max_length=50)),
+            ('code', self.gf('django.db.models.fields.CharField')(max_length=50, unique=True, null=True, blank=True)),
+            ('type', self.gf('django.db.models.fields.related.ForeignKey')(related_name='division_set', to=orm['database.DivisionType'])),
             ('mpoly', self.gf('django.contrib.gis.db.models.fields.MultiPolygonField')(srid=27700)),
         ))
-        db.send_create_signal(u'database', ['Borough'])
+        db.send_create_signal(u'database', ['Division'])
+
+        # Adding unique constraint on 'Division', fields ['name', 'type', 'code']
+        db.create_unique(u'database_division', ['name', 'type_id', 'code'])
+
+        # Adding model 'Cris'
+        db.create_table(u'database_cris', (
+            (u'id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
+            ('date', self.gf('django.db.models.fields.DateField')()),
+            ('lsoa_code', self.gf('django.db.models.fields.CharField')(max_length=16)),
+            ('lsoa', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['database.Division'], to_field='code', null=True, on_delete=models.SET_NULL, blank=True)),
+            ('crime_major', self.gf('django.db.models.fields.CharField')(max_length=128)),
+            ('crime_minor', self.gf('django.db.models.fields.CharField')(max_length=128)),
+            ('count', self.gf('django.db.models.fields.IntegerField')(default=0)),
+        ))
+        db.send_create_signal(u'database', ['Cris'])
 
 
     def backwards(self, orm):
+        # Removing unique constraint on 'Division', fields ['name', 'type', 'code']
+        db.delete_unique(u'database_division', ['name', 'type_id', 'code'])
+
         # Deleting model 'Ocu'
         db.delete_table(u'database_ocu')
 
@@ -75,19 +100,17 @@ class Migration(SchemaMigration):
         # Deleting model 'Cad'
         db.delete_table(u'database_cad')
 
-        # Deleting model 'Borough'
-        db.delete_table(u'database_borough')
+        # Deleting model 'DivisionType'
+        db.delete_table(u'database_divisiontype')
+
+        # Deleting model 'Division'
+        db.delete_table(u'database_division')
+
+        # Deleting model 'Cris'
+        db.delete_table(u'database_cris')
 
 
     models = {
-        u'database.borough': {
-            'Meta': {'object_name': 'Borough'},
-            'area': ('django.db.models.fields.FloatField', [], {}),
-            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'mpoly': ('django.contrib.gis.db.models.fields.MultiPolygonField', [], {'srid': '27700'}),
-            'name': ('django.db.models.fields.CharField', [], {'unique': 'True', 'max_length': '50'}),
-            'nonld_area': ('django.db.models.fields.FloatField', [], {'default': '0.0'})
-        },
         u'database.cad': {
             'Meta': {'object_name': 'Cad'},
             'arrival_datetime': ('django.db.models.fields.DateTimeField', [], {'null': 'True', 'blank': 'True'}),
@@ -114,6 +137,29 @@ class Migration(SchemaMigration):
             'response_time': ('django.db.models.fields.DecimalField', [], {'null': 'True', 'max_digits': '10', 'decimal_places': '2', 'blank': 'True'}),
             'uc': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
             'units_assigned_number': ('django.db.models.fields.IntegerField', [], {'default': '0'})
+        },
+        u'database.cris': {
+            'Meta': {'object_name': 'Cris'},
+            'count': ('django.db.models.fields.IntegerField', [], {'default': '0'}),
+            'crime_major': ('django.db.models.fields.CharField', [], {'max_length': '128'}),
+            'crime_minor': ('django.db.models.fields.CharField', [], {'max_length': '128'}),
+            'date': ('django.db.models.fields.DateField', [], {}),
+            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'lsoa': ('django.db.models.fields.related.ForeignKey', [], {'to': u"orm['database.Division']", 'to_field': "'code'", 'null': 'True', 'on_delete': 'models.SET_NULL', 'blank': 'True'}),
+            'lsoa_code': ('django.db.models.fields.CharField', [], {'max_length': '16'})
+        },
+        u'database.division': {
+            'Meta': {'unique_together': "(('name', 'type', 'code'),)", 'object_name': 'Division'},
+            'code': ('django.db.models.fields.CharField', [], {'max_length': '50', 'unique': 'True', 'null': 'True', 'blank': 'True'}),
+            u'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'mpoly': ('django.contrib.gis.db.models.fields.MultiPolygonField', [], {'srid': '27700'}),
+            'name': ('django.db.models.fields.CharField', [], {'max_length': '50'}),
+            'type': ('django.db.models.fields.related.ForeignKey', [], {'related_name': "'division_set'", 'to': u"orm['database.DivisionType']"})
+        },
+        u'database.divisiontype': {
+            'Meta': {'object_name': 'DivisionType'},
+            'description': ('django.db.models.fields.TextField', [], {}),
+            'name': ('django.db.models.fields.CharField', [], {'max_length': '128', 'primary_key': 'True'})
         },
         u'database.nicl': {
             'Meta': {'object_name': 'Nicl'},

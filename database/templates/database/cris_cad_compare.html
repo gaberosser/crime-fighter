@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Comparing CRIS with CAD</title>
+</head>
+<body>
+{% for date, v in combined.items %}
+    <h2>{{ date|date }}</h2>
+    <table>
+    <tr>
+        <th>Type</th>
+        <th>CAD</th>
+        <th>CRIS</th>
+    </tr>
+    {% for t, x in v.items %}
+        <tr>
+        <td>{{ t }}</td>
+        <td>{{ x.cad }}</td>
+        <td>{{ x.cris }}</td>
+        </tr>
+    {% endfor %}
+    </table>
+{% endfor %}
+</body>
+</html>

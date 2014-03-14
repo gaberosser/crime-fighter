@@ -1,4 +1,6 @@
 from django.contrib.gis.db import models
+from django.db.models.signals import pre_save
+from django.db import IntegrityError
 
 WEEKDAY_CHOICES = (
     ('MON', 'Monday'),
@@ -77,13 +79,48 @@ class Cad(models.Model):
         return "%u - %s - %s" % (self.inc_number, self.call_sign, str(self.inc_datetime))
 
 
-class Borough(models.Model):
-    name = models.CharField(help_text='Borough name', max_length=50, unique=True)
-    area = models.FloatField(help_text='Area in hectares')
-    nonld_area = models.FloatField(help_text='Unknown', default=0.)
+class DivisionType(models.Model):
+    name = models.CharField(help_text='Name for this division set', max_length=128, primary_key=True)
+    description = models.TextField(help_text='Text description of this division set')
+
+    def __str__(self):
+        return self.name
+
+
+class Division(models.Model):
+    name = models.CharField(help_text='Region name', max_length=50)
+    code = models.CharField(help_text='Region code', max_length=50, unique=True, null=True, blank=True)
+    type = models.ForeignKey('DivisionType', help_text='Type of division', related_name='division_set')
     mpoly = models.MultiPolygonField(srid=27700)
 
     objects = models.GeoManager()
 
     def __str__(self):
-        return self.name
+        if self.type:
+            return "%s - %s" % (self.type.name, self.name)
+        else:
+            return "None - %s" % self.name
+
+    class Meta:
+        unique_together = ('name', 'type', 'code')
+
+
+class Cris(models.Model):
+    date = models.DateField(help_text='First day of month')
+    lsoa_code = models.CharField(help_text='LSOA code', max_length=16)
+    lsoa = models.ForeignKey('Division', to_field='code', help_text='LSOA', null=True, blank=True, on_delete=models.SET_NULL)
+    crime_major = models.CharField(help_text='Major text for crime type', max_length=128)
+    crime_minor = models.CharField(help_text='Minor text for crime type', max_length=128)
+    count = models.IntegerField(help_text='Crime count', default=0)
+
+    def __str__(self):
+        return '%s - %s - %s' % (self.lsoa_code, str(self.date), self.crime_minor)
+
+    def save(self, force_insert=False, force_update=False, using=None,
+             update_fields=None):
+        # check correct lsoa link
+        if self.lsoa:
+            if self.lsoa.type.name != "lsoa":
+                raise IntegrityError("CRIS entry linked to division that is not an LSOA")
+        super(Cris, self).save(force_insert, force_update, using, update_fields)
+

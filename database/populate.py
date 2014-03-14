@@ -10,12 +10,14 @@ import models
 from django.contrib.gis.geos import Point
 from django.contrib.gis.utils import LayerMapping
 from django.db import transaction
+from django.db.models.signals import pre_save
 
 UK_TZ = pytz.timezone('Europe/London')
 CAD_DATA_DIR = os.path.join(settings.DATA_DIR, 'cad')
+CRIS_DATA_DIR = os.path.join(settings.DATA_DIR, 'cris')
 
 
-def setup_ocu():
+def setup_ocu(**kwargs):
     OCU_CSV = os.path.join(CAD_DATA_DIR, 'ocu.csv')
     with open(OCU_CSV, 'r') as f:
         c = csv.reader(f)
@@ -24,7 +26,7 @@ def setup_ocu():
             ocu.save()
 
 
-def setup_nicl():
+def setup_nicl(**kwargs):
     NICL_CATEGORIES_CSV = os.path.join(CAD_DATA_DIR, 'nicl_categories.csv')
     with open(NICL_CATEGORIES_CSV, 'r') as f:
         c = csv.reader(f)
@@ -104,7 +106,7 @@ def parse_cad_rows(row, all_nicl, all_ocu):
         )
 
 
-def setup_cad():
+def setup_cad(**kwargs):
     # precompile lists for speedier execution
     all_nicl = dict([(x.number, x) for x in models.Nicl.objects.all()])
     all_ocu = dict([(x.code, x) for x in models.Ocu.objects.all()])
@@ -122,40 +124,165 @@ def setup_cad():
         print "Writing to database..."
         models.Cad.objects.bulk_create(bulk_list)
         print "Done"
-            # try:
-            #     cad.save()
-            # except Exception as exc:
-            #     print repr(exc)
+
+
+def setup_cris(**kwargs):
+    # precompile lists for speedier execution
+    all_lsoa = dict([(x.code, x) for x in models.Division.objects.filter(type='lsoa')])
+    all_nicl = dict([(x.number, x) for x in models.Nicl.objects.all()])
+
+    CRIS_CSV = os.path.join(CRIS_DATA_DIR, 'cris-05_2010-04_2012.csv')
+    with open(CRIS_CSV, 'r') as f:
+        c = csv.reader(f)
+        fields = c.next()
+        bulk_list = []
+        for row in c:
+            res = {
+                'lsoa_code': row[0],
+                'date': datetime.date(int(row[1][0:4]), int(row[1][4:]), 1),
+                'crime_major': row[2],
+                'crime_minor': row[3],
+                'count': int(row[4]),
+            }
+            cris = models.Cris(**res)
+            cris.lsoa = all_lsoa.get(cris.lsoa_code)
+            bulk_list.append(cris)
+        print "Writing to database..."
+        models.Cris.objects.bulk_create(bulk_list)
+        print "Done"
 
 
 def setup_boroughs(verbose=True):
+    dt = models.DivisionType.objects.get(name='borough')
+
+    def pre_save_callback(sender, instance, *args, **kwargs):
+        instance.type = dt
+
     boroughs_mapping = {
         'name': 'NAME',
-        'area': 'HECTARES',
-        'nonld_area': 'NONLD_AREA',
+        'code': 'GSS_CODE',
         'mpoly': 'MULTIPOLYGON',
     }
 
     shp_file = os.path.abspath(os.path.join(os.path.dirname(__file__), 'opendata/borough/London_Borough_Excluding_MHW.shp'))
-    lm = LayerMapping(models.Borough, shp_file, boroughs_mapping, transform=False)
+    lm = LayerMapping(models.Division, shp_file, boroughs_mapping, transform=False)
+    pre_save.connect(pre_save_callback, sender=models.Division)
     try:
         lm.save(strict=True, verbose=verbose)
     except Exception as exc:
         print repr(exc)
         raise
+    finally:
+        pre_save.disconnect(pre_save_callback, sender=models.Division)
 
 
-def setup_all():
+def setup_lsoa_boundaries(verbose=True):
+    dt = models.DivisionType.objects.get(name='lsoa')
+
+    def pre_save_callback(sender, instance, *args, **kwargs):
+        instance.type = dt
+
+    mapping = {
+        'name': 'LSOA11NM',
+        'code': 'LSOA11CD',
+        'mpoly': 'MULTIPOLYGON',
+    }
+
+    shp_file = os.path.join(settings.DATA_DIR, 'lsoa_boundaries_full_clipped/london/', 'london_only.shp')
+    lm = LayerMapping(models.Division, shp_file, mapping, transform=False)
+    pre_save.connect(pre_save_callback, sender=models.Division)
+    try:
+        lm.save(strict=True, verbose=verbose)
+    except Exception as exc:
+        print repr(exc)
+        raise
+    finally:
+        pre_save.disconnect(pre_save_callback, sender=models.Division)
+
+
+def setup_msoa_boundaries(verbose=True):
+    dt = models.DivisionType.objects.get(name='msoa')
+
+    def pre_save_callback(sender, instance, *args, **kwargs):
+        instance.type = dt
+
+    mapping = {
+        'name': 'MSOA11NM',
+        'code': 'MSOA11CD',
+        'mpoly': 'MULTIPOLYGON',
+    }
+
+    shp_file = os.path.join(settings.DATA_DIR, 'msoa_boundaries_full_clipped/london/', 'london_only.shp')
+    lm = LayerMapping(models.Division, shp_file, mapping, transform=False)
+    pre_save.connect(pre_save_callback, sender=models.Division)
+    try:
+        lm.save(strict=True, verbose=verbose)
+    except Exception as exc:
+        print repr(exc)
+        raise
+    finally:
+        pre_save.disconnect(pre_save_callback, sender=models.Division)
+
+
+def setup_ward_boundaries(verbose=True):
+    dt = models.DivisionType.objects.get(name='ward')
+
+    def pre_save_callback(sender, instance, *args, **kwargs):
+        instance.type = dt
+
+    mapping = {
+        'name': 'WD11NM',
+        'code': 'WD11CD',
+        'mpoly': 'MULTIPOLYGON',
+    }
+
+    shp_file = os.path.join(settings.DATA_DIR, 'ward_boundaries_full_extent/london/', 'london_only.shp')
+    lm = LayerMapping(models.Division, shp_file, mapping, transform=False)
+    pre_save.connect(pre_save_callback, sender=models.Division)
+    try:
+        lm.save(strict=True, verbose=verbose)
+    except Exception as exc:
+        print repr(exc)
+        raise
+    finally:
+        pre_save.disconnect(pre_save_callback, sender=models.Division)
+
+
+def setup_divisiontypes(**kwargs):
+    # manually insert known division types
+    dt, created = models.DivisionType.objects.get_or_create(name='borough')
+    dt.description = 'London boroughs (also known as local authority)'
+    dt.save()
+
+    dt, created = models.DivisionType.objects.get_or_create(name='lsoa')
+    dt.description = 'Lower super output area, combination of OAs'
+    dt.save()
+
+    dt, created = models.DivisionType.objects.get_or_create(name='msoa')
+    dt.description = 'Middle super output area, combination of LSOAs'
+    dt.save()
+
+    dt, created = models.DivisionType.objects.get_or_create(name='ward')
+    dt.description = 'Administrative unit for MPS, attached to a borough'
+    dt.save()
+
+
+def setup_all(verbose=False):
     make_list = collections.OrderedDict([
+        ('DIVISIONTYPE', setup_divisiontypes),
         ('OCU', setup_ocu),
         ('NICL', setup_nicl),
         ('BOROUGHS', setup_boroughs),
+        ('WARDS', setup_ward_boundaries),
+        ('LSOA', setup_lsoa_boundaries),
+        ('MSOA', setup_msoa_boundaries),
         ('CAD', setup_cad),
+        ('CRIS', setup_cris),
     ])
     for name, func in make_list.items():
         try:
             print "Populating %s data..." % name
-            func()
+            func(verbose=verbose)
             print "Success."
         except Exception as exc:
             print "Failed"
