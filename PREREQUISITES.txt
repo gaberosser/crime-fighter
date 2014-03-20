@@ -14,6 +14,9 @@ sudo apt-get install Postgresql-9.3-postgis pgadmin3 postgresql-contrib libpq-de
 For scipy:
 sudo apt-get install gfortran libopenblas-dev liblapack-dev
 
+For matplotlib:
+sudo apt-get install tk tk-dev
+
 3) Plotting with QGIS
 
 Add these lines to /etc/apt/sources.list
@@ -26,3 +29,33 @@ gpg --export --armor 47765B75 | sudo apt-key add -
 
 sudo apt-get update
 sudo apt-get install qgis python-qgis qgis-plugin-grass
+
+4) Installing matplotlib basemap toolkit [NOT REQUIRED]
+
+Requires libgeos: probably already installed by previous steps?
+Need to manually add symlink
+
+cd /usr/lib
+ls | grep libgeos
+sudo ln -s libgeos-3.3.3.so libgeos.so
+sudo ln -s libgeos-3.3.3.so libgeos.so.1
+
+then from venv:
+
+pip install basemap==1.0.7
+
+5) Installing R and required packages
+
+sudo add-apt-repository ppa:marutter/rrutter
+sudo apt-get update
+sudo apt-get install r-base r-base-dev r-cran-maps
+
+Then, from within R:
+install.packages(“maptools”)
+install.packages(“lattice”)
+install.packages(“spdep”)
+install.packages(“sp”)
+
+To load/import libraries from an R environment:
+library(maptools) etc.
+
