@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<data>
+	<coordinateSystem>
+		<name>British Grid</name>
+		<datum>Ordnance Survey Great Britain 1936 (England)</datum>
+		<system>Transverse Mercator</system>
+		<unit>Meter</unit>
+		<majorAxis>6.377563395999999700000000e+006</majorAxis>
+		<eccentricity>8.167337387414189100000000e-002</eccentricity>
+		<centerX>3.710000000000000000000000e+002</centerX>
+		<centerY>-1.120000000000000000000000e+002</centerY>
+		<centerZ>4.340000000000000000000000e+002</centerZ>
+		<rotationX>0.000000000000000000000000e+000</rotationX>
+		<rotationY>0.000000000000000000000000e+000</rotationY>
+		<rotationZ>0.000000000000000000000000e+000</rotationZ>
+		<scaleAdjustment>0.000000000000000000000000e+000</scaleAdjustment>
+		<scaleX>9.996012717000000200000000e-001</scaleX>
+		<localScaleX>1.000000000000000000000000e+000</localScaleX>
+		<scaleY>9.996012717000000200000000e-001</scaleY>
+		<localScaleY>1.000000000000000000000000e+000</localScaleY>
+		<falseEasting>4.000000000000000000000000e+005</falseEasting>
+		<localOffsetX>0.000000000000000000000000e+000</localOffsetX>
+		<falseNorthing>-1.000000000000000000000000e+005</falseNorthing>
+		<localOffsetY>0.000000000000000000000000e+000</localOffsetY>
+		<centerLat>4.900000000000000000000000e+001</centerLat>
+		<centerLon>-2.000000000000000000000000e+000</centerLon>
+	</coordinateSystem>
+</data>
+

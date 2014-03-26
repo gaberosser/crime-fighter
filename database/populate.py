@@ -7,7 +7,8 @@ import datetime
 import time
 import pytz
 import models
-from django.contrib.gis.geos import Point
+import numpy as np
+from django.contrib.gis.geos import Point, Polygon, MultiPolygon
 from django.contrib.gis.utils import LayerMapping
 from django.db import transaction
 from django.db.models.signals import pre_save
@@ -248,6 +249,43 @@ def setup_ward_boundaries(verbose=True):
         pre_save.disconnect(pre_save_callback, sender=models.Division)
 
 
+def setup_cad250_grid(verbose=True):
+    import pdb
+    dt = models.DivisionType.objects.get(name='cad_250m_grid')
+    camden_borough = models.Division.objects.get(type='borough', name='Camden')
+    x_coords = np.arange(523750, 532000, 250)
+    y_coords = np.arange(180750, 188000, 250)
+    I, J = np.meshgrid(range(len(x_coords) - 1), range(len(y_coords) - 1))
+
+    polys = []
+
+    for (i, j) in zip(I.flatten(), J.flatten()):
+        poly = Polygon((
+            (x_coords[i], y_coords[j]),
+            (x_coords[i], y_coords[j+1]),
+            (x_coords[i+1], y_coords[j+1]),
+            (x_coords[i+1], y_coords[j]),
+            (x_coords[i], y_coords[j]),
+        ))
+        if poly.distance(camden_borough.mpoly) < 1.0:
+            polys.append(poly)
+
+    divs = []
+
+    for i, p in enumerate(polys):
+        d = models.Division(name=str(i), code=str(i), type=dt, mpoly=MultiPolygon([p]))
+        divs.append(d)
+
+    try:
+        models.Division.objects.bulk_create(divs)
+    except Exception as exc:
+        print repr(exc)
+        raise exc
+    else:
+        if verbose:
+            print "Created %u grid areas" % len(polys)
+
+
 def setup_divisiontypes(**kwargs):
     # manually insert known division types
     dt, created = models.DivisionType.objects.get_or_create(name='borough')
@@ -264,6 +302,10 @@ def setup_divisiontypes(**kwargs):
 
     dt, created = models.DivisionType.objects.get_or_create(name='ward')
     dt.description = 'Administrative unit for MPS, attached to a borough'
+    dt.save()
+
+    dt, created = models.DivisionType.objects.get_or_create(name='cad_250m_grid')
+    dt.description = 'CAD 250m square grid'
     dt.save()
 
 

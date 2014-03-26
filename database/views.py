@@ -43,6 +43,18 @@ def month_iterator(start_date, end_date):
         sd = ed
 
 
+def week_iterator(start_date, end_date):
+
+    sd = start_date
+    while sd < end_date:
+        ed = sd + datetime.timedelta(days=7)
+        if ed <= end_date:
+            yield (sd, ed)
+        else:
+            yield (sd, end_date+datetime.timedelta(days=1))
+        sd = ed
+
+
 def cris_cad_comparison():
     # get all 'real' crimes from CAD
     cad_qset = models.Cad.objects.exclude(cris_entry__isnull=True).exclude(cris_entry__startswith='NOT')
