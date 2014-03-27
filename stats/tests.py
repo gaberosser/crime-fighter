@@ -117,6 +117,7 @@ class SpatialStats(TestCase):
 
         # queen connectivity matrix
         W_queen = logic.boolean_connectivity(regions_qset)
+        W_queen.sort_index(inplace=True)
         for row in W_queen.values:
             self.assertAlmostEqual(sum(row), 1.0)
 
@@ -134,11 +135,7 @@ class SpatialStats(TestCase):
 
         for i in range(n):
             W_expct[i] = W_expct[i]/np.sum(W_expct[i])
-            print i
-            try:
-                self.assertListEqual(list(W_expct[i]), list(W_queen.values[i]))
-            except Exception:
-                pdb.set_trace()
+            self.assertListEqual(list(W_expct[i]), list(W_queen.values[i]))
 
         # W_expct = np.zeros((n, n))
         # # EngNE
