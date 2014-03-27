@@ -318,6 +318,7 @@ def setup_all(verbose=False):
         ('WARDS', setup_ward_boundaries),
         ('LSOA', setup_lsoa_boundaries),
         ('MSOA', setup_msoa_boundaries),
+        ('CADGRID', setup_cad250_grid),
         ('CAD', setup_cad),
         ('CRIS', setup_cris),
     ])
