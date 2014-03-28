@@ -52,8 +52,21 @@ def yw_pacf_1d(acf):
     return np.array([1.] + [np.linalg.solve(R[:i+1,:i+1], r[:i+1])[-1] for i in range(p)])
 
 
-def boolean_connectivity(areal_unit_qset, distance=None):
-    """ Given the input region qset, returns a normalised Boolean spatial weight matrix indicating connectivity """
+def global_morans_i(data, W):
+    z = data - np.mean(data)
+    cross_m = DataFrame(np.outer(z, z), index=z.index, columns=z.index)
+    return (W * cross_m).values.sum() / sum(z**2)
+
+
+def local_morans_i(data, W):
+    z = data - np.mean(data)
+    return W.dot(z) * z
+
+
+def intersection_boolean_connectivity(areal_unit_qset, distance=None):
+    """ Given the input region qset, returns a normalised Boolean spatial weight matrix indicating connectivity.
+        Results in QUEEN connectivity matrix. """
+
     n = areal_unit_qset.count()
     # W = np.zeros((n, n), dtype=float)
 
@@ -73,14 +86,7 @@ def boolean_connectivity(areal_unit_qset, distance=None):
         for tn in touching_names:
             W[this_name][tn] = 1.
             W[tn][this_name] = 1.
-        # get idx
-        # idx = np.where(np.in1d(all_ids, touching_ids))[0]
-        # if len(idx):
-        #     try:
-        #         W[i, idx] = 1.
-        #         W[idx, i] = 1.
-        #     except Exception:
-        #         import pdb; pdb.set_trace()
+
     for i in range(len(W)):
         try:
             W.iloc[i] /= sum(W.iloc[i])
@@ -89,7 +95,7 @@ def boolean_connectivity(areal_unit_qset, distance=None):
     return W
 
 
-def rook_connectivity(areal_unit_qset):
+def rook_boolean_connectivity(areal_unit_qset):
     """ Boolean connectivity, two regions are connected if they share a line """
     names = [x.name for x in areal_unit_qset]
     W = DataFrame(dict([(x, 0.) for x in names]), index=names)
