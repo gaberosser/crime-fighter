@@ -22,25 +22,31 @@ class CadByGrid(object):
 
     def __init__(self, nicl_numbers=range(1, 16), grid=None):
         self.nicl_numbers = nicl_numbers
-        self.nicl_names = [models.Nicl.objects.get(number=x).name for x in nicl_numbers]
+        self.nicl_names = [models.Nicl.objects.get(number=x).description for x in nicl_numbers]
         self.grid = grid or models.Division.objects.filter(type='cad_250m_grid')
-        self.shapely_grid = pandas.Series([geodjango_to_shapely([x.mpoly]) for x in grid],
-                                          index=[x.name for x in grid])
+        self.shapely_grid = pandas.Series([geodjango_to_shapely([x.mpoly]) for x in self.grid],
+                                          index=[x.name for x in self.grid])
         # preliminary cad filter
         self.cad = models.Cad.objects.exclude(cris_entry__isnull=True).exclude(cris_entry__startswith='NOT')\
             .exclude(att_map__isnull=True)
 
         self.res, self.start_date, self.end_date = self.compute_array()
 
+    @property
+    def l(self):
+        return len(self.nicl_numbers)
+
+    @property
+    def m(self):
+        return self.grid.count()
+
     def compute_array(self):
-        l = len(self.nicl_numbers)
-        m = self.grid.count()
-        res = [[[] for y in range(m)] for x in range(l)]
+        res = [[[] for y in range(self.m)] for x in range(self.l)]
 
         start_date = datetime.datetime.now(tz=UK_TZ)
         end_date = datetime.datetime(1990, 1, 1, tzinfo=UK_TZ)
 
-        for i in range(l):
+        for i in range(self.l):
             nicl = self.nicl_numbers[i]
             # filter by crime type and de-dupe
             this_qset = self.cad.filter(Q(cl01=nicl) | Q(cl02=nicl) | Q(cl03=nicl)).values(
@@ -48,7 +54,7 @@ class CadByGrid(object):
                 'cris_entry',
                 'inc_datetime',
                 ).distinct('cris_entry')
-            for j in range(m):
+            for j in range(self.m):
                 this_grid = self.grid[j]
                 res[i][j] = [x['inc_datetime'] for x in this_qset.filter(att_map__within=this_grid.mpoly)]
                 if len(res[i][j]):
@@ -57,71 +63,106 @@ class CadByGrid(object):
 
         return res, start_date, end_date
 
+    def all_time_aggregate(self):
+        bucket_fun = lambda x: True
+        return self.time_aggregate_data({'all': bucket_fun})
+
+    def time_aggregate_data(self, bucket_dict):
+        index = self.nicl_names
+        columns = [x.name for x in self.grid]
+        n = len(bucket_dict)
+
+        data = np.zeros((self.l, self.m, n))
+        for i in range(self.l):
+            for j in range(self.m):
+                for k, func in enumerate(bucket_dict.values()):
+                    data[i, j, k] = len([x for x in self.res[i][j] if func(x)])
+
+        if n == 1:
+            data = np.squeeze(data, axis=(2,))
+            return pandas.DataFrame(data, index=index, columns=columns)
+        else:
+            return pandas.Panel(data, items=bucket_dict.keys(), major_axis=index, minor_axis=columns)
+
+
     ## TODO: add methods for pivoting the data, aggregating by time, etc
     ## TODO: look into using ragged DataFrame?
 
-nicl_cat = {
-    'Burglary Dwelling': models.Nicl.objects.get(number=3),
-    'Violence Against The Person': models.Nicl.objects.get(number=1),
-    'Shoplifting': models.Nicl.objects.get(number=13),
-}
 
-grid = models.Division.objects.filter(type='cad_250m_grid')
-shapely_grid = [geodjango_to_shapely([x.mpoly]) for x in grid]
+def something_else():
 
-cad_qset = models.Cad.objects.exclude(cris_entry__isnull=True).exclude(cris_entry__startswith='NOT').exclude(att_map__isnull=True)
-res_all = collections.OrderedDict()
-res_weekly = []
-camden_mpoly = geodjango_to_shapely([models.Division.objects.get(name='Camden', type='borough').mpoly])
+    nicl_cat = {
+        'Burglary Dwelling': models.Nicl.objects.get(number=3),
+        'Violence Against The Person': models.Nicl.objects.get(number=1),
+        'Shoplifting': models.Nicl.objects.get(number=13),
+    }
 
-cad_sections = {}
+    grid = models.Division.objects.filter(type='cad_250m_grid')
+    shapely_grid = [geodjango_to_shapely([x.mpoly]) for x in grid]
 
-l = len(nicl_cat)
-m = grid.count()
+    cad_qset = models.Cad.objects.exclude(cris_entry__isnull=True).exclude(cris_entry__startswith='NOT').exclude(att_map__isnull=True)
+    res_all = collections.OrderedDict()
+    res_weekly = []
+    camden_mpoly = geodjango_to_shapely([models.Division.objects.get(name='Camden', type='borough').mpoly])
 
-res = [[[] for y in range(m)] for x in range(l)]
-start_date = datetime.datetime.now(tz=UK_TZ)
-end_date = datetime.datetime(1990, 1, 1, tzinfo=UK_TZ)
+    cad_sections = {}
 
-for i in range(l):
-    nicl = nicl_cat.values()[i]
-    this_qset = cad_qset.filter(Q(cl01=nicl) | Q(cl02=nicl) | Q(cl03=nicl)).values(
-        'att_map',
-        'cris_entry',
-        'inc_datetime',
-        ).distinct('cris_entry')
-    for j in range(m):
-        this_grid = grid[j]
-        res[i][j] = [x['inc_datetime'] for x in this_qset.filter(att_map__within=this_grid.mpoly)]
-        if len(res[i][j]):
-            start_date = min(start_date, min(res[i][j]))
-            end_date = max(end_date, max(res[i][j]))
+    l = len(nicl_cat)
+    m = grid.count()
 
-# aggregate over all time
-all_time = np.zeros((l, m))
-for i in range(l):
-    for j in range(m):
-        all_time[i, j] += len(res[i][j])
+    res = [[[] for y in range(m)] for x in range(l)]
+    start_date = datetime.datetime.now(tz=UK_TZ)
+    end_date = datetime.datetime(1990, 1, 1, tzinfo=UK_TZ)
 
-# aggregate monthly
-n = len(list(month_iterator(start_date, end_date)))
-monthly = np.zeros((l, m, n))
-start_date = start_date.replace(day=1, hour=0, minute=0, second=0)
+    for i in range(l):
+        nicl = nicl_cat.values()[i]
+        this_qset = cad_qset.filter(Q(cl01=nicl) | Q(cl02=nicl) | Q(cl03=nicl)).values(
+            'att_map',
+            'cris_entry',
+            'inc_datetime',
+            ).distinct('cris_entry')
+        for j in range(m):
+            this_grid = grid[j]
+            res[i][j] = [x['inc_datetime'] for x in this_qset.filter(att_map__within=this_grid.mpoly)]
+            if len(res[i][j]):
+                start_date = min(start_date, min(res[i][j]))
+                end_date = max(end_date, max(res[i][j]))
 
-for i in range(l):
-    for j in range(m):
-        m_it = month_iterator(start_date, end_date)
-        for k in range(n):
-            sd, ed = m_it.next()
-            monthly[i, j, k] += len([x for x in res[i][j] if sd <= x < ed])
+    # aggregate over all time
+    all_time = np.zeros((l, m))
+    for i in range(l):
+        for j in range(m):
+            all_time[i, j] += len(res[i][j])
 
-# aggregate weekday/weekend
-weekday = np.zeros((l, m, 2))
+    # aggregate monthly
+    n = len(list(month_iterator(start_date, end_date)))
+    monthly = np.zeros((l, m, n))
+    start_date = start_date.replace(day=1, hour=0, minute=0, second=0)
 
-for i in range(l):
-    for j in range(m):
-        weekday[i, j, 0] = len([x for x in res[i][j] if x.weekday() < 5])
-        weekday[i, j, 1] = len([x for x in res[i][j] if x.weekday() >= 5])
+    for i in range(l):
+        for j in range(m):
+            m_it = month_iterator(start_date, end_date)
+            for k in range(n):
+                sd, ed = m_it.next()
+                monthly[i, j, k] += len([x for x in res[i][j] if sd <= x < ed])
+
+    # aggregate weekday/weekend
+    weekday = np.zeros((l, m, 2))
+
+    for i in range(l):
+        for j in range(m):
+            weekday[i, j, 0] = len([x for x in res[i][j] if x.weekday() < 5])
+            weekday[i, j, 1] = len([x for x in res[i][j] if x.weekday() >= 5])
+
+    # aggregate daytime/evening+night
+    timeofday = np.zeros((l, m, 2))
+
+    am = datetime.time(6, 0, 0, tzinfo=UK_TZ)
+    pm = datetime.time(18, 0, 0, tzinfo=UK_TZ)
+    for i in range(l):
+        for j in range(m):
+            timeofday[i, j, 0] = len([x for x in res[i][j] if am <= x.time() < pm])
+            timeofday[i, j, 1] = len([x for x in res[i][j] if (pm <= x.time()) or (x.time() < am)])
 
 # fig = plt.figure()
 # fig.set_size_inches(12, 9)
@@ -196,18 +237,9 @@ for i in range(l):
 #             val = weekday[i, j, k]
 #             fc = sm.to_rgba(val) if val else 'none'
 #             ax.add_geometries(shapely_grid[j], ccrs.OSGB(), facecolor=fc)
+# plt.show()
 
-plt.show()
 
-# aggregate daytime/evening+night
-timeofday = np.zeros((l, m, 2))
-
-am = datetime.time(6, 0, 0, tzinfo=UK_TZ)
-pm = datetime.time(18, 0, 0, tzinfo=UK_TZ)
-for i in range(l):
-    for j in range(m):
-        timeofday[i, j, 0] = len([x for x in res[i][j] if am <= x.time() < pm])
-        timeofday[i, j, 1] = len([x for x in res[i][j] if (pm <= x.time()) or (x.time() < am)])
 
 # for i in range(l):
 #     fig = plt.figure(figsize=(15, 9))
@@ -225,7 +257,4 @@ for i in range(l):
 #             val = timeofday[i, j, k]
 #             fc = sm.to_rgba(val) if val else 'none'
 #             ax.add_geometries(shapely_grid[j], ccrs.OSGB(), facecolor=fc)
-
-
-
-plt.show()
+# plt.show()

@@ -149,7 +149,8 @@ def setup_cris(**kwargs):
             cris.lsoa = all_lsoa.get(cris.lsoa_code)
             bulk_list.append(cris)
         print "Writing to database..."
-        models.Cris.objects.bulk_create(bulk_list)
+        # write in batches to avoid massive memory requirements
+        models.Cris.objects.bulk_create(bulk_list, batch_size=50000)
         print "Done"
 
 
