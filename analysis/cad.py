@@ -5,6 +5,7 @@ from matplotlib import pyplot as plt
 import cartopy.crs as ccrs
 import collections
 from django.db.models import Q, Count, Sum, Min, Max
+from django.contrib.gis.measure import D
 from plotting import geodjango_to_shapely
 from database.views import month_iterator, week_iterator
 import pandas
@@ -56,7 +57,8 @@ class CadByGrid(object):
                 ).distinct('cris_entry')
             for j in range(self.m):
                 this_grid = self.grid[j]
-                res[i][j] = [x['inc_datetime'] for x in this_qset.filter(att_map__within=this_grid.mpoly)]
+                qry = {'att_map__within': this_grid.mpoly}
+                res[i][j] = [x['inc_datetime'] for x in this_qset.filter(**qry)]
                 if len(res[i][j]):
                     start_date = min(start_date, min(res[i][j]))
                     end_date = max(end_date, max(res[i][j]))
@@ -68,15 +70,15 @@ class CadByGrid(object):
         return self.time_aggregate_data({'all': bucket_fun})
 
     def time_aggregate_data(self, bucket_dict):
-        index = self.nicl_names
-        columns = [x.name for x in self.grid]
+        index = [x.name for x in self.grid]
+        columns = self.nicl_names
         n = len(bucket_dict)
 
-        data = np.zeros((self.l, self.m, n))
-        for i in range(self.l):
-            for j in range(self.m):
-                for k, func in enumerate(bucket_dict.values()):
-                    data[i, j, k] = len([x for x in self.res[i][j] if func(x)])
+        data = np.zeros((self.m, self.l, n))
+        for i in range(self.l): # crime types
+            for j in range(self.m): # grid squares
+                for k, func in enumerate(bucket_dict.values()): # time buckets
+                    data[j, i, k] = len([x for x in self.res[i][j] if func(x)])
 
         if n == 1:
             data = np.squeeze(data, axis=(2,))
