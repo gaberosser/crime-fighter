@@ -1,5 +1,6 @@
 __author__ = 'gabriel'
 from database import models
+from stats import logic
 import matplotlib as mpl
 from matplotlib import pyplot as plt
 import cartopy.crs as ccrs
@@ -69,6 +70,17 @@ class CadByGrid(object):
         bucket_fun = lambda x: True
         return self.time_aggregate_data({'all': bucket_fun})
 
+
+    def weekday_weekend_aggregate(self):
+        bucket_dict = collections.OrderedDict(
+            [
+                ('Weekday', lambda x: x.weekday() < 5),
+                ('Weekend', lambda x: x.weekday() >= 5),
+            ]
+        )
+        return self.time_aggregate_data(bucket_dict)
+
+
     def time_aggregate_data(self, bucket_dict):
         index = [x.name for x in self.grid]
         columns = self.nicl_names
@@ -89,6 +101,66 @@ class CadByGrid(object):
 
     ## TODO: add methods for pivoting the data, aggregating by time, etc
     ## TODO: look into using ragged DataFrame?
+
+
+def global_i_analysis():
+
+    short_names = ['Violence', 'Sexual Offences', 'Burglary Dwelling', 'Burglary Non-dwelling',
+                   'Robbery', 'Theft of Vehicle', 'Theft from Vehicle', 'Other Theft',
+                   'Fraud and Forgery', 'Criminal Damage', 'Drug Offences', 'Bomb Threat',
+                   'Shoplifting', 'Harassment', 'Abduction/Kidnap']
+
+    cbg = CadByGrid()
+    a = cbg.all_time_aggregate()
+    W = logic.rook_boolean_connectivity(cbg.grid)
+    global_i = [(x, logic.global_morans_i_p(a[x], W, n_iter=5000)) for x in a]
+
+    fig = plt.figure(figsize=[10, 10])
+    ax = fig.add_axes([0.1, 0.2, 0.85, 0.75])
+    hbar = ax.bar(range(cbg.l), [x[1][0] for x in global_i], width = 0.8)
+    for i in range(cbg.l):
+        if global_i[i][1][1] < 0.01:
+            hbar[i].set_color('r')
+        elif global_i[i][1][1] < 0.05:
+            hbar[i].set_color('y')
+        else:
+            hbar[i].set_color('b')
+    ax.set_xticks([float(x) + 0.5 for x in range(cbg.l)])
+    ax.set_xticklabels(short_names)
+    ax.set_ylabel('Global Moran''s I')
+    ax.set_xlabel('Crime type (NICL)')
+
+    xticks = ax.xaxis.get_ticklabels()
+    plt.setp(xticks, rotation=90)
+    plt.show()
+
+
+def numbers_by_type():
+
+    short_names = ['Violence', 'Sexual Offences', 'Burglary Dwelling', 'Burglary Non-dwelling',
+                   'Robbery', 'Theft of Vehicle', 'Theft from Vehicle', 'Other Theft',
+                   'Fraud and Forgery', 'Criminal Damage', 'Drug Offences', 'Bomb Threat',
+                   'Shoplifting', 'Harassment', 'Abduction/Kidnap']
+
+    cbg = CadByGrid()
+    a = cbg.all_time_aggregate()
+    num_crimes = a.sum()
+
+    fig = plt.figure(figsize=[12, 12])
+    ax = fig.add_axes([0.1, 0.2, 0.85, 0.75])
+    hbar = ax.bar(range(cbg.l), num_crimes.values, width=0.8)
+
+    ax.set_xticks([float(x) + 0.5 for x in range(cbg.l)])
+    ax.set_xticklabels(short_names)
+    ax.set_ylabel('Number in 1 year')
+    ax.set_xlabel('Crime type (NICL)')
+
+    xticks = ax.xaxis.get_ticklabels()
+    plt.setp(xticks, rotation=90)
+    plt.show()
+
+
+
 
 
 def something_else():

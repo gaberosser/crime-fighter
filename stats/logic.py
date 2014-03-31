@@ -54,8 +54,27 @@ def yw_pacf_1d(acf):
 
 def global_morans_i(data, W):
     z = data - np.mean(data)
-    cross_m = DataFrame(np.outer(z, z), index=z.index, columns=z.index)
+    try:
+        # assume input is pandas datatype
+        cross_m = DataFrame(np.outer(z, z), index=z.index, columns=z.index)
+
+    except AttributeError:
+        # assume input is numpy array or similar
+        cross_m = np.outer(z, z)
+
     return (W * cross_m).values.sum() / sum(z**2)
+
+
+def global_morans_i_p(data, W, n_iter=1000):
+    perm_i = np.array(sorted([global_morans_i(np.random.permutation(data), W) for n in range(n_iter)]))
+    real_i = global_morans_i(data, W)
+    # compute p
+    try:
+        idx = np.where(perm_i > real_i)[0][0]
+    except IndexError:
+        idx = len(perm_i) - 1
+    return real_i, 1-idx/float(n_iter - 1)
+
 
 
 def local_morans_i(data, W):
