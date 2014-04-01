@@ -80,20 +80,31 @@ class CadByGrid(object):
         )
         return self.time_aggregate_data(bucket_dict)
 
+    def daytime_evening_aggregate(self):
+        am = datetime.time(6, 0, 0, tzinfo=UK_TZ)
+        pm = datetime.time(18, 0, 0, tzinfo=UK_TZ)
+        bucket_dict = collections.OrderedDict(
+            [
+                ('Daytime', lambda x: am <= x.time() < pm),
+                ('Evening', lambda x: (pm <= x.time()) or (x.time() < am)),
+            ]
+        )
+        return self.time_aggregate_data(bucket_dict)
+
 
     def time_aggregate_data(self, bucket_dict):
         index = [x.name for x in self.grid]
         columns = self.nicl_names
         n = len(bucket_dict)
 
-        data = np.zeros((self.m, self.l, n))
+        data = np.zeros((n, self.m, self.l))
         for i in range(self.l): # crime types
             for j in range(self.m): # grid squares
                 for k, func in enumerate(bucket_dict.values()): # time buckets
-                    data[j, i, k] = len([x for x in self.res[i][j] if func(x)])
+                    data[k, j, i] = len([x for x in self.res[i][j] if func(x)])
 
         if n == 1:
-            data = np.squeeze(data, axis=(2,))
+            data = np.squeeze(data, axis=(0,))
             return pandas.DataFrame(data, index=index, columns=columns)
         else:
             return pandas.Panel(data, items=bucket_dict.keys(), major_axis=index, minor_axis=columns)
@@ -160,8 +171,125 @@ def numbers_by_type():
     plt.show()
 
 
+def spatial_density_all_time():
+
+    nicl_numbers = [3, 6, 10]
+    short_names = ['Burglary Dwelling', 'Veh Theft', 'Crim Damage']
+    camden_mpoly = geodjango_to_shapely([models.Division.objects.get(name='Camden', type='borough').mpoly])
+    cbg = CadByGrid(nicl_numbers=nicl_numbers)
+    a = cbg.all_time_aggregate()
+
+    fig = plt.figure(figsize=(15, 6))
+    axes = [fig.add_subplot(1, cbg.l, i+1, projection=ccrs.OSGB()) for i in range(cbg.l)]
+    fig.subplots_adjust(left=0.05, right=0.95, bottom=0.05, top=0.95, wspace=0.03, hspace=0.01)
+
+    for i in range(cbg.l):
+        ax = axes[i]
+        ds = a[cbg.nicl_names[i]]
+        ax.set_title(cbg.nicl_names[i])
+        ax.set_extent([523000, 533000, 179000, 190000], ccrs.OSGB())
+        ax.background_patch.set_visible(False)
+        # ax.outline_patch.set_visible(False)
+        cmap = mpl.cm.cool
+        norm = mpl.colors.Normalize()
+        norm.autoscale(ds)
+        cax = mpl.colorbar.make_axes(ax, location='bottom', pad=0.02, fraction=0.05, shrink=0.9)
+        cbar = mpl.colorbar.ColorbarBase(cax[0], cmap=cmap, norm=norm, orientation='horizontal')
+        sm = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
+
+        for j in range(cbg.m):
+            val = ds.values[j]
+            fc = sm.to_rgba(val) if val else 'none'
+            ax.add_geometries(geodjango_to_shapely([cbg.grid[j].mpoly]), ccrs.OSGB(), facecolor=fc)
+
+        ax.add_geometries(camden_mpoly, ccrs.OSGB(), facecolor='none', edgecolor='black')
 
 
+    plt.show()
+
+def spatial_density_weekday_evening():
+
+    nicl_numbers = [3, 6, 10]
+    short_names = ['Burglary Dwelling', 'Veh Theft', 'Crim Damage']
+    camden_mpoly = geodjango_to_shapely([models.Division.objects.get(name='Camden', type='borough').mpoly])
+    cbg = CadByGrid(nicl_numbers=nicl_numbers)
+    a = cbg.weekday_weekend_aggregate()
+    b = cbg.daytime_evening_aggregate()
+    # combine
+    for x in b.items:
+        a[x] = b[x]
+    b = a.transpose(2, 0, 1)
+
+    for i in range(cbg.l): # crime types
+
+        df = b.iloc[i]
+        n = df.shape[0]
+        fig = plt.figure(figsize=(20, 6))
+        axes = [fig.add_subplot(1, n, t+1, projection=ccrs.OSGB()) for t in range(n)]
+        fig.subplots_adjust(left=0.05, right=0.95, bottom=0.05, top=0.95, wspace=0.03, hspace=0.01)
+
+        for j in range(n):
+            ax = axes[j]
+            ds = df.iloc[j]
+            ax.set_title(ds.name)
+            ax.set_extent([523000, 533000, 179000, 190000], ccrs.OSGB())
+            ax.background_patch.set_visible(False)
+            # ax.outline_patch.set_visible(False)
+
+            cmap = mpl.cm.cool
+            norm = mpl.colors.Normalize()
+            norm.autoscale(ds)
+            cax = mpl.colorbar.make_axes(ax, location='bottom', pad=0.02, fraction=0.05, shrink=0.9)
+            cbar = mpl.colorbar.ColorbarBase(cax[0], cmap=cmap, norm=norm, orientation='horizontal')
+            sm = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
+
+            for j in range(cbg.m):
+                val = ds.values[j]
+                fc = sm.to_rgba(val) if val else 'none'
+                ax.add_geometries(geodjango_to_shapely([cbg.grid[j].mpoly]), ccrs.OSGB(), facecolor=fc)
+
+            ax.add_geometries(camden_mpoly, ccrs.OSGB(), facecolor='none', edgecolor='black')
+
+    plt.show()
+
+
+def local_morans_i():
+    nicl_numbers = [3, 6, 10]
+    short_names = ['Burglary Dwelling', 'Veh Theft', 'Crim Damage']
+    camden_mpoly = geodjango_to_shapely([models.Division.objects.get(name='Camden', type='borough').mpoly])
+    cbg = CadByGrid(nicl_numbers=nicl_numbers)
+    a = cbg.all_time_aggregate()
+    W = logic.rook_boolean_connectivity(cbg.grid)
+
+    fig = plt.figure(figsize=(15, 6))
+    axes = [fig.add_subplot(1, cbg.l, i+1, projection=ccrs.OSGB()) for i in range(cbg.l)]
+    fig.subplots_adjust(left=0.05, right=0.95, bottom=0.05, top=0.95, wspace=0.03, hspace=0.01)
+
+    for i in range(cbg.l):
+        ax = axes[i]
+        ds = a[cbg.nicl_names[i]]
+        local_i = logic.local_morans_i(ds, W)
+
+        ax.set_title(cbg.nicl_names[i])
+        ax.set_extent([523000, 533000, 179000, 190000], ccrs.OSGB())
+        ax.background_patch.set_visible(False)
+        # ax.outline_patch.set_visible(False)
+        cmap = mpl.cm.cool
+        norm = mpl.colors.Normalize()
+        norm.autoscale(local_i)
+        cax = mpl.colorbar.make_axes(ax, location='bottom', pad=0.02, fraction=0.05, shrink=0.9)
+        cbar = mpl.colorbar.ColorbarBase(cax[0], cmap=cmap, norm=norm, orientation='horizontal')
+        sm = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
+
+        for j in range(cbg.m):
+            val = local_i.values[j]
+            fc = sm.to_rgba(val) if val else 'none'
+            ax.add_geometries(geodjango_to_shapely([cbg.grid[j].mpoly]), ccrs.OSGB(), facecolor=fc)
+
+        ax.add_geometries(camden_mpoly, ccrs.OSGB(), facecolor='none', edgecolor='black')
+
+
+    plt.show()
 
 def something_else():
 
