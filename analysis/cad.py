@@ -4,6 +4,7 @@ from stats import logic
 import matplotlib as mpl
 from matplotlib import pyplot as plt
 import cartopy.crs as ccrs
+from scipy.spatial.distance import pdist, squareform
 import collections
 from django.db.models import Q, Count, Sum, Min, Max
 from django.contrib.gis.measure import D
@@ -20,6 +21,10 @@ mpl.rcParams['backend'] = 'TkAgg'
 mpl.rcParams['interactive'] = True
 
 
+def initial_filter_cad():
+    return models.Cad.objects.exclude(cris_entry__isnull=True).exclude(cris_entry__startswith='NOT')\
+            .exclude(att_map__isnull=True)
+
 class CadByGrid(object):
 
     def __init__(self, nicl_numbers=range(1, 16), grid=None):
@@ -29,8 +34,7 @@ class CadByGrid(object):
         self.shapely_grid = pandas.Series([geodjango_to_shapely([x.mpoly]) for x in self.grid],
                                           index=[x.name for x in self.grid])
         # preliminary cad filter
-        self.cad = models.Cad.objects.exclude(cris_entry__isnull=True).exclude(cris_entry__startswith='NOT')\
-            .exclude(att_map__isnull=True)
+        self.cad = initial_filter_cad()
 
         self.res, self.start_date, self.end_date = self.compute_array()
 
@@ -366,97 +370,37 @@ def something_else():
             timeofday[i, j, 0] = len([x for x in res[i][j] if am <= x.time() < pm])
             timeofday[i, j, 1] = len([x for x in res[i][j] if (pm <= x.time()) or (x.time() < am)])
 
-# fig = plt.figure()
-# fig.set_size_inches(12, 9)
-#
-# for i in range(l):
-#
-#     ax = fig.add_subplot(1, 3, i+1, projection=ccrs.OSGB())
-#     ax.set_title(nicl_cat.keys()[i])
-#     ax.set_extent([523000, 533000, 179000, 190000], ccrs.OSGB())
-#     ax.background_patch.set_visible(False)
-#     ax.outline_patch.set_visible(False)
-#     cmap = mpl.cm.cool
-#     norm = mpl.colors.Normalize()
-#     norm.autoscale(all_time[i])
-#     cax = mpl.colorbar.make_axes(ax, location='bottom')
-#     cbar = mpl.colorbar.ColorbarBase(cax[0], cmap=cmap, norm=norm, orientation='horizontal')
-#     sm = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
-#
-#     for j in range(m):
-#         val = all_time[i, j]
-#         fc = sm.to_rgba(val) if val else 'none'
-#         ax.add_geometries(geodjango_to_shapely([grid[j].mpoly]), ccrs.OSGB(), facecolor=fc)
-#
-#     ax.add_geometries(camden_mpoly, ccrs.OSGB(), facecolor='none', edgecolor='black')
-#
-# plt.show()
+
+## so SLOW:
+# def pairwise_distance(nicl_number=3):
+#     cad = initial_filter_cad()
+#     cad = cad.filter(Q(cl01=nicl_number) | Q(cl02=nicl_number) | Q(cl03=nicl_number)).distinct('cris_entry')
+#     n = cad.count()
+#     p = np.zeros((n, n))
+#     for i in range(n):
+#         a = cad.distance(cad[i].att_map, field_name='att_map')
+#         p[i, i+1:] = np.array([x.distance.m for x in a[i+1:]])
+#         if i % 100 == 0:
+#             print i
+#     return list(cad), p
 
 
-
-# for i in range(l):
-#     fig = plt.figure(figsize=(15, 9))
-#     cmap = mpl.cm.cool
-#     norm = mpl.colors.Normalize()
-#     norm.autoscale(monthly[i, :, :].flatten())
-#     sm = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
-#     axarr = []
-#
-#     for k in range(12):
-#         ax = fig.add_subplot(3, 4, k+1, projection=ccrs.OSGB())
-#         axarr.append(ax)
-#         ax.set_title(str(k+1))
-#         ax.set_extent([523000, 533000, 179000, 190000], ccrs.OSGB())
-#         ax.background_patch.set_visible(False)
-#         ax.outline_patch.set_visible(False)
-#         for j in range(m):
-#             val = monthly[i, j, k]
-#             fc = sm.to_rgba(val) if val else 'none'
-#             ax.add_geometries(shapely_grid[j], ccrs.OSGB(), facecolor=fc)
-#
-#     fig.subplots_adjust(left=0.05, right=0.85, bottom=0.05, wspace=0.01, hspace=0.01)
-#     cbar_ax = fig.add_axes([0.95, 0.1, 0.025, 0.8])
-#     cbar = mpl.colorbar.ColorbarBase(cbar_ax, cmap=cmap, norm=norm, orientation='vertical')
+def pairwise_distance(nicl_number=3):
+    cad = initial_filter_cad()
+    cad = cad.filter(Q(cl01=nicl_number) | Q(cl02=nicl_number) | Q(cl03=nicl_number)).distinct('cris_entry')
+    coords = np.array([x.att_map.coords for x in cad])
+    p = squareform(pdist(coords))
+    return list(cad), p
 
 
-
-# cmap = mpl.cm.cool
-# norm = mpl.colors.Normalize()
-
-# for i in range(l):
-#     fig = plt.figure(figsize=(15, 9))
-#     for k in range(2):
-#         norm.autoscale(weekday[i, :, k])
-#         sm = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
-#         ax = fig.add_subplot(1, 2, k+1, projection=ccrs.OSGB())
-#         ax.set_title("%s, %s" % (nicl_cat.keys()[i], "Weekday" if k == 0 else "Weekend"))
-#         ax.set_extent([523000, 533000, 179000, 190000], ccrs.OSGB())
-#         ax.background_patch.set_visible(False)
-#         ax.outline_patch.set_visible(False)
-#         cax = mpl.colorbar.make_axes(ax, location='right')
-#         cbar = mpl.colorbar.ColorbarBase(cax[0], cmap=cmap, norm=norm, orientation='vertical')
-#         for j in range(m):
-#             val = weekday[i, j, k]
-#             fc = sm.to_rgba(val) if val else 'none'
-#             ax.add_geometries(shapely_grid[j], ccrs.OSGB(), facecolor=fc)
-# plt.show()
+def pairwise_time_lag_events(data, max_distance=D(m=200), nicl_numbers=None):
+    nicl_numbers = nicl_numbers or [1, 3, 13]
+    cad = initial_filter_cad()
+    for nicl in nicl_numbers:
+        this_cad = cad.filter(Q(cl01=nicl) | Q(cl02=nicl) | Q(cl03=nicl)).values(
+                    'att_map',
+                    'cris_entry',
+                    'inc_datetime',
+                    ).distinct('cris_entry')
 
 
-
-# for i in range(l):
-#     fig = plt.figure(figsize=(15, 9))
-#     for k in range(2):
-#         norm.autoscale(timeofday[i, :, k])
-#         sm = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
-#         ax = fig.add_subplot(1, 2, k+1, projection=ccrs.OSGB())
-#         ax.set_title("%s, %s" % (nicl_cat.keys()[i], "Daytime" if k == 0 else "Evening/night"))
-#         ax.set_extent([523000, 533000, 179000, 190000], ccrs.OSGB())
-#         ax.background_patch.set_visible(False)
-#         ax.outline_patch.set_visible(False)
-#         cax = mpl.colorbar.make_axes(ax, location='right')
-#         cbar = mpl.colorbar.ColorbarBase(cax[0], cmap=cmap, norm=norm, orientation='vertical')
-#         for j in range(m):
-#             val = timeofday[i, j, k]
-#             fc = sm.to_rgba(val) if val else 'none'
-#             ax.add_geometries(shapely_grid[j], ccrs.OSGB(), facecolor=fc)
-# plt.show()
