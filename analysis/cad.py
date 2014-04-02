@@ -13,6 +13,7 @@ from database.views import month_iterator, week_iterator
 import pandas
 import numpy as np
 import datetime
+from time import time
 import pytz
 
 UK_TZ = pytz.timezone('Europe/London')
@@ -21,9 +22,19 @@ mpl.rcParams['backend'] = 'TkAgg'
 mpl.rcParams['interactive'] = True
 
 
-def initial_filter_cad():
-    return models.Cad.objects.exclude(cris_entry__isnull=True).exclude(cris_entry__startswith='NOT')\
+def unix_time(dt):
+    epoch = datetime.datetime.utcfromtimestamp(0).replace(tzinfo=dt.tzinfo)
+    delta = dt - epoch
+    return delta.total_seconds()
+
+
+def initial_filter_cad(only_new=False):
+    qset = models.Cad.objects.exclude(cris_entry__isnull=True).exclude(cris_entry__startswith='NOT')\
             .exclude(att_map__isnull=True)
+    if only_new:
+        return qset.filter(inc_datetime__gte=datetime.datetime(2011, 8, 1, 0, tzinfo=UK_TZ))
+    else:
+        return qset
 
 class CadByGrid(object):
 
@@ -388,19 +399,62 @@ def something_else():
 def pairwise_distance(nicl_number=3):
     cad = initial_filter_cad()
     cad = cad.filter(Q(cl01=nicl_number) | Q(cl02=nicl_number) | Q(cl03=nicl_number)).distinct('cris_entry')
+    cad = sorted(cad, key=lambda x: x.inc_datetime)
     coords = np.array([x.att_map.coords for x in cad])
-    p = squareform(pdist(coords))
-    return list(cad), p
+    ## FIXME: this is in units of metres, but that's only because we know the coordinate system is OSGB36?
+    return pdist(coords)
+    # p = squareform(pdist(coords))
+    # index = [x.id for x in cad]
+    # return cad, pandas.DataFrame(p, index=index, columns=index)
 
 
-def pairwise_time_lag_events(data, max_distance=D(m=200), nicl_numbers=None):
-    nicl_numbers = nicl_numbers or [1, 3, 13]
+def pairwise_time_difference(nicl_number=3):
+    from itertools import combinations
     cad = initial_filter_cad()
+    cad = cad.filter(Q(cl01=nicl_number) | Q(cl02=nicl_number) | Q(cl03=nicl_number)).distinct('cris_entry')
+    cad = sorted(cad, key=lambda x: x.inc_datetime)
+
+    times = [x.inc_datetime for x in cad]
+    cond_vec = np.array([(x[1]-x[0]).days for x in combinations(times, 2)])
+    return cond_vec
+    # p = squareform(cond_vec)
+    # index = [x.id for x in cad]
+    # return list(cad), pandas.DataFrame(p, index=index, columns=index)
+
+
+def condensed_to_index(sub, n):
+    idx = np.triu_indices(n)
+    try:
+        return [(idx[0][i], idx[1][i]) for i in idx]
+    except TypeError:
+        return (idx[0][sub], idx[1][sub])
+
+
+def pairwise_time_lag_events(max_distance=200, nicl_numbers=None):
+    """ Recreate Fig 2 Mohler et al 2011 'Self-exciting point process modeling of crime'
+        max_distance is in units of metres. """
+
+    nicl_numbers = nicl_numbers or [1, 3, 13]
+    n = len(nicl_numbers)
+    res = []
+    cad = initial_filter_cad(only_new=True)
     for nicl in nicl_numbers:
-        this_cad = cad.filter(Q(cl01=nicl) | Q(cl02=nicl) | Q(cl03=nicl)).values(
-                    'att_map',
-                    'cris_entry',
-                    'inc_datetime',
-                    ).distinct('cris_entry')
+        pd = pairwise_distance(nicl)
+        pt = pairwise_time_difference(nicl)
+        filt_sub = np.where(pd < max_distance)[0]
+        time_diffs = pt[filt_sub]
+        res.append(time_diffs)
 
+    fig = plt.figure()
+    for i in range(n):
+        ax = fig.add_subplot(1, n, i)
+        n_win = max(res[i])
+        D = 0.5 * n_win * (n_win - 1)
+        ax.hist(res[i], range(n_win), normed=True, edgecolor='none')
+        ax.plot(np.arange(1, n_win), np.arange(1, n_win)[::-1]/D, 'k--')
+        ax.set_xlabel('Time difference (days)')
+        ax.set_ylabel('Density')
 
+    fig.subplots_adjust(left=0.15, right=0.95, bottom=0.1, top=0.95, wspace=0.03, hspace=0.01)
+    plt.show()
+    return res if len(nicl_numbers) > 1 else res[0]
