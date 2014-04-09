@@ -11,53 +11,60 @@ class MultivariateNormal():
 
     def __init__(self, mean, vars):
         self.ndim = len(vars)
-        self.norms = [lambda x: self.norm1d(x, m, v) for (m, v) in zip(mean, vars)]
+        self.mean = mean
+        self.vars = vars
+        # self.norms = [lambda x: self.norm1d(x, m, v) for (m, v) in zip(mean, vars)]
 
-    def pdf(self, x):
-        if x.shape[-1] != self.ndim:
+    def pdf(self, *args):
+        """ Each input is an ndarray of same dims, representing a value of one dimension.
+            Result is broadcast of these arrays, hence same shape. """
+        if len(args) != self.ndim:
             raise AttributeError("Incorrect dimensions for input variable")
-        return np.prod([t(x) for t in self.norms])
+
+        shapes = [np.array(x).shape for x in args]
+        for i in range(self.ndim - 1):
+            if shapes[i+1] != shapes[i]:
+                raise AttributeError("All input arrays must have the same shape")
+
+        it = np.nditer(args + (None,))
+        for x in it:
+            x[self.ndim][...] = np.prod([self.norm1d(it[i], self.mean[i], self.vars[i]) for i in range(self.ndim)])
+
+        return it.operands[self.ndim]
+
+        # if not isinstance(x, np.ndarray):
+        #     x = np.array(x)
+        # if x.shape[-1] != self.ndim:
+        #     raise AttributeError("Incorrect dimensions for input variable")
+        # import pdb; pdb.set_trace()
+        # return np.prod([self.norm1d(t, m, v) for t, (m, v) in zip(x, np.nditer([self.mean, self.vars]))])
 
     def norm1d(self, x, mu, var):
         return 1/np.sqrt(2*PI*var) * np.exp(-(x - mu)**2 / (2*var))
 
 
-class VariableBandwidthKde():
-
-    def __init__(self, data, nn=None):
+class FixedBandwidthKde():
+    def __init__(self, data, *args, **kwargs):
         self.data = data
         if len(data.shape) == 1:
             self.data = np.array(data).reshape((len(data), 1))
 
-        if nn:
-            self.nn = nn
-        else:
-            # default values
-            nn = 10 if self.ndim == 1 else 100
-
-        # compute nn distances
-        nd = self.normed_data
-        std = self.raw_std_devs
-        kd = KDTree(nd)
-
-        self.nn_distances = np.zeros(self.ndata)
-        self.std_devs = np.zeros((self.ndata, self.ndim))
+        self.bandwidths = None
         self.mvns = []
+        self.set_bandwidths(*args, **kwargs)
 
-        for i in range(self.ndata):
-            d, _ = kd.query(nd[i, :], k=nn)
-            self.nn_distances[i] = max(d[~np.isinf(d)]) if np.isinf(d[-1]) else d[-1]
-            self.std_devs[i] = std * self.nn_distances[i]
+    def set_bandwidths(self, *args, **kwargs):
 
-            self.mvns.append(MultivariateNormal(self.data[i], self.std_devs[i]**2))
+        try:
+            bandwidths = kwargs.pop('bandwidths')
+        except KeyError:
+            bandwidths = self.range_array / float(self.ndata)
 
-    def pdf(self, datum):
-        ## TODO: support vector inputs?
-        return sum([x.pdf(datum) for x in self.mvns]) / float(self.ndata)
+        if len(bandwidths) != self.ndim:
+            raise AttributeError("Number of supplied bandwidths does not match the dimensionality of the data")
 
-    @property
-    def values_at_data(self):
-        return np.power(2*PI, -self.ndim * 0.5) * np.prod(self.std_devs, axis=1) / float(self.ndata)
+        self.bandwidths = np.tile(bandwidths, (self.ndata, 1))
+        self.mvns = [MultivariateNormal(self.data[i], self.bandwidths[i]**2) for i in range(self.ndata)]
 
     @property
     def ndim(self):
@@ -66,6 +73,88 @@ class VariableBandwidthKde():
     @property
     def ndata(self):
         return self.data.shape[0]
+
+    @property
+    def max_array(self):
+        return np.max(self.data, axis=0)
+
+    @property
+    def min_array(self):
+        return np.min(self.data, axis=0)
+
+    @property
+    def range_array(self):
+        return self.max_array - self.min_array
+
+    def pdf(self, *args):
+        if len(args) != self.ndim:
+            raise AttributeError("Incorrect dimensions for input variable")
+
+        return reduce(operator.add, [x.pdf(*args) for x in self.mvns])
+
+    @property
+    def values_at_data(self):
+        return self.pdf(*[self.data[:, i] for i in range(self.ndim)])
+        # return np.power(2*PI, -self.ndim * 0.5) / np.prod(self.std_devs ** 2, axis=1) / float(self.ndata)
+
+    def values_on_grid(self, n_points=10):
+        grids = np.meshgrid(*[np.linspace(mi, ma, n_points) for mi, ma in zip(self.min_array, self.max_array)])
+        it = np.nditer(grids + [None,])
+        for x in it:
+            x[-1][...] = self.pdf(x[:-1])
+        return it.operands[-1]
+
+
+class VariableBandwidthKdeIsotropic(FixedBandwidthKde):
+
+    def set_bandwidths(self, *args, **kwargs):
+        try:
+            self.nn = kwargs.pop('nn')
+        except KeyError:
+            # default values
+            self.nn = 10 if self.ndim == 1 else 100
+
+        # compute nn distances on unnormed data
+        kd = KDTree(self.data)
+
+        self.bandwidths = np.zeros((self.ndata, self.ndim))
+        self.mvns = []
+
+        for i in range(self.ndata):
+            d, _ = kd.query(self.data[i, :], k=self.nn)
+            nn = max(d[~np.isinf(d)]) if np.isinf(d[-1]) else d[-1]
+            # all dims have same bandwidth
+            self.bandwidths[i] = np.ones(self.ndim) * nn
+
+            self.mvns.append(MultivariateNormal(self.data[i], self.bandwidths[i]**2))
+
+class VariableBandwidthKde(FixedBandwidthKde):
+
+    def set_bandwidths(self, *args, **kwargs):
+        try:
+            self.nn = kwargs.pop('nn')
+        except KeyError:
+            # default values
+            self.nn = 10 if self.ndim == 1 else 100
+
+        # compute nn distances
+        nd = self.normed_data
+        std = self.raw_std_devs
+        # kd = KDTree(nd)
+        kd = KDTree(self.data)
+
+        self.nn_distances = np.zeros(self.ndata)
+        self.bandwidths = np.zeros((self.ndata, self.ndim))
+        self.mvns = []
+
+        for i in range(self.ndata):
+            # d, _ = kd.query(nd[i, :], k=nn)
+            d, _ = kd.query(self.data[i, :], k=self.nn)
+            self.nn_distances[i] = max(d[~np.isinf(d)]) if np.isinf(d[-1]) else d[-1]
+            # self.bandwidths[i] = std * self.nn_distances[i]
+            self.bandwidths[i] = np.ones(self.ndim) * self.nn_distances[i]
+
+            self.mvns.append(MultivariateNormal(self.data[i], self.bandwidths[i]**2))
 
     @property
     def raw_std_devs(self):
