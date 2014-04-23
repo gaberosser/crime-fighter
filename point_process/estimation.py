@@ -115,6 +115,8 @@ class FixedBandwidthKde():
         if len(args) != self.ndim:
             raise AttributeError("Incorrect dimensions for input variable")
 
+        # TODO: add optional tolerance kwarg, and use this to filter points when the number of sources is > 50 (?)
+
         return reduce(operator.add, [x.pdf(*args) for x in self.mvns])
 
     @property
