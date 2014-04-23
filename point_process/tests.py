@@ -17,3 +17,15 @@ class TestNonStationaryPoisson(unittest.TestCase):
         dt = np.diff(t)
         n = len(t)
         self.assertLess(np.abs(n/float(500**2/2) - 1.0), 0.05)
+
+
+class TestMultivariateNormal(unittest.TestCase):
+    # test in 1D by comparing to numpy
+    # test in 2/3D using symmetry and known values
+    pass
+
+
+class TestVariableBandwidthKde(unittest.TestCase):
+    # test values at datapoints in single datum case
+    # test nn distances are computed correctly on a regular grid
+    pass

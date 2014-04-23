@@ -2,7 +2,7 @@ __author__ = 'gabriel'
 import numpy as np
 import simulate
 from scipy.spatial import KDTree
-from scipy.stats import norm
+from scipy.stats import norm, multivariate_normal
 import operator
 PI = np.pi
 
@@ -13,7 +13,6 @@ class MultivariateNormal():
         self.ndim = len(vars)
         self.mean = mean
         self.vars = vars
-        # self.norms = [lambda x: self.norm1d(x, m, v) for (m, v) in zip(mean, vars)]
 
     def pdf(self, *args):
         """ Each input is an ndarray of same dims, representing a value of one dimension.
@@ -32,15 +31,41 @@ class MultivariateNormal():
 
         return it.operands[self.ndim]
 
-        # if not isinstance(x, np.ndarray):
-        #     x = np.array(x)
-        # if x.shape[-1] != self.ndim:
-        #     raise AttributeError("Incorrect dimensions for input variable")
-        # import pdb; pdb.set_trace()
-        # return np.prod([self.norm1d(t, m, v) for t, (m, v) in zip(x, np.nditer([self.mean, self.vars]))])
-
-    def norm1d(self, x, mu, var):
+    @staticmethod
+    def norm1d(x, mu, var):
         return 1/np.sqrt(2*PI*var) * np.exp(-(x - mu)**2 / (2*var))
+
+
+class MultivariateNormalScipy():
+    """
+        This method was made for comparison with the simpler diagonal covariance method.
+        It is substantially slower!  Don't use unless a covariance dependency is required.
+    """
+
+    def __init__(self, mean, vars):
+        self.ndim = len(vars)
+        self.mean = mean
+        self.vars = vars
+        # create covariance matrix
+        self.cov = np.zeros((self.ndim, self.ndim))
+        self.cov[np.diag_indices_from(self.cov)] = self.vars
+
+    def pdf(self, *args):
+        """ Each input is an ndarray of same dims, representing a value of one dimension.
+            Result is broadcast of these arrays, hence same shape. """
+        if len(args) != self.ndim:
+            raise AttributeError("Incorrect dimensions for input variable")
+
+        shapes = [np.array(x).shape for x in args]
+        for i in range(self.ndim - 1):
+            if shapes[i+1] != shapes[i]:
+                raise AttributeError("All input arrays must have the same shape")
+
+        it = np.nditer(args + (None,))
+        for x in it:
+            x[self.ndim][...] = multivariate_normal.pdf(it[:-1], mean=self.mean, cov=self.cov)
+
+        return it.operands[self.ndim]
 
 
 class FixedBandwidthKde():
@@ -101,7 +126,7 @@ class FixedBandwidthKde():
         grids = np.meshgrid(*[np.linspace(mi, ma, n_points) for mi, ma in zip(self.min_array, self.max_array)])
         it = np.nditer(grids + [None,])
         for x in it:
-            x[-1][...] = self.pdf(x[:-1])
+            x[-1][...] = self.pdf(*x[:-1]) # NB must unpack, as x[:-1] is a tuple
         return it.operands[-1]
 
 
@@ -140,19 +165,19 @@ class VariableBandwidthKde(FixedBandwidthKde):
         # compute nn distances
         nd = self.normed_data
         std = self.raw_std_devs
-        # kd = KDTree(nd)
-        kd = KDTree(self.data)
+        kd = KDTree(nd)
+        # kd = KDTree(self.data)
 
         self.nn_distances = np.zeros(self.ndata)
         self.bandwidths = np.zeros((self.ndata, self.ndim))
         self.mvns = []
 
         for i in range(self.ndata):
-            # d, _ = kd.query(nd[i, :], k=nn)
-            d, _ = kd.query(self.data[i, :], k=self.nn)
+            d, _ = kd.query(nd[i, :], k=self.nn)
+            # d, _ = kd.query(self.data[i, :], k=self.nn)
             self.nn_distances[i] = max(d[~np.isinf(d)]) if np.isinf(d[-1]) else d[-1]
-            # self.bandwidths[i] = std * self.nn_distances[i]
-            self.bandwidths[i] = np.ones(self.ndim) * self.nn_distances[i]
+            self.bandwidths[i] = std * self.nn_distances[i]
+            # self.bandwidths[i] = np.ones(self.ndim) * self.nn_distances[i]
 
             self.mvns.append(MultivariateNormal(self.data[i], self.bandwidths[i]**2))
 
