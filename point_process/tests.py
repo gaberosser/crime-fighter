@@ -2,6 +2,8 @@ __author__ = 'gabriel'
 import unittest
 import simulate
 import numpy as np
+from scipy.spatial import KDTree
+
 
 class TestNonStationaryPoisson(unittest.TestCase):
 
@@ -23,6 +25,20 @@ class TestMultivariateNormal(unittest.TestCase):
     # test in 1D by comparing to numpy
     # test in 2/3D using symmetry and known values
     pass
+
+
+class TestKDNearestNeighbours(unittest.TestCase):
+
+    def test_2d_array(self):
+        # 2D regular array
+        a, b = np.meshgrid(*[np.arange(1,11) for i in range(2)])
+        kd = KDTree(np.vstack((a.flatten(), b.flatten())).transpose())
+        d, idx = kd.query([1, 1], k=4)
+        self.assertEqual(d[0], 0.)
+        self.assertEqual(d[1], 1.)
+        self.assertAlmostEqual(d[3], np.sqrt(2))
+        self.assertEqual(idx[0], 0)
+        self.assertEqual(idx[3], 11)
 
 
 class TestVariableBandwidthKde(unittest.TestCase):

@@ -27,13 +27,21 @@ class MultivariateNormal():
 
         it = np.nditer(args + (None,))
         for x in it:
-            x[self.ndim][...] = np.prod([self.norm1d(it[i], self.mean[i], self.vars[i]) for i in range(self.ndim)])
+            x[self.ndim][...] = self.normnd(it[:self.ndim], self.mean, self.vars)
+            # x[self.ndim][...] = np.prod([self.norm1d(it[i], self.mean[i], self.vars[i]) for i in range(self.ndim)])
 
         return it.operands[self.ndim]
 
     @staticmethod
     def norm1d(x, mu, var):
         return 1/np.sqrt(2*PI*var) * np.exp(-(x - mu)**2 / (2*var))
+
+    def normnd(self, x, mu, var):
+        # each input is a (1 x self.ndim) array
+        a = np.power(2 * PI, self.ndim/2.)
+        b = np.prod(np.sqrt(var))
+        c = -np.sum((x - mu)**2 / (2 * var))
+        return np.exp(c) / (a * b)
 
 
 class MultivariateNormalScipy():
@@ -111,17 +119,31 @@ class FixedBandwidthKde():
     def range_array(self):
         return self.max_array - self.min_array
 
-    def pdf(self, *args):
+    def pdf(self, *args, **kwargs):
         if len(args) != self.ndim:
             raise AttributeError("Incorrect dimensions for input variable")
 
-        # TODO: add optional tolerance kwarg, and use this to filter points when the number of sources is > 50 (?)
+        tol = kwargs.pop('tol', None)
+        if tol is None:
+            # no tolerance specified - use all MVNs
+            return reduce(operator.add, [x.pdf(*args) for x in self.mvns]) / float(self.ndata)
+        else:
+            # use specified tolerance to filter MVNs
+            std_cutoff = norm.ppf(1 - tol)
+            # these values define the multi-dim cuboid in which sources must lie:
+            real_cutoffs = std_cutoff * self.bandwidths
+            filt = lambda x: np.all(np.abs(self.data - x) < real_cutoffs, axis=1)
+            get_mvns = lambda x: np.array(self.mvns)[filt(x)]
 
-        return reduce(operator.add, [x.pdf(*args) for x in self.mvns])
+            it = np.nditer(args + (None,))
+            for x in it:
+                x[self.ndim][...] = np.sum([y.pdf(*x[:-1]) for y in get_mvns(x[:-1])])
+
+            return it.operands[self.ndim] / float(self.ndata)
 
     @property
-    def values_at_data(self):
-        return self.pdf(*[self.data[:, i] for i in range(self.ndim)])
+    def values_at_data(self, **kwargs):
+        return self.pdf(*[self.data[:, i] for i in range(self.ndim)], **kwargs)
         # return np.power(2*PI, -self.ndim * 0.5) / np.prod(self.std_devs ** 2, axis=1) / float(self.ndata)
 
     def values_on_grid(self, n_points=10):
@@ -241,7 +263,7 @@ def estimate_bg_from_sample(sample_bg):
 def run():
     c = simulate.MohlerSimulation()
     c.run()
-    data = np.array(c.data)[:, :3]
+    data = np.array(c.data)[:, :3] # (t, x, y, b_is_BG)
     P = initial_guess(data)
     sample_idx = sample_events(P)
     bg = []
@@ -255,6 +277,9 @@ def run():
             dest = data[x0, :]
             origin = data[x1, :]
             interpoint.append(dest - origin)
+    bg_t_kde = VariableBandwidthKde(bg[:, 0])
+    bg_xy_kde = VariableBandwidthKde(bg[:, 1:])
+    trigger_kde = VariableBandwidthKde(interpoint)
 
 
 
