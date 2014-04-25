@@ -141,7 +141,6 @@ class FixedBandwidthKde():
 
             return it.operands[self.ndim] / float(self.ndata)
 
-    @property
     def values_at_data(self, **kwargs):
         return self.pdf(*[self.data[:, i] for i in range(self.ndim)], **kwargs)
         # return np.power(2*PI, -self.ndim * 0.5) / np.prod(self.std_devs ** 2, axis=1) / float(self.ndata)
