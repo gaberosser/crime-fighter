@@ -21,12 +21,6 @@ class TestNonStationaryPoisson(unittest.TestCase):
         self.assertLess(np.abs(n/float(500**2/2) - 1.0), 0.05)
 
 
-class TestMultivariateNormal(unittest.TestCase):
-    # test in 1D by comparing to numpy
-    # test in 2/3D using symmetry and known values
-    pass
-
-
 class TestKDNearestNeighbours(unittest.TestCase):
 
     def test_2d_array(self):
@@ -39,9 +33,3 @@ class TestKDNearestNeighbours(unittest.TestCase):
         self.assertAlmostEqual(d[3], np.sqrt(2))
         self.assertEqual(idx[0], 0)
         self.assertEqual(idx[3], 11)
-
-
-class TestVariableBandwidthKde(unittest.TestCase):
-    # test values at datapoints in single datum case
-    # test nn distances are computed correctly on a regular grid
-    pass

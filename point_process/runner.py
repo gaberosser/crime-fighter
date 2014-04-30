@@ -1,5 +1,6 @@
 __author__ = 'gabriel'
 import estimation, simulate
+from kde.methods import pure_python as pp_kde
 import numpy as np
 
 c = simulate.MohlerSimulation()
@@ -20,6 +21,6 @@ for x0, x1 in sample_idx:
         interpoint.append(dest - origin)
 bg = np.array(bg)
 interpoint = np.array(interpoint)
-bg_t_kde = estimation.VariableBandwidthKde(bg[:, 0])
-bg_xy_kde = estimation.VariableBandwidthKde(bg[:, 1:])
-trigger_kde = estimation.VariableBandwidthKde(interpoint)
+bg_t_kde = pp_kde.VariableBandwidthKde(bg[:, 0])
+bg_xy_kde = pp_kde.VariableBandwidthKde(bg[:, 1:])
+trigger_kde = pp_kde.VariableBandwidthKde(interpoint)
