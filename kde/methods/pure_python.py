@@ -111,7 +111,7 @@ class VariableBandwidthKde(FixedBandwidthKde):
     def set_bandwidths(self, *args, **kwargs):
         if 'nn' in kwargs:
             self.nn = kwargs.pop('nn')
-            self.compute_nn_bandwidth(self.nn)
+            self.compute_nn_bandwidth()
         elif 'bandwidths' in kwargs:
             bandwidths = np.array(kwargs.pop('bandwidths'), dtype=float)
             if ( len(bandwidths.shape) == 1 ) and ( self.ndim == 1 ) and ( bandwidths.size == self.ndata ):
@@ -129,7 +129,9 @@ class VariableBandwidthKde(FixedBandwidthKde):
         for i in range(self.ndata):
             self.mvns.append(kernels.MultivariateNormal(self.data[i], self.bandwidths[i]**2))
 
-    def compute_nn_bandwidth(self, nn):
+    def compute_nn_bandwidth(self):
+        if self.nn <= 1:
+            raise Exception("The number of nearest neighbours for variable KDE must be >1")
         # compute nn distances
         nd = self.normed_data
         std = self.raw_std_devs

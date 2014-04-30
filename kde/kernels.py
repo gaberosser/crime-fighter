@@ -10,7 +10,7 @@ class MultivariateNormal():
     def __init__(self, mean, vars):
         self.mean = np.array(mean, dtype=float)
         self.vars = np.array(vars, dtype=float)
-        self.ndim = vars.size
+        self.ndim = self.vars.size
 
     def pdf(self, *args):
         """ Each input is an ndarray of same dims, representing a value of one dimension.
