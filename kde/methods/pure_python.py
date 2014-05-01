@@ -4,6 +4,7 @@ import operator
 from kde import kernels
 from scipy.stats import norm
 from scipy.spatial import KDTree
+from kde.kernels import c3
 
 
 class FixedBandwidthKde():
@@ -13,7 +14,6 @@ class FixedBandwidthKde():
             self.data = np.array(data).reshape((len(data), 1))
 
         self.bandwidths = None
-        self.mvns = []
         self.set_bandwidths(*args, **kwargs)
 
     def set_bandwidths(self, *args, **kwargs):
@@ -27,7 +27,12 @@ class FixedBandwidthKde():
             raise AttributeError("Number of supplied bandwidths does not match the dimensionality of the data")
 
         self.bandwidths = np.tile(bandwidths, (self.ndata, 1))
+        self.set_mvns()
+
+
+    def set_mvns(self):
         self.mvns = [kernels.MultivariateNormal(self.data[i], self.bandwidths[i]**2) for i in range(self.ndata)]
+        # self.mvns = [c3.MultivariateNormal(self.data[i], self.bandwidths[i]**2) for i in range(self.ndata)]
 
     @property
     def ndim(self):
@@ -56,7 +61,15 @@ class FixedBandwidthKde():
         tol = kwargs.pop('tol', None)
         if tol is None:
             # no tolerance specified - use all MVNs
-            return reduce(operator.add, [x.pdf(*args) for x in self.mvns]) / float(self.ndata)
+            # store data shape, flatten to N x ndim array then restore
+            try:
+                shp = args[0].shape
+            except AttributeError:
+                # inputs not arrays
+                shp = np.array(args[0], dtype=np.float64).shape
+            flat_data = np.vstack([np.array(x, dtype=np.float64).flatten() for x in args]).transpose()
+            z = reduce(operator.add, [x.pdf(flat_data) for x in self.mvns]) / float(self.ndata)
+            return np.reshape(z, shp)
         else:
             # use specified tolerance to filter MVNs
             std_cutoff = norm.ppf(1 - tol)
@@ -65,11 +78,13 @@ class FixedBandwidthKde():
             filt = lambda x: np.all(np.abs(self.data - x) < real_cutoffs, axis=1)
             get_mvns = lambda x: np.array(self.mvns)[filt(x)]
 
-            it = np.nditer(args + (None,))
-            for x in it:
-                x[self.ndim][...] = np.sum([y.pdf(*x[:-1]) for y in get_mvns(x[:-1])])
+        # it = np.nditer(args + (None,))
+        it = np.nditer(args + (None,), flags=['buffered'], op_dtypes=['float64'] * (self.ndim + 1), casting='same_kind')
+        for x in it:
+            # x[self.ndim][...] = np.sum([y.pdf(*x[:-1]) for y in get_mvns(x[:-1])])
+            x[self.ndim][...] = np.sum([y.pdf(np.array(x[:-1], dtype=np.float64)) for y in get_mvns(x[:-1])])
 
-            return it.operands[self.ndim] / float(self.ndata)
+        return it.operands[self.ndim] / float(self.ndata)
 
     def values_at_data(self, **kwargs):
         return self.pdf(*[self.data[:, i] for i in range(self.ndim)], **kwargs)
@@ -96,15 +111,13 @@ class VariableBandwidthKdeIsotropic(FixedBandwidthKde):
         kd = KDTree(self.data)
 
         self.bandwidths = np.zeros((self.ndata, self.ndim))
-        self.mvns = []
 
         for i in range(self.ndata):
             d, _ = kd.query(self.data[i, :], k=self.nn)
             nn = max(d[~np.isinf(d)]) if np.isinf(d[-1]) else d[-1]
             # all dims have same bandwidth
             self.bandwidths[i] = np.ones(self.ndim) * nn
-
-            self.mvns.append(kernels.MultivariateNormal(self.data[i], self.bandwidths[i]**2))
+        self.set_mvns()
 
 class VariableBandwidthKde(FixedBandwidthKde):
 
@@ -125,9 +138,7 @@ class VariableBandwidthKde(FixedBandwidthKde):
             self.nn = min(10, self.ndata) if self.ndim == 1 else min(100, self.ndata)
             self.compute_nn_bandwidth()
 
-        self.mvns = []
-        for i in range(self.ndata):
-            self.mvns.append(kernels.MultivariateNormal(self.data[i], self.bandwidths[i]**2))
+        self.set_mvns()
 
     def compute_nn_bandwidth(self):
         if self.nn <= 1:

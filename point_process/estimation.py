@@ -240,14 +240,10 @@ def sample_events(P):
     return res
 
 
-def initial_guess(data):
-    # TODO: something more sensible than this
-    N = data.shape[0]
-    # N = sim_data.shape[0]
+def initial_guess(pdiff):
 
-    P = np.random.random((N, N))
-    # restrict to lower triangle + 1
-    P = np.triu(P, 0)
+    N = pdiff.shape[0]
+    P = np.triu(1 / (1 + pdiff[:, :, 0]), 0) / (1 + np.sqrt(pdiff[:, :, 1]**2 + pdiff[:, :, 2]**2))
     col_sums = np.sum(P, axis=0)
     for i in range(N):
         P[:, i] /= col_sums[i]

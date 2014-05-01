@@ -80,6 +80,10 @@ class MohlerSimulation():
         # assume data are sorted
         del self.data[:n_prune]
         del self.data[-n_prune:]
+        # relocate time so that first event occurs at t=0
+        t0 = self.data[0][0]
+        for i in range(len(self.data)):
+            self.data[i][0] -= t0
 
     def run(self):
         self.initialise_background()

@@ -18,7 +18,8 @@ pyparsing==2.0.1
 pyshp==1.2.0
 python-dateutil==2.2
 pytz==2013.9
-scipy==0.14.0b1
+http://sourceforge.net/projects/scipy/files/scipy/0.14.0b1/scipy-0.14.0b1.tar.gz
+#scipy==0.14.0b1
 six==1.6.1
 statsmodels==0.6.0
 tornado==3.2
