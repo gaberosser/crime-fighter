@@ -7,6 +7,21 @@ from scipy.stats import norm, multivariate_normal
 from scipy.integrate import quad, tplquad
 
 
+class TestHelperFunctions(unittest.TestCase):
+
+    def test_normpdf(self):
+        x = np.linspace(-4, 4, 100)
+        y1 = norm.pdf(x, loc=0.1, scale=2)
+        y2 = kernels.helper.normpdf(x, 0.1, 4)
+        for a, b in zip(y1, y2):
+            self.assertAlmostEqual(a, b)
+
+    def test_normcdf(self):
+        self.assertAlmostEqual(kernels.helper.normcdf(0., 0., 1.), 0.5)
+        self.assertAlmostEqual(kernels.helper.normcdf(10., 0., 1.), 1.0)
+        self.assertAlmostEqual(kernels.helper.normcdf(0., 0., 10.), 0.5)
+
+
 class TestMultivariateNormal(unittest.TestCase):
 
     def test_mvn1d(self):
@@ -14,11 +29,15 @@ class TestMultivariateNormal(unittest.TestCase):
         self.assertEqual(mvn.ndim, 1)
         q = quad(mvn.pdf, -5., 5.)
         self.assertAlmostEqual(q[0], 1.0, places=5)
-        x = np.linspace(-1, 1, 10).reshape(10, 1)
+        x = np.linspace(-1, 1, 10)
         y = mvn.pdf(x)
         y_expct = norm.pdf(x)
         for y1, y2 in zip(y, y_expct):
             self.assertAlmostEqual(y1, y2)
+        m = mvn.marginal_pdf(x)
+        self.assertListEqual(list(y), list(m))
+        c = mvn.marginal_cdf(0.)
+        self.assertAlmostEqual(c, 0.5)
 
     def test_mvn3d(self):
         mvn = kernels.MultivariateNormal([0, 0, 0], [1, 1, 1])

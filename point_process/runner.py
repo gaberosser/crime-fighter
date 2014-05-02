@@ -6,7 +6,7 @@ import numpy as np
 # simulate data
 c = simulate.MohlerSimulation()
 c.run()
-data = np.array(c.data)[:, :3] # (t, x, y, b_is_BG)
+data = np.array(c.data)[:, :3]  # (t, x, y, b_is_BG)
 ndata = data.shape[0]
 # sort data by time ascending (may be done already?)
 data = data[data[:, 0].argsort()]
@@ -59,3 +59,8 @@ m_t = bg_t_kde.values_at_data()
 m = m_xy * m_t
 
 # evaluate trigger KDE at interpoint distances
+# start with ALL viable interpoints...
+i, j = np.triu_indices(interpoint.shape[0])
+# ...and restrict to those within a tolerance to improve efficiency (include 99% of datapoints)
+max_t, max_d = estimation.compute_trigger_thresholds(interpoint, tol=0.99)
+G = trigger_kde.pdf(pdiff[i, j, 0], pdiff[i, j, 1], pdiff[i, j, 2])

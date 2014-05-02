@@ -1,8 +1,7 @@
 __author__ = 'gabriel'
 import numpy as np
 from scipy.stats import multivariate_normal
-import c1
-import c2
+from helper import normpdf, normcdf
 PI = np.pi
 
 
@@ -21,13 +20,12 @@ class MultivariateNormal():
             shp = np.array(x, dtype=np.float64).shape
 
         ax = 1
-
         if not shp and self.ndim == 1:
             # OK - passed a float, 1D implementation
-            return self.norm1d(x, self.mean, self.vars)
+            return normpdf(x, self.mean[0], self.vars[0])
         elif len(shp) == 1 and self.ndim == 1:
             # OK - passed a 1D array, 1D implementation
-            return self.norm1d(x, self.mean, self.vars)
+            return normpdf(x, self.mean[0], self.vars[0])
         elif len(shp) == 1:
             ax = 0
         elif shp[-1] != self.ndim:
@@ -38,16 +36,13 @@ class MultivariateNormal():
         c = np.exp(-np.sum((x - self.mean)**2 / (2 * self.vars), axis=ax))
         return a * b * c
 
-    @staticmethod
-    def norm1d(x, mu, var):
-        return 1/np.sqrt(2*PI*var) * np.exp(-(x - mu)**2 / (2*var))
+    def marginal_pdf(self, x, dim=0):
+        """ Return value is 1D marginal pdf with specified dim """
+        return normpdf(x, self.mean[dim], self.vars[dim])
 
-    def normnd(self, mu, var, *args):
-        # each input is a (1 x self.ndim) array
-        a = np.power(2 * PI, self.ndim/2.)
-        b = np.prod(np.sqrt(var))
-        c = -np.sum((args - mu)**2 / (2 * var))
-        return np.exp(c) / (a * b)
+    def marginal_cdf(self, x, dim=0):
+        """ Return value is 1D marginal cdf with specified dim """
+        return normcdf(x, self.mean[dim], self.vars[dim])
 
 
 class MultivariateNormalScipy():

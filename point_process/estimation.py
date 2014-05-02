@@ -255,6 +255,31 @@ def estimate_bg_from_sample(sample_bg):
     pass
 
 
+def _compute_threshold(x, tol):
+    edf = np.arange(x.size) / float(x.size)
+    idx = (edf > tol).nonzero()[0]
+    if len(idx) == 0:
+        return np.max(x)
+    sx = np.sort(x)
+    return sx[idx[0]]
+
+
+def compute_trigger_thresholds(k, tol=0.99):
+    """ Compute the upper thresholds on time and distance such that fraction tol of measurements are included """
+    # time EDF
+    t = k.data[:, 0]
+    t_up = np.max(t)
+    ### FIXME: analytic value is available, add to KDE class
+    # t_max = _compute_threshold(t, tol)
+    # d = np.sqrt(data[:, 1]**2 + data[:, 2]**2)
+    # d_max = _compute_threshold(d, tol)
+    # return t_max, d_max
+
+
+
+
+
+
 # def run():
 #     c = simulate.MohlerSimulation()
 #     c.run()

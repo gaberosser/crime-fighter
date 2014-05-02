@@ -4,7 +4,7 @@ import operator
 from kde import kernels
 from scipy.stats import norm
 from scipy.spatial import KDTree
-from kde.kernels import c3
+# from kde.kernels import c3
 
 
 class FixedBandwidthKde():
@@ -78,13 +78,43 @@ class FixedBandwidthKde():
             filt = lambda x: np.all(np.abs(self.data - x) < real_cutoffs, axis=1)
             get_mvns = lambda x: np.array(self.mvns)[filt(x)]
 
-        # it = np.nditer(args + (None,))
         it = np.nditer(args + (None,), flags=['buffered'], op_dtypes=['float64'] * (self.ndim + 1), casting='same_kind')
         for x in it:
-            # x[self.ndim][...] = np.sum([y.pdf(*x[:-1]) for y in get_mvns(x[:-1])])
             x[self.ndim][...] = np.sum([y.pdf(np.array(x[:-1], dtype=np.float64)) for y in get_mvns(x[:-1])])
 
         return it.operands[self.ndim] / float(self.ndata)
+
+    def marginal_pdf(self, x, **kwargs):
+        # return the marginal pdf in the dim specified in kwargs (dim=0 default)
+        dim = kwargs.pop('dim', 0)
+        try:
+            shp = x.shape
+        except AttributeError:
+            # inputs not arrays
+            shp = np.array(x, dtype=np.float64).shape
+        flat_data = np.array(x, dtype=np.float64).flatten()
+        z = reduce(operator.add, [x.marginal(flat_data, dim) for x in self.mvns]) / float(self.ndata)
+        return np.reshape(z, shp)
+
+    def marginal_cdf(self, x, **kwargs):
+        """ Return the marginal cdf in the dim specified in kwargs (dim=0 default) """
+        dim = kwargs.pop('dim', 0)
+        try:
+            shp = x.shape
+        except AttributeError:
+            # inputs not arrays
+            shp = np.array(x, dtype=np.float64).shape
+        ## TODO: implement some kind of fast optimisation algorithm to invert the marginal CDF
+        ### bear in mind that the derivative of the cdf is the pdf!
+
+    def inverse_marginal_cdf(self, y, *args, **kwargs):
+        """ For input CDF value y, return the inverse value in the dim specified in kwargs (dim=0 default)
+        """
+        if not 0 < y <= 1.:
+            raise AttributeError("Input variable y must lie in range (0, 1]")
+        dim = kwargs.pop('dim', 0)
+
+        pass
 
     def values_at_data(self, **kwargs):
         return self.pdf(*[self.data[:, i] for i in range(self.ndim)], **kwargs)
