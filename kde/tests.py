@@ -112,3 +112,38 @@ class TestVariableBandwidthKde(unittest.TestCase):
             y_expct += multivariate_normal.pdf(xa, mean=data_3d[i, :], cov=np.eye(3) * bd_3d[i, :]**2).reshape((10, 10, 10))
         y_expct /= kde.ndata
         self.assertEqual(np.sum(np.abs((y - y_expct)).flatten()>1e-12), 0) # no single difference > 1e-12
+
+    def test_marginals(self):
+        d = np.meshgrid(*([[0, 3]]*3))
+        data_3d = np.vstack(tuple([x.flatten() for x in d])).transpose()
+        bd_3d = np.vstack(tuple([np.ones(3)+np.random.random(3) for i in range(1,9)]))
+        kde = VariableBandwidthKde(data_3d, bandwidths=bd_3d)
+        x = np.linspace(-1, 1, 10)
+
+        # check marginals in each dim
+        for dim in range(3):
+
+            p = kde.marginal_pdf(x, dim=dim)
+            p_expct = np.zeros(x.shape)
+            for i in range(kde.ndata):
+                p_expct += norm.pdf(x, loc=data_3d[i, dim], scale=bd_3d[i, dim])
+            p_expct /= kde.ndata
+            self.assertEqual(np.sum(np.abs(p - p_expct) > 1e-12), 0) # no single difference > 1e-12
+
+            c = kde.marginal_cdf(x, dim=dim)
+            c_expct = np.zeros(x.shape)
+            for i in range(kde.ndata):
+                c_expct += norm.cdf(x, loc=data_3d[i, dim], scale=bd_3d[i, dim])
+            c_expct /= kde.ndata
+            self.assertEqual(np.sum(np.abs(c - c_expct) > 1e-12), 0) # no single difference > 1e-12
+
+    def test_inverse_cdf(self):
+        d = np.meshgrid(*([[0, 3]]*3))
+        data_3d = np.vstack(tuple([x.flatten() for x in d])).transpose()
+        bd_3d = np.vstack(tuple([np.ones(3)+np.random.random(3) for i in range(1,9)]))
+        kde = VariableBandwidthKde(data_3d, bandwidths=bd_3d)
+
+        for y in [0.75, 0.9, 0.99, 0.9999]:
+            for dim in range(2):
+                x = kde.marginal_icdf(y, dim=dim)
+                self.assertAlmostEqual(kde.marginal_cdf(x, dim=dim), y)

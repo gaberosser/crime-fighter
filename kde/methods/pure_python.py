@@ -4,7 +4,43 @@ import operator
 from kde import kernels
 from scipy.stats import norm
 from scipy.spatial import KDTree
+from scipy import optimize
 # from kde.kernels import c3
+
+
+def marginal_icdf_optimise(k, y, dim=0, tol=1e-8):
+    n = 100
+    max_iter = 50
+    f = lambda x: np.abs(k.marginal_cdf(x, dim=dim) - y)
+    mean_bd = np.mean(k.bandwidths[:, dim])
+    minx = np.min(k.data[:, dim])
+    maxx = np.max(k.data[:, dim])
+    err = 1.
+    niter = 0
+    while err > tol:
+        if niter > max_iter:
+            raise Exception("Failed to converge to optimum after %u iterations", max_iter)
+        xe = np.linspace(minx, maxx, n)
+        ye = f(xe)
+        idx = np.argmin(ye)
+        if idx == 0:
+            return xe[idx]
+        if idx == (n-1):
+
+            maxx += mean_bd
+            continue
+        err = ye[idx]
+        x0 = xe[idx]
+        # print "iteration %u" % niter
+        # print "minx = %f" % minx
+        # print "maxx = %f" % maxx
+        # print "err = %f" % err
+        # print "x0 = %f" % x0
+        minx = xe[idx - 1]
+        maxx = xe[idx + 1]
+        niter += 1
+    return x0
+
 
 
 class FixedBandwidthKde():
@@ -54,35 +90,24 @@ class FixedBandwidthKde():
     def range_array(self):
         return self.max_array - self.min_array
 
+    def _additive_operation(self, func, *args, **kwargs):
+        """ Coding challenge!  Pass the class member function to call, along with additional arguments """
+        pass
+
     def pdf(self, *args, **kwargs):
         if len(args) != self.ndim:
             raise AttributeError("Incorrect dimensions for input variable")
 
-        tol = kwargs.pop('tol', None)
-        if tol is None:
-            # no tolerance specified - use all MVNs
-            # store data shape, flatten to N x ndim array then restore
-            try:
-                shp = args[0].shape
-            except AttributeError:
-                # inputs not arrays
-                shp = np.array(args[0], dtype=np.float64).shape
-            flat_data = np.vstack([np.array(x, dtype=np.float64).flatten() for x in args]).transpose()
-            z = reduce(operator.add, [x.pdf(flat_data) for x in self.mvns]) / float(self.ndata)
-            return np.reshape(z, shp)
-        else:
-            # use specified tolerance to filter MVNs
-            std_cutoff = norm.ppf(1 - tol)
-            # these values define the multi-dim cuboid in which sources must lie:
-            real_cutoffs = std_cutoff * self.bandwidths
-            filt = lambda x: np.all(np.abs(self.data - x) < real_cutoffs, axis=1)
-            get_mvns = lambda x: np.array(self.mvns)[filt(x)]
-
-        it = np.nditer(args + (None,), flags=['buffered'], op_dtypes=['float64'] * (self.ndim + 1), casting='same_kind')
-        for x in it:
-            x[self.ndim][...] = np.sum([y.pdf(np.array(x[:-1], dtype=np.float64)) for y in get_mvns(x[:-1])])
-
-        return it.operands[self.ndim] / float(self.ndata)
+        # no tolerance specified - use all MVNs
+        # store data shape, flatten to N x ndim array then restore
+        try:
+            shp = args[0].shape
+        except AttributeError:
+            # inputs not arrays
+            shp = np.array(args[0], dtype=np.float64).shape
+        flat_data = np.vstack([np.array(x, dtype=np.float64).flatten() for x in args]).transpose()
+        z = reduce(operator.add, [x.pdf(flat_data) for x in self.mvns]) / float(self.ndata)
+        return np.reshape(z, shp)
 
     def marginal_pdf(self, x, **kwargs):
         # return the marginal pdf in the dim specified in kwargs (dim=0 default)
@@ -93,7 +118,7 @@ class FixedBandwidthKde():
             # inputs not arrays
             shp = np.array(x, dtype=np.float64).shape
         flat_data = np.array(x, dtype=np.float64).flatten()
-        z = reduce(operator.add, [x.marginal(flat_data, dim) for x in self.mvns]) / float(self.ndata)
+        z = reduce(operator.add, [x.marginal_pdf(flat_data, dim) for x in self.mvns]) / float(self.ndata)
         return np.reshape(z, shp)
 
     def marginal_cdf(self, x, **kwargs):
@@ -104,17 +129,21 @@ class FixedBandwidthKde():
         except AttributeError:
             # inputs not arrays
             shp = np.array(x, dtype=np.float64).shape
-        ## TODO: implement some kind of fast optimisation algorithm to invert the marginal CDF
-        ### bear in mind that the derivative of the cdf is the pdf!
+        flat_data = np.array(x, dtype=np.float64).flatten()
+        z = reduce(operator.add, [x.marginal_cdf(flat_data, dim) for x in self.mvns]) / float(self.ndata)
+        return np.reshape(z, shp)
 
-    def inverse_marginal_cdf(self, y, *args, **kwargs):
-        """ For input CDF value y, return the inverse value in the dim specified in kwargs (dim=0 default)
-        """
-        if not 0 < y <= 1.:
-            raise AttributeError("Input variable y must lie in range (0, 1]")
+    def marginal_icdf(self, y, *args, **kwargs):
+        """ Return value of inverse marginal CDF in specified dim """
+        if not 0. < y < 1.:
+            raise AttributeError("Input variable y must lie in range (0, 1)")
         dim = kwargs.pop('dim', 0)
-
-        pass
+        try:
+            xopt = marginal_icdf_optimise(self, y, dim=dim, tol=1e-12)
+        except Exception as e:
+            print "Failed to optimise marginal icdf"
+            raise e
+        return xopt
 
     def values_at_data(self, **kwargs):
         return self.pdf(*[self.data[:, i] for i in range(self.ndim)], **kwargs)
