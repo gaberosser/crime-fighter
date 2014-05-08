@@ -12,14 +12,14 @@ class TestHelperFunctions(unittest.TestCase):
     def test_normpdf(self):
         x = np.linspace(-4, 4, 100)
         y1 = norm.pdf(x, loc=0.1, scale=2)
-        y2 = kernels.helper.normpdf(x, 0.1, 4)
+        y2 = kernels.normpdf(x, 0.1, 4)
         for a, b in zip(y1, y2):
             self.assertAlmostEqual(a, b)
 
     def test_normcdf(self):
-        self.assertAlmostEqual(kernels.helper.normcdf(0., 0., 1.), 0.5)
-        self.assertAlmostEqual(kernels.helper.normcdf(10., 0., 1.), 1.0)
-        self.assertAlmostEqual(kernels.helper.normcdf(0., 0., 10.), 0.5)
+        self.assertAlmostEqual(kernels.normcdf(0., 0., 1.), 0.5)
+        self.assertAlmostEqual(kernels.normcdf(10., 0., 1.), 1.0)
+        self.assertAlmostEqual(kernels.normcdf(0., 0., 10.), 0.5)
 
 
 class TestMultivariateNormal(unittest.TestCase):

@@ -2,10 +2,6 @@ __author__ = 'gabriel'
 import numpy as np
 import operator
 from kde import kernels
-from scipy.stats import norm
-from scipy.spatial import KDTree
-from scipy import optimize
-# from kde.kernels import c3
 
 
 def marginal_icdf_optimise(k, y, dim=0, tol=1e-8):
@@ -17,6 +13,7 @@ def marginal_icdf_optimise(k, y, dim=0, tol=1e-8):
     maxx = np.max(k.data[:, dim])
     err = 1.
     niter = 0
+    x0 = 0.
     while err > tol:
         if niter > max_iter:
             raise Exception("Failed to converge to optimum after %u iterations", max_iter)
@@ -31,16 +28,10 @@ def marginal_icdf_optimise(k, y, dim=0, tol=1e-8):
             continue
         err = ye[idx]
         x0 = xe[idx]
-        # print "iteration %u" % niter
-        # print "minx = %f" % minx
-        # print "maxx = %f" % maxx
-        # print "err = %f" % err
-        # print "x0 = %f" % x0
         minx = xe[idx - 1]
         maxx = xe[idx + 1]
         niter += 1
     return x0
-
 
 
 class FixedBandwidthKde():
@@ -51,6 +42,10 @@ class FixedBandwidthKde():
 
         self.bandwidths = None
         self.set_bandwidths(*args, **kwargs)
+        self.job_server = None
+        self.pool = None
+        # if kwargs.pop('parallel', False):
+        #     self.start_job_server()
 
     def set_bandwidths(self, *args, **kwargs):
 
@@ -90,48 +85,64 @@ class FixedBandwidthKde():
     def range_array(self):
         return self.max_array - self.min_array
 
-    def _additive_operation(self, func, *args, **kwargs):
+    def _additive_operation(self, funcstr, *args, **kwargs):
         """ Coding challenge!  Pass the class member function to call, along with additional arguments """
-        pass
-
-    def pdf(self, *args, **kwargs):
-        if len(args) != self.ndim:
-            raise AttributeError("Incorrect dimensions for input variable")
-
-        # no tolerance specified - use all MVNs
-        # store data shape, flatten to N x ndim array then restore
         try:
             shp = args[0].shape
         except AttributeError:
             # inputs not arrays
             shp = np.array(args[0], dtype=np.float64).shape
         flat_data = np.vstack([np.array(x, dtype=np.float64).flatten() for x in args]).transpose()
-        z = reduce(operator.add, [x.pdf(flat_data) for x in self.mvns]) / float(self.ndata)
+        z = reduce(operator.add, [getattr(x, funcstr)(flat_data, **kwargs) for x in self.mvns]) / float(self.ndata)
         return np.reshape(z, shp)
+
+    def pdf(self, *args, **kwargs):
+        if len(args) != self.ndim:
+            raise AttributeError("Incorrect dimensions for input variable")
+        return self._additive_operation('pdf', *args, **kwargs)
+        # store data shape, flatten to N x ndim array then restore
+        # try:
+        #     shp = args[0].shape
+        # except AttributeError:
+        #     # inputs not arrays
+        #     shp = np.array(args[0], dtype=np.float64).shape
+        # flat_data = np.vstack([np.array(x, dtype=np.float64).flatten() for x in args]).transpose()
+        # z = reduce(operator.add, [x.pdf(flat_data) for x in self.mvns]) / float(self.ndata)
+        # return np.reshape(z, shp)
+
+    def pdf_interp_fn(self, *args, **kwargs):
+        """ Return a callable interpolation function based on the grid points supplied in args. """
+        from scipy.interpolate import LinearNDInterpolator, NearestNDInterpolator
+        flat_data = np.vstack([np.array(x, dtype=np.float64).flatten() for x in args]).transpose()
+        # linear interpolation is slower than actually evaluating the KDE, so not worth it:
+        # return LinearNDInterpolator(flat_data, self.pdf(*args, **kwargs).flatten())
+        return NearestNDInterpolator(flat_data, self.pdf(*args, **kwargs).flatten())
 
     def marginal_pdf(self, x, **kwargs):
         # return the marginal pdf in the dim specified in kwargs (dim=0 default)
-        dim = kwargs.pop('dim', 0)
-        try:
-            shp = x.shape
-        except AttributeError:
-            # inputs not arrays
-            shp = np.array(x, dtype=np.float64).shape
-        flat_data = np.array(x, dtype=np.float64).flatten()
-        z = reduce(operator.add, [x.marginal_pdf(flat_data, dim) for x in self.mvns]) / float(self.ndata)
-        return np.reshape(z, shp)
+        return self._additive_operation('marginal_pdf', x, **kwargs)
+        # dim = kwargs.pop('dim', 0)
+        # try:
+        #     shp = x.shape
+        # except AttributeError:
+        #     # inputs not arrays
+        #     shp = np.array(x, dtype=np.float64).shape
+        # flat_data = np.array(x, dtype=np.float64).flatten()
+        # z = reduce(operator.add, [x.marginal_pdf(flat_data, dim) for x in self.mvns]) / float(self.ndata)
+        # return np.reshape(z, shp)
 
     def marginal_cdf(self, x, **kwargs):
         """ Return the marginal cdf in the dim specified in kwargs (dim=0 default) """
-        dim = kwargs.pop('dim', 0)
-        try:
-            shp = x.shape
-        except AttributeError:
-            # inputs not arrays
-            shp = np.array(x, dtype=np.float64).shape
-        flat_data = np.array(x, dtype=np.float64).flatten()
-        z = reduce(operator.add, [x.marginal_cdf(flat_data, dim) for x in self.mvns]) / float(self.ndata)
-        return np.reshape(z, shp)
+        return self._additive_operation('marginal_cdf', x, **kwargs)
+        # dim = kwargs.pop('dim', 0)
+        # try:
+        #     shp = x.shape
+        # except AttributeError:
+        #     # inputs not arrays
+        #     shp = np.array(x, dtype=np.float64).shape
+        # flat_data = np.array(x, dtype=np.float64).flatten()
+        # z = reduce(operator.add, [x.marginal_cdf(flat_data, dim) for x in self.mvns]) / float(self.ndata)
+        # return np.reshape(z, shp)
 
     def marginal_icdf(self, y, *args, **kwargs):
         """ Return value of inverse marginal CDF in specified dim """
@@ -160,6 +171,7 @@ class FixedBandwidthKde():
 class VariableBandwidthKdeIsotropic(FixedBandwidthKde):
 
     def set_bandwidths(self, *args, **kwargs):
+        from scipy.spatial import KDTree
         try:
             self.nn = kwargs.pop('nn')
         except KeyError:
@@ -200,6 +212,7 @@ class VariableBandwidthKde(FixedBandwidthKde):
         self.set_mvns()
 
     def compute_nn_bandwidth(self):
+        from scipy.spatial import KDTree
         if self.nn <= 1:
             raise Exception("The number of nearest neighbours for variable KDE must be >1")
         # compute nn distances

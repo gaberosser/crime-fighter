@@ -1,7 +1,6 @@
 __author__ = 'gabriel'
 
 import numpy as np
-# from scipy.stats import multivariate_normal
 PI = np.pi
 
 # a few helper functions
@@ -55,6 +54,7 @@ class MultivariateNormal():
 
 
 # class MultivariateNormalScipy():
+#     from scipy.stats import multivariate_normal
 #     """
 #         This method was made for comparison with the simpler diagonal covariance method.
 #         It is substantially slower!  Don't use unless a covariance dependency is required.
@@ -81,6 +81,6 @@ class MultivariateNormal():
 #
 #         it = np.nditer(args + (None,))
 #         for x in it:
-#             x[self.ndim][...] = multivariate_normal.pdf(it[:-1], mean=self.mean, cov=self.cov)
+#             x[self.ndim][...] = self.multivariate_normal.pdf(it[:-1], mean=self.mean, cov=self.cov)
 #
 #         return it.operands[self.ndim]
