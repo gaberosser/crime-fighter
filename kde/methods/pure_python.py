@@ -93,7 +93,8 @@ class FixedBandwidthKde():
             # inputs not arrays
             shp = np.array(args[0], dtype=np.float64).shape
         flat_data = np.vstack([np.array(x, dtype=np.float64).flatten() for x in args]).transpose()
-        z = reduce(operator.add, [getattr(x, funcstr)(flat_data, **kwargs) for x in self.mvns]) / float(self.ndata)
+        # z = reduce(operator.add, [getattr(x, funcstr)(flat_data, **kwargs) for x in self.mvns]) / float(self.ndata)
+        z = reduce(operator.add, (getattr(x, funcstr)(flat_data, **kwargs) for x in self.mvns)) / float(self.ndata)
         return np.reshape(z, shp)
 
     def pdf(self, *args, **kwargs):

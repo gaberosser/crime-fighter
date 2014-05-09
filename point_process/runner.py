@@ -7,8 +7,8 @@ import numpy as np
 print "Starting simulation..."
 # simulate data
 c = simulate.MohlerSimulation()
-c.bg_mu_bar = 1.0
-c.number_to_prune = 100
+# c.bg_mu_bar = 1.0
+c.number_to_prune = 4000
 c.run()
 data = np.array(c.data)[:, :3]  # (t, x, y, b_is_BG)
 ndata = data.shape[0]
@@ -37,8 +37,11 @@ del td, xd, yd
 #         pdiff[j, i, :] = data[i] - data[j]
 
 print "Initial estimate of P_0..."
-P = estimation.initial_guess(pdiff)
-sample_idx = estimation.sample_events(P)
+P0 = estimation.initial_guess(pdiff)
+print "Complete"
+
+print "Sampling from P0..."
+sample_idx = estimation.sample_events(P0)
 bg = []
 interpoint = []
 for x0, x1 in sample_idx:
@@ -72,16 +75,30 @@ print "Complete"
 
 print "Evaluating trigger KDE..."
 # evaluate trigger KDE
-I, J, G = estimation.evaluate_trigger_kde(trigger_kde, data)
-g = np.zeros_like(P)
+I, J, G = estimation.evaluate_trigger_kde(trigger_kde, data, ngrid=50)
+g = np.zeros_like(P0)
 g[I, J] = G
 del I, J, G
 print "Complete"
 
-
-print "Computing lambda..."
-l = np.sum(g, axis=1) + m
-
-
 print "Computing P_1..."
-P = np.zeros_like(P)
+l = np.sum(g, axis=0) + m
+P1 = (m / l) * np.eye(ndata) + (g / l)
+print "Complete"
+
+print "Sampling from P1..."
+sample_idx = estimation.sample_events(P1)
+bg = []
+interpoint = []
+for x0, x1 in sample_idx:
+    if x0 == x1:
+        # bg
+        bg.append(data[x0, :])
+    else:
+        # offspring
+        dest = data[x0, :]
+        origin = data[x1, :]
+        interpoint.append(dest - origin)
+bg = np.array(bg)
+interpoint = np.array(interpoint)
+print "Complete"

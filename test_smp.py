@@ -2,7 +2,7 @@ import multiprocessing
 import numpy as np
 import math
 import time
-import scipy.special
+import os
 
 
 def compute_something(t):
@@ -14,6 +14,8 @@ def compute_something(t):
 if __name__ == '__main__':
 
     pool_size = multiprocessing.cpu_count()
+    os.system('taskset -cp 0-%d %s' % (pool_size, os.getpid()))
+
     print "Pool size:", pool_size
     pool = multiprocessing.Pool(processes=pool_size)
     

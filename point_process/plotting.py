@@ -2,7 +2,8 @@ __author__ = 'gabriel'
 import matplotlib as mpl
 from matplotlib import pyplot as plt
 import numpy as np
-from scipy.integrate import dblquad
+import datetime
+import os
 
 
 def plot_t_kde(k, max_t=50):
@@ -74,3 +75,61 @@ def plot_txy_t_marginals(k, t_max=50, npt_1d=50, **kwargs):
     ax.set_xlabel('Time (days)')
     ax.set_ylabel('Density')
     return fig
+
+
+def data_scatter_movie(data, outdir=None, **kwargs):
+
+    outdir = outdir or 'output/%s/' % datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    if not os.path.isdir(outdir):
+        os.mkdir(outdir)
+
+    dt = kwargs.pop('dt', 0.5)
+    fade = kwargs.pop('fade', 0.03)
+    t_max = np.max(data[:, 0])
+    t_fade = t_max * fade
+    x_min = np.min(data[:, 1])
+    x_max = np.max(data[:, 1])
+    y_min = np.min(data[:, 2])
+    y_max = np.max(data[:, 2])
+    xlim = np.array([x_min, x_max]) * 1.02
+    ylim = np.array([y_min, y_max]) * 1.02
+
+    niter = int(t_max / dt) + 1
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+
+    t = 0.
+    for n in range(niter):
+        ax.cla()
+        fname = os.path.join(outdir, "%04d.png" % (n+1))
+        vis_data = data[data[:, 0] <= t, :]
+        tdiff = t - vis_data[:, 0]
+        tdiff /= float(t_fade)
+        tdiff[tdiff > 1.0] = 1.0
+        bg_idx = vis_data[:, 3] == 1.
+        ash_idx = vis_data[:, 3] == 0.
+        bg = vis_data[bg_idx, :]
+        ash = vis_data[ash_idx, :]
+        bg_c = 1.0
+        if len(bg.shape) > 1:
+            bg_c = np.zeros((sum(bg_idx), 4))
+            bg_c[:, 3] = 1. - tdiff[bg_idx]
+        ash_c = 1.0
+        if len(ash.shape) > 1:
+            ash_c = np.zeros((sum(ash_idx), 4))
+            ash_c[:, 0] = 1.0
+            ash_c[:, 3] = 1.0 - tdiff[ash_idx]
+        try:
+            h1 = ax.scatter(bg[:, 1], bg[:, 2], marker='o', c=bg_c)
+            h2 = ax.scatter(ash[:, 1], ash[:, 2], marker='o', c=ash_c)
+        except ValueError:
+            import pdb; pdb.set_trace()
+        ax.set_title("t = %.2f s" % t)
+        ax.set_xlim(xlim)
+        ax.set_ylim(xlim)
+        h1.set_edgecolor('face')
+        h2.set_edgecolor('face')
+        fig.savefig(fname)
+        t += dt
+
+

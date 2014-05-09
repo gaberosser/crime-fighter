@@ -1,8 +1,8 @@
 __author__ = 'gabriel'
 import numpy as np
 import numpy
-import pp
 import time
+import multiprocessing
 PI = np.pi
 
 
@@ -77,12 +77,11 @@ def compute_trigger_thresholds(k, tol=0.99):
 #             return 0, [0]
 
 
-def evaluate_trigger_kde(k, data, tol=0.95, chunksize=1000000, ngrid=100):
+def evaluate_trigger_kde(k, data, tol=0.95, chunksize=100000, ngrid=100):
 
     t_max, d_max = compute_trigger_thresholds(k, tol=tol)
     filt = lambda x: (x[:, 0] <= t_max) & (numpy.sqrt(x[:, 1] ** 2 + x[:, 2] ** 2) <= d_max)
     i, j = np.triu_indices(data.shape[0], k=1)
-    chunksize = 1000000
     n_iter = i.size / chunksize + 1
     to_keep_idx = []
 
@@ -104,43 +103,3 @@ def evaluate_trigger_kde(k, data, tol=0.95, chunksize=1000000, ngrid=100):
 
     g = f(diff_data)
     return i, j, g
-    #
-    # G, I, J = [], [], []
-    #
-    # job_server = pp.Server()
-    # print "Started server with %u CPUs" % job_server.get_ncpus()
-    #
-    # try:
-    #     jobs = []
-    #
-    #     # for n in range(n_iter):
-    #     for n in range(8):
-    #         this_i = i[n*chunksize:(n+1)*chunksize]
-    #         this_j = j[n*chunksize:(n+1)*chunksize]
-    #         d = data[this_j, :] - data[this_i, :]
-    #         idx = filt(d)
-    #         df = d[idx]
-    #         I.extend(this_i[idx])
-    #         J.extend(this_j[idx])
-    #         jobs.append(job_server.submit(compute_chunk,
-    #                                       args=(k, df, t_max, d_max,),
-    #                                       ),
-    #                     )
-    #         # print "Submitted job number %u / %u" % (n, n_iter)
-    #
-    #     print "Submitted all jobs."
-    #     time.sleep(10)
-    #
-    #     for n, job in enumerate(jobs):
-    #         print "Getting job %u..." % n
-    #         try:
-    #             g = job()
-    #             # G.extend(g)
-    #         except TypeError:
-    #             # job didn't complete or has incorrect return type
-    #             raise
-    #         print "Got job %u / %u" % (n, n_iter)
-    # finally:
-    #     job_server.destroy()
-    #
-    # return I, J, G
