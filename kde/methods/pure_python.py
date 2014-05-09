@@ -63,7 +63,6 @@ class FixedBandwidthKde():
 
     def set_mvns(self):
         self.mvns = [kernels.MultivariateNormal(self.data[i], self.bandwidths[i]**2) for i in range(self.ndata)]
-        # self.mvns = [c3.MultivariateNormal(self.data[i], self.bandwidths[i]**2) for i in range(self.ndata)]
 
     @property
     def ndim(self):
@@ -86,14 +85,15 @@ class FixedBandwidthKde():
         return self.max_array - self.min_array
 
     def _additive_operation(self, funcstr, *args, **kwargs):
-        """ Coding challenge!  Pass the class member function to call, along with additional arguments """
+        """ Generic interface to call function named in funcstr on the data, handling normalisation and reshaping """
+        # store data shape, flatten to N x ndim array then restore
         try:
             shp = args[0].shape
         except AttributeError:
             # inputs not arrays
             shp = np.array(args[0], dtype=np.float64).shape
         flat_data = np.vstack([np.array(x, dtype=np.float64).flatten() for x in args]).transpose()
-        # z = reduce(operator.add, [getattr(x, funcstr)(flat_data, **kwargs) for x in self.mvns]) / float(self.ndata)
+        # better to use a generator here to reduce memory usage:
         z = reduce(operator.add, (getattr(x, funcstr)(flat_data, **kwargs) for x in self.mvns)) / float(self.ndata)
         return np.reshape(z, shp)
 
@@ -101,15 +101,6 @@ class FixedBandwidthKde():
         if len(args) != self.ndim:
             raise AttributeError("Incorrect dimensions for input variable")
         return self._additive_operation('pdf', *args, **kwargs)
-        # store data shape, flatten to N x ndim array then restore
-        # try:
-        #     shp = args[0].shape
-        # except AttributeError:
-        #     # inputs not arrays
-        #     shp = np.array(args[0], dtype=np.float64).shape
-        # flat_data = np.vstack([np.array(x, dtype=np.float64).flatten() for x in args]).transpose()
-        # z = reduce(operator.add, [x.pdf(flat_data) for x in self.mvns]) / float(self.ndata)
-        # return np.reshape(z, shp)
 
     def pdf_interp_fn(self, *args, **kwargs):
         """ Return a callable interpolation function based on the grid points supplied in args. """
@@ -122,28 +113,10 @@ class FixedBandwidthKde():
     def marginal_pdf(self, x, **kwargs):
         # return the marginal pdf in the dim specified in kwargs (dim=0 default)
         return self._additive_operation('marginal_pdf', x, **kwargs)
-        # dim = kwargs.pop('dim', 0)
-        # try:
-        #     shp = x.shape
-        # except AttributeError:
-        #     # inputs not arrays
-        #     shp = np.array(x, dtype=np.float64).shape
-        # flat_data = np.array(x, dtype=np.float64).flatten()
-        # z = reduce(operator.add, [x.marginal_pdf(flat_data, dim) for x in self.mvns]) / float(self.ndata)
-        # return np.reshape(z, shp)
 
     def marginal_cdf(self, x, **kwargs):
         """ Return the marginal cdf in the dim specified in kwargs (dim=0 default) """
         return self._additive_operation('marginal_cdf', x, **kwargs)
-        # dim = kwargs.pop('dim', 0)
-        # try:
-        #     shp = x.shape
-        # except AttributeError:
-        #     # inputs not arrays
-        #     shp = np.array(x, dtype=np.float64).shape
-        # flat_data = np.array(x, dtype=np.float64).flatten()
-        # z = reduce(operator.add, [x.marginal_cdf(flat_data, dim) for x in self.mvns]) / float(self.ndata)
-        # return np.reshape(z, shp)
 
     def marginal_icdf(self, y, *args, **kwargs):
         """ Return value of inverse marginal CDF in specified dim """
@@ -159,7 +132,6 @@ class FixedBandwidthKde():
 
     def values_at_data(self, **kwargs):
         return self.pdf(*[self.data[:, i] for i in range(self.ndim)], **kwargs)
-        # return np.power(2*PI, -self.ndim * 0.5) / np.prod(self.std_devs ** 2, axis=1) / float(self.ndata)
 
     def values_on_grid(self, n_points=10):
         grids = np.meshgrid(*[np.linspace(mi, ma, n_points) for mi, ma in zip(self.min_array, self.max_array)])

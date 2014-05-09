@@ -61,18 +61,36 @@ def plot_txy_kde(k, max_x, max_y, npt_1d=50, tpt=None, **kwargs):
     return fig
 
 
-def plot_txy_t_marginals(k, t_max=50, npt_1d=50, **kwargs):
-    # gather max_x and max_y from the supplied KDE data
-    min_x = min(k.data[:, 1])
-    min_y = min(k.data[:, 2])
-    max_x = max(k.data[:, 1])
-    max_y = max(k.data[:, 2])
-    t = np.linspace(0., t_max, npt_1d)
-    z = k.marginal_pdf(t, dim=0)
+def _plot_marginals(k, dim, data_min=0., data_max=None, npt_1d=200, **kwargs):
+    # if data_max is missing, use the 95th percentile
+    if data_max is None:
+        data_max = k.marginal_icdf(0.95, dim=dim)
+    t = np.linspace(data_min, data_max, npt_1d)
+    z = k.marginal_pdf(t, dim=dim)
     fig = plt.figure()
     ax = fig.add_subplot(111)
     ax.plot(t, z)
+    ax.set_ylim([0, max(z) * 1.02])
+    return fig, ax
+
+
+def plot_txy_t_marginals(k, t_max=50, npt_1d=200, **kwargs):
+    fig, ax = _plot_marginals(k, 0, data_max=t_max, npt_1d=npt_1d)
     ax.set_xlabel('Time (days)')
+    ax.set_ylabel('Density')
+    return fig
+
+
+def plot_txy_x_marginals(k, x_max=50, npt_1d=200, **kwargs):
+    fig, ax = _plot_marginals(k, 1, data_min=-x_max, data_max=x_max, npt_1d=npt_1d)
+    ax.set_xlabel('X (metres)')
+    ax.set_ylabel('Density')
+    return fig
+
+
+def plot_txy_y_marginals(k, y_max=50, npt_1d=200, **kwargs):
+    fig, ax = _plot_marginals(k, 2, data_min=-y_max, data_max=y_max, npt_1d=npt_1d)
+    ax.set_xlabel('Y (metres)')
     ax.set_ylabel('Density')
     return fig
 
