@@ -1,11 +1,13 @@
 __author__ = 'gabriel'
 
-import estimation, simulate
+import estimation, simulate, plotting
 from kde.methods import pure_python as pp_kde
 import numpy as np
 from time import time
+from matplotlib import pyplot as plt
+from matplotlib.lines import Line2D
 
-num_iter = 100
+num_iter = 30
 
 print "Starting simulation..."
 # simulate data
@@ -20,50 +22,26 @@ data = data[data[:, 0].argsort()]
 print "Complete"
 
 
-# compute pairwise (t, x, y) difference vector
-t1, t2 = np.meshgrid(data[:,0], data[:,0])
-td = t1 - t2
-del t1, t2
-x1, x2 = np.meshgrid(data[:,1], data[:,1])
-xd = x1 - x2
-del x1, x2
-y1, y2 = np.meshgrid(data[:,2], data[:,2])
-yd = y1 - y2
-del y1, y2
-pdiff = np.dstack((td, xd, yd))
-del td, xd, yd
-
-# if the system memory is limited:
-# pdiff = np.zeros((ndata, ndata, 3))
-# for i in range(ndata):
-#     for j in range(i):
-#         pdiff[j, i, :] = data[i] - data[j]
+# precompute error norm denominator
+err_denom = float(ndata*(ndata + 1)) / 2.
 
 P = np.zeros((ndata, ndata, num_iter + 1))
 k_bgt = []
 k_bgxy = []
 k_ash = []
+l2_errors = []
+n_bg = []
+n_ash = []
 
-P[:, :, 0] = estimation.initial_guess(pdiff)
+P[:, :, 0] = estimation.initial_guess_educated(data)
 # start main simulation loop
 for i in range(num_iter):
     print "Iteration", i
     tic = time()
     # sampling
-    sample_idx = estimation.sample_events(P[:, :, i])
-    bg = []
-    interpoint = []
-    for x0, x1 in sample_idx:
-        if x0 == x1:
-            # bg
-            bg.append(data[x0, :])
-        else:
-            # offspring
-            dest = data[x0, :]
-            origin = data[x1, :]
-            interpoint.append(dest - origin)
-    bg = np.array(bg)
-    interpoint = np.array(interpoint)
+    bg, interpoint = estimation.sample_bg_and_interpoint(data, P[:, :, i])
+    n_bg.append(bg.shape[0])
+    n_ash.append(interpoint.shape[0])
 
     # compute KDEs
     # BG
@@ -81,81 +59,74 @@ for i in range(num_iter):
     m = m_xy * m_t
 
     # evaluate trigger KDE
-    I, J, G = estimation.evaluate_trigger_kde(trigger_kde, data, ngrid=50)
-    g = np.zeros((ndata, ndata))
-    g[I, J] = G
-    del I, J, G
+    g = estimation.evaluate_trigger_kde(trigger_kde, data, tol=0.95, ngrid=100)
+
+    # sanity check
+    if np.any(g[range(ndata), range(ndata)] != 0):
+        raise AttributeError("Non-zero diagonal values found in g.")
 
     # recompute P
     l = np.sum(g, axis=0) + m
     P[:, :, i+1] = (m / l) * np.eye(ndata) + (g / l)
 
+    # sanity check
+    eps = 1e-12
+    colsum = np.sum(P[:, :, i+1], axis=0)
+    if np.any((colsum < (1 - eps)) | (colsum > (1 + eps))):
+        raise AttributeError("Matrix P failed requirement that columns sum to 1 within tolerance.")
+    if np.any(np.tril(P[:, :, i+1], k=-1) != 0.):
+        raise AttributeError("Matrix P failed requirement that lower diagonal is zero.")
+
+    # error analysis between iterations
+    q = P[:, :, i+1] - P[:, :, i]
+    l2_errors.append(np.sqrt(np.sum(q**2)) / err_denom)
     print "Completed in %f s" % (time() - tic)
 
 
-# print "Initial estimate of P_0..."
-# P0 = estimation.initial_guess(pdiff)
-# print "Complete"
-#
-# print "Sampling from P0..."
-# sample_idx = estimation.sample_events(P0)
-# bg = []
-# interpoint = []
-# for x0, x1 in sample_idx:
-#     if x0 == x1:
-#         # bg
-#         bg.append(data[x0, :])
-#     else:
-#         # offspring
-#         dest = data[x0, :]
-#         origin = data[x1, :]
-#         interpoint.append(dest - origin)
-# bg = np.array(bg)
-# interpoint = np.array(interpoint)
-# print "Complete"
-#
-# print "Computing KDEs..."
-# # compute KDEs
-# # BG
-# bg_t_kde = pp_kde.VariableBandwidthKde(bg[:, 0])
-# bg_xy_kde = pp_kde.VariableBandwidthKde(bg[:, 1:])
-# # interpoint / trigger KDE
-# trigger_kde = pp_kde.VariableBandwidthKde(interpoint)
-# print "Complete"
-#
-# print "Evaluating BG KDE..."
-# # evaluate BG at data points
-# m_xy = bg_xy_kde.pdf(data[:, 1], data[:, 2])
-# m_t = bg_t_kde.pdf(data[:, 0])
-# m = m_xy * m_t
-# print "Complete"
-#
-# print "Evaluating trigger KDE..."
-# # evaluate trigger KDE
-# I, J, G = estimation.evaluate_trigger_kde(trigger_kde, data, ngrid=50)
-# g = np.zeros_like(P0)
-# g[I, J] = G
-# del I, J, G
-# print "Complete"
-#
-# print "Computing P_1..."
-# l = np.sum(g, axis=0) + m
-# P1 = (m / l) * np.eye(ndata) + (g / l)
-# print "Complete"
-#
-# print "Sampling from P1..."
-# sample_idx = estimation.sample_events(P1)
-# bg = []
-# interpoint = []
-# for x0, x1 in sample_idx:
-#     if x0 == x1:
-#         # bg
-#         bg.append(data[x0, :])
-#     else:
-#         # offspring
-#         dest = data[x0, :]
-#         origin = data[x1, :]
-#         interpoint.append(dest - origin)
-# bg = np.array(bg)
-# interpoint = np.array(interpoint)
-# print "Complete"
+# plots
+
+# fig A1
+fig = plt.figure()
+ax = fig.add_subplot(111)
+h = []
+h.append(ax.plot(range(num_iter), n_bg, 'k-'))
+h.append(ax.plot(range(num_iter), c.number_bg * np.ones(num_iter), 'k--'))
+h.append(ax.plot(range(num_iter), n_ash, 'r-'))
+h.append(ax.plot(range(num_iter), c.number_aftershocks * np.ones(num_iter), 'r--'))
+ax.set_xlabel('Number iterations')
+ax.set_ylabel('Number events')
+ax.legend([t[0] for t in h], ('B/g, inferred', 'B/g, true', 'Trig, inferred', 'Trig, true'), 'right')
+
+# fig A2
+t = np.linspace(0, 60, 200)
+w = c.off_omega
+z = w * np.exp(-w * t)
+fig = plotting.plot_txy_t_marginals(k_ash[-1], t_max=60)
+plt.plot(t, z, 'k--')
+ax = fig.gca()
+ax.set_ylim([0, w * 1.02])
+ax.legend(ax.get_lines(), ('Inferred', 'True'), 'upper right')
+
+t = np.linspace(-0.05, 0.05, 200)
+sx = c.off_sigma_x
+z = 1/(np.sqrt(2 * np.pi) * sx) * np.exp(-(t**2) / (2 * sx**2))
+fig = plotting.plot_txy_x_marginals(k_ash[-1], x_max=0.05)
+plt.plot(t, z, 'k--')
+ax = fig.gca()
+ax.set_ylim([0, 1.05/(np.sqrt(2 * np.pi) * sx)])
+ax.set_xlim([-0.05, 0.05])
+ax.legend(ax.get_lines(), ('Inferred', 'True'), 'upper right')
+
+t = np.linspace(-0.5, 0.5, 200)
+sy = c.off_sigma_y
+z = 1/(np.sqrt(2 * np.pi) * sy) * np.exp(-(t**2) / (2 * sy**2))
+fig = plotting.plot_txy_y_marginals(k_ash[-1], y_max=0.5)
+ax = fig.gca()
+line = ax.get_lines()[0]
+plt.plot(t, z, 'k--')
+ax = fig.gca()
+ymax_theor = 1.05/(np.sqrt(2 * np.pi) * sy)
+ymax_infer = 1.05 * max(line.get_ydata())
+ax.set_ylim([0, max(ymax_infer, ymax_theor)])
+ax.set_xlim([-0.5, 0.5])
+ax.legend(ax.get_lines(), ('Inferred', 'True'), 'upper right')

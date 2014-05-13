@@ -179,7 +179,7 @@ class VariableBandwidthKde(FixedBandwidthKde):
                 raise AttributeError("Number of supplied bandwidths does not match the dimensionality of the data")
         else:
             # default nn values
-            self.nn = min(10, self.ndata) if self.ndim == 1 else min(100, self.ndata)
+            self.nn = min(100, self.ndata) if self.ndim == 1 else min(15, self.ndata)
             self.compute_nn_bandwidth()
 
         self.set_mvns()

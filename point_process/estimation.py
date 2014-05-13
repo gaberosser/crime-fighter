@@ -1,6 +1,5 @@
 __author__ = 'gabriel'
 import numpy as np
-import numpy
 import time
 import multiprocessing
 PI = np.pi
@@ -8,18 +7,9 @@ PI = np.pi
 
 def weighted_choice_np(weights):
     totals = np.cumsum(weights)
-    throw = np.random.rand()
+    prng = np.random.RandomState()
+    throw = prng.rand()
     return np.searchsorted(totals, throw)
-
-
-def weighted_choice_sub(weights):
-    """ For best performance, sort weights in descending order first """
-    # rnd = np.random.random() * sum(weights)
-    rnd = np.random.random()
-    for i, w in enumerate(weights):
-        rnd -= w
-        if rnd < 0:
-            return i
 
 
 def sample_events(P):
@@ -33,13 +23,89 @@ def sample_events(P):
     return res
 
 
-def initial_guess(pdiff):
+def sample_bg_and_interpoint(data, P):
+    if data.shape[0] != P.shape[0]:
+        raise AttributeError("Dimensions of data and P do not match")
 
-    N = pdiff.shape[0]
-    P = np.triu(1 / (1 + pdiff[:, :, 0]), 0) / (1 + np.sqrt(pdiff[:, :, 1]**2 + pdiff[:, :, 2]**2))
+    sample_idx = sample_events(P)
+    bg = []
+    interpoint = []
+    for effect, cause in sample_idx:
+        if cause == effect:
+            # bg
+            bg.append(data[cause, :])
+        else:
+            # offspring
+            dest = data[effect, :]
+            origin = data[cause, :]
+            interpoint.append(dest - origin)
+
+    return np.array(bg), np.array(interpoint)
+
+
+def pairwise_differences(data, b_iter=False):
+    # compute pairwise (t, x, y) difference vector
+
+    if b_iter:
+        # use this routine if the system memory is limited:
+        ndata = data.shape[0]
+        pdiff = np.zeros((ndata, ndata, 3))
+        for i in range(ndata):
+            for j in range(i):
+                pdiff[j, i, :] = data[i] - data[j]
+        return pdiff
+
+    t1, t2 = np.meshgrid(data[:, 0], data[:, 0])
+    td = t1 - t2
+    del t1, t2
+    x1, x2 = np.meshgrid(data[:, 1], data[:, 1])
+    xd = x1 - x2
+    del x1, x2
+    y1, y2 = np.meshgrid(data[:, 2], data[:, 2])
+    yd = y1 - y2
+    del y1, y2
+    return np.dstack((td, xd, yd))
+
+
+def initial_guess(data):
+
+    N = data.shape[0]
+    pdiff = pairwise_differences(data)
+    c = 5
+    P = np.triu(1 / (1 + c * pdiff[:, :, 0]), 0) / (1 + c * np.sqrt(pdiff[:, :, 1]**2 + pdiff[:, :, 2]**2))
     col_sums = np.sum(P, axis=0)
-    for i in range(N):
-        P[:, i] /= col_sums[i]
+    for i in range(1, N):
+        P[i, i] = (col_sums[i] - 1.)
+        P[:, i] /= (2 * (col_sums[i] - 1))
+    return P
+
+
+def initial_guess_educated(data):
+
+    N = data.shape[0]
+    pdiff = pairwise_differences(data)
+    ct = 1
+    cx = cy = 10
+    dt = 1 / (1 + ct * pdiff[:, :, 0])
+    dx = 1 / (1 + cx * np.abs(pdiff[:, :, 1]))
+    dy = 1 / (1 + cy * np.abs(pdiff[:, :, 2]))
+    P = np.triu(dt * dx * dy, 0)
+    col_sums = np.sum(P, axis=0)
+    # import ipdb; ipdb.set_trace()
+    P /= col_sums
+    return P
+
+
+def initial_guess_equality(data):
+
+    N = data.shape[0]
+    pdiff = pairwise_differences(data)
+    c = 5
+    P = np.triu(1 / (1 + c * pdiff[:, :, 0]), 0) / (1 + c * np.sqrt(pdiff[:, :, 1]**2 + pdiff[:, :, 2]**2))
+    col_sums = np.sum(P, axis=0)
+    for i in range(1, N):
+        P[i, i] = (col_sums[i] - 1.)
+        P[:, i] /= (2 * (col_sums[i] - 1))
     return P
 
 
@@ -63,43 +129,63 @@ def compute_trigger_thresholds(k, tol=0.99):
     t_max = k.marginal_icdf(tol, dim=0)
     x_max = k.marginal_icdf(tol, dim=1)
     y_max = k.marginal_icdf(tol, dim=2)
-    d_max = (x_max + y_max) * 0.5
 
-    return t_max, d_max
-
-
-# def compute_chunk(k, d, t_max, d_max):
-#
-#         try:
-#             return k.pdf(d[:, 0], d[:, 1], d[:, 2])
-#         except Exception as e:
-#             print repr(e)
-#             return 0, [0]
+    return t_max, x_max, y_max
 
 
-def evaluate_trigger_kde(k, data, tol=0.95, chunksize=100000, ngrid=100):
+def find_acceptance_region_interpoints(k, data, tol=0.95):
+    """ Find all interpoint vectors that fall within an acceptance region (cuboid) specified by tol. """
 
-    t_max, d_max = compute_trigger_thresholds(k, tol=tol)
-    filt = lambda x: (x[:, 0] <= t_max) & (numpy.sqrt(x[:, 1] ** 2 + x[:, 2] ** 2) <= d_max)
+    t_max = k.marginal_icdf(tol, dim=0)
+    x_max = k.marginal_icdf(tol, dim=1)
+    y_max = k.marginal_icdf(tol, dim=2)
+
+    filt = lambda x: (x[:, 0] > 0) & (x[:, 0] <= t_max) \
+        & (x[:, 1] >= -x_max) & (x[:, 1] <= x_max) \
+        & (x[:, 2] >= -y_max) & (x[:, 2] <= y_max)
     i, j = np.triu_indices(data.shape[0], k=1)
-    n_iter = i.size / chunksize + 1
-    to_keep_idx = []
 
-    for n in range(n_iter):
-        idx = slice(n*chunksize, (n+1)*chunksize)
-        this_i = i[idx]
-        this_j = j[idx]
-        d = data[this_j, :] - data[this_i, :]
-        to_keep_idx.append(filt(d))
-
-    to_keep_idx = np.concatenate(to_keep_idx)
+    to_keep_idx = filt(data[j, :] - data[i, :])
     i = i[to_keep_idx]
     j = j[to_keep_idx]
 
     # interpolate trigger KDE
     diff_data = data[j, :] - data[i, :]
-    tgrid, xgrid, ygrid = np.meshgrid(np.linspace(0, t_max, ngrid), np.linspace(-d_max, d_max, ngrid), np.linspace(-d_max, d_max, ngrid))
+    return i, j, diff_data
+
+def evaluate_trigger_kde(k, data, tol=0.95, ngrid=100):
+    """ Approximate method to evaluate the trigger KDE, designed to work around the very large number of targets
+        typically requested.
+        First filter by acceptance region, based on tolerance.
+        Next, generate a 3D grid of points and use zero-order (nn) interpolation to approximate all data within
+        acceptance region.
+    """
+    i, j, diff_data = find_acceptance_region_interpoints(k, data, tol=tol)
+    t_max = np.max(diff_data[:, 0])
+    x_min = np.min(diff_data[:, 1])
+    x_max = np.max(diff_data[:, 1])
+    y_min = np.min(diff_data[:, 2])
+    y_max = np.max(diff_data[:, 2])
+    tgrid, xgrid, ygrid = np.meshgrid(np.linspace(0, t_max, ngrid), np.linspace(x_min, x_max, ngrid), np.linspace(y_min, y_max, ngrid))
     f = k.pdf_interp_fn(tgrid, xgrid, ygrid)
 
-    g = f(diff_data)
-    return i, j, g
+    ndata = data.shape[0]
+    g = np.zeros((ndata, ndata))
+    g[i, j] = f(diff_data)
+    return g
+
+
+def evaluate_trigger_kde_exact(k, data, tol=0.95):
+    """ Exact version.  Find datapoints in the acceptance region then evaluate the PDF at those points. """
+
+    i, j, diff_data = find_acceptance_region_interpoints(k, data, tol=tol)
+    t_max = np.max(diff_data[:, 0])
+    x_min = np.min(diff_data[:, 1])
+    x_max = np.max(diff_data[:, 1])
+    y_min = np.min(diff_data[:, 2])
+    y_max = np.max(diff_data[:, 2])
+
+    ndata = data.shape[0]
+    g = np.zeros((ndata, ndata))
+    g[i, j] = k.pdf(diff_data)
+    return g

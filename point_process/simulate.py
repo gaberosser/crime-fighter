@@ -30,7 +30,7 @@ class MohlerSimulation():
     def __init__(self):
 
         # parameters
-        self.t_total = 1050 # time extent being considered (s)
+        self.t_total = 1284 # time extent being considered (s)
         self.number_to_prune = 2000 # number particles to prune at start and end
 
         self.bg_mu_bar = 5.71 # events / (m^2 s)
@@ -89,7 +89,8 @@ class MohlerSimulation():
             shocks.extend(new_shocks)
             if i < n_init:
                 n_shocks += len(new_shocks)
-        print "Generated %d shocks from the %d background shocks" % (n_shocks, n_init)
+        # TODO: test that the statement below matches expectation of aftershock generation strength
+        # print "Generated %d shocks from the %d background shocks" % (n_shocks, n_init)
         return shocks
 
     def prune_points(self, n_prune):
@@ -120,6 +121,14 @@ class MohlerSimulation():
     @property
     def ndata(self):
         return self.data.shape[0]
+
+    @property
+    def number_bg(self):
+        return np.sum(np.isnan(self.data[:, -1]))
+
+    @property
+    def number_aftershocks(self):
+        return np.sum(~np.isnan(self.data[:, -1]))
 
     @property
     def p(self):
