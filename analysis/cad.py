@@ -430,8 +430,8 @@ def condensed_to_index(sub, n):
         return (idx[0][sub], idx[1][sub])
 
 
-def pairwise_time_lag_events(max_distance=200, nicl_numbers=None):
-    """ Recreate Fig 2 Mohler et al 2011 'Self-exciting point process modeling of crime'
+def pairwise_time_lag_events(max_distance=200, nicl_numbers=None, num_bins=None):
+    """ Recreate Fig 1(b) Mohler et al 2011 'Self-exciting point process modeling of crime'
         max_distance is in units of metres. """
 
     nicl_numbers = nicl_numbers or [1, 3, 13]
@@ -450,10 +450,40 @@ def pairwise_time_lag_events(max_distance=200, nicl_numbers=None):
         ax = fig.add_subplot(1, n, i)
         n_win = max(res[i])
         D = 0.5 * n_win * (n_win - 1)
-        ax.hist(res[i], range(n_win), normed=True, edgecolor='none')
+        ax.hist(res[i], num_bins or range(n_win), normed=True, edgecolor='none', facecolor='gray')
         ax.plot(np.arange(1, n_win), np.arange(1, n_win)[::-1]/D, 'k--')
         ax.set_xlabel('Time difference (days)')
-        ax.set_ylabel('Density')
+        ax.set_ylabel('Event pair density')
+
+    fig.subplots_adjust(left=0.15, right=0.95, bottom=0.1, top=0.95, wspace=0.03, hspace=0.01)
+    plt.show()
+    return res if len(nicl_numbers) > 1 else res[0]
+
+
+def pairwise_distance_events(max_time=14, nicl_numbers=None, num_bins=50):
+    """ Recreate Fig 2 Mohler et al 2011 'Self-exciting point process modeling of crime'
+        except that we look at the distribution of spatial distance and fix time window. """
+
+    nicl_numbers = nicl_numbers or [1, 3, 13]
+    n = len(nicl_numbers)
+    res = []
+    cad = initial_filter_cad(only_new=True)
+    for nicl in nicl_numbers:
+        pd = pairwise_distance(nicl)
+        pt = pairwise_time_difference(nicl)
+        filt_sub = np.where(pt < max_time)[0]
+        space_diffs = pd[filt_sub]
+        res.append(space_diffs)
+
+    fig = plt.figure()
+    for i in range(n):
+        ax = fig.add_subplot(1, n, i)
+        # n_win = int(max(res[i]))
+        # D = 0.5 * n_win * (n_win - 1)
+        ax.hist(res[i], num_bins, normed=True, edgecolor='none', facecolor='gray')
+        # ax.plot(np.arange(1, n_win), np.arange(1, n_win)[::-1]/D, 'k--')
+        ax.set_xlabel('Separation distance')
+        ax.set_ylabel('Event pair density')
 
     fig.subplots_adjust(left=0.15, right=0.95, bottom=0.1, top=0.95, wspace=0.03, hspace=0.01)
     plt.show()
