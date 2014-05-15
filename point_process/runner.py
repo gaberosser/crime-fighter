@@ -7,6 +7,7 @@ from time import time
 from matplotlib import pyplot as plt
 from matplotlib.lines import Line2D
 
+
 num_iter = 30
 
 print "Starting simulation..."
@@ -45,10 +46,10 @@ for i in range(num_iter):
 
     # compute KDEs
     # BG
-    bg_t_kde = pp_kde.VariableBandwidthKde(bg[:, 0])
-    bg_xy_kde = pp_kde.VariableBandwidthKde(bg[:, 1:])
+    bg_t_kde = pp_kde.VariableBandwidthKde(bg[:, 0], normed=False)
+    bg_xy_kde = pp_kde.VariableBandwidthKde(bg[:, 1:], normed=False)
     # interpoint / trigger KDE
-    trigger_kde = pp_kde.VariableBandwidthKde(interpoint)
+    trigger_kde = pp_kde.VariableBandwidthKde(interpoint, normed=False)
     k_bgt.append(bg_t_kde)
     k_bgxy.append(bg_xy_kde)
     k_ash.append(trigger_kde)
@@ -59,7 +60,7 @@ for i in range(num_iter):
     m = m_xy * m_t
 
     # evaluate trigger KDE
-    g = estimation.evaluate_trigger_kde(trigger_kde, data, tol=0.95, ngrid=100)
+    g = estimation.evaluate_trigger_kde(trigger_kde, data, tol=0.95, ngrid=50)
 
     # sanity check
     if np.any(g[range(ndata), range(ndata)] != 0):

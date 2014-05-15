@@ -35,8 +35,9 @@ def marginal_icdf_optimise(k, y, dim=0, tol=1e-8):
 
 
 class FixedBandwidthKde():
-    def __init__(self, data, *args, **kwargs):
+    def __init__(self, data, normed=True, *args, **kwargs):
         self.data = data
+        self.normed = normed
         if len(data.shape) == 1:
             self.data = np.array(data).reshape((len(data), 1))
 
@@ -84,7 +85,7 @@ class FixedBandwidthKde():
     def range_array(self):
         return self.max_array - self.min_array
 
-    def _additive_operation(self, funcstr, *args, **kwargs):
+    def _additive_operation(self, funcstr, normed, *args, **kwargs):
         """ Generic interface to call function named in funcstr on the data, handling normalisation and reshaping """
         # store data shape, flatten to N x ndim array then restore
         try:
@@ -94,13 +95,15 @@ class FixedBandwidthKde():
             shp = np.array(args[0], dtype=np.float64).shape
         flat_data = np.vstack([np.array(x, dtype=np.float64).flatten() for x in args]).transpose()
         # better to use a generator here to reduce memory usage:
-        z = reduce(operator.add, (getattr(x, funcstr)(flat_data, **kwargs) for x in self.mvns)) / float(self.ndata)
+        z = reduce(operator.add, (getattr(x, funcstr)(flat_data, **kwargs) for x in self.mvns))
+        if normed:
+            z /= float(self.ndata)
         return np.reshape(z, shp)
 
     def pdf(self, *args, **kwargs):
         if len(args) != self.ndim:
             raise AttributeError("Incorrect dimensions for input variable")
-        return self._additive_operation('pdf', *args, **kwargs)
+        return self._additive_operation('pdf', self.normed, *args, **kwargs)
 
     def pdf_interp_fn(self, *args, **kwargs):
         """ Return a callable interpolation function based on the grid points supplied in args. """
@@ -112,11 +115,11 @@ class FixedBandwidthKde():
 
     def marginal_pdf(self, x, **kwargs):
         # return the marginal pdf in the dim specified in kwargs (dim=0 default)
-        return self._additive_operation('marginal_pdf', x, **kwargs)
+        return self._additive_operation('marginal_pdf', self.normed, x, **kwargs)
 
     def marginal_cdf(self, x, **kwargs):
         """ Return the marginal cdf in the dim specified in kwargs (dim=0 default) """
-        return self._additive_operation('marginal_cdf', x, **kwargs)
+        return self._additive_operation('marginal_cdf', True, x, **kwargs)
 
     def marginal_icdf(self, y, *args, **kwargs):
         """ Return value of inverse marginal CDF in specified dim """
