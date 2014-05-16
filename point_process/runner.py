@@ -8,7 +8,7 @@ from matplotlib import pyplot as plt
 from matplotlib.lines import Line2D
 
 
-num_iter = 30
+num_iter = 50
 
 print "Starting simulation..."
 # simulate data
@@ -60,7 +60,7 @@ for i in range(num_iter):
     m = m_xy * m_t
 
     # evaluate trigger KDE
-    g = estimation.evaluate_trigger_kde(trigger_kde, data, tol=0.95, ngrid=50)
+    g = estimation.evaluate_trigger_kde(trigger_kde, data, tol=0.99, ngrid=100)
 
     # sanity check
     if np.any(g[range(ndata), range(ndata)] != 0):
@@ -101,7 +101,8 @@ ax.legend([t[0] for t in h], ('B/g, inferred', 'B/g, true', 'Trig, inferred', 'T
 # fig A2
 t = np.linspace(0, 60, 200)
 w = c.off_omega
-z = w * np.exp(-w * t)
+th = c.off_theta
+z = th * w * np.exp(-w * t)
 fig = plotting.plot_txy_t_marginals(k_ash[-1], t_max=60)
 plt.plot(t, z, 'k--')
 ax = fig.gca()
