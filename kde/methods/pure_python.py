@@ -1,5 +1,6 @@
 __author__ = 'gabriel'
 import numpy as np
+import math
 import operator
 from kde import kernels
 
@@ -85,6 +86,10 @@ class FixedBandwidthKde():
     def range_array(self):
         return self.max_array - self.min_array
 
+    @property
+    def raw_std_devs(self):
+        return np.std(self.data, axis=0)
+
     def _additive_operation(self, funcstr, normed, *args, **kwargs):
         """ Generic interface to call function named in funcstr on the data, handling normalisation and reshaping """
         # store data shape, flatten to N x ndim array then restore
@@ -144,35 +149,10 @@ class FixedBandwidthKde():
         return it.operands[-1]
 
 
-class VariableBandwidthKdeIsotropic(FixedBandwidthKde):
-
-    def set_bandwidths(self, *args, **kwargs):
-        from scipy.spatial import KDTree
-        try:
-            self.nn = kwargs.pop('nn')
-        except KeyError:
-            # default values
-            self.nn = 10 if self.ndim == 1 else 100
-
-        # compute nn distances on unnormed data
-        kd = KDTree(self.data)
-
-        self.bandwidths = np.zeros((self.ndata, self.ndim))
-
-        for i in range(self.ndata):
-            d, _ = kd.query(self.data[i, :], k=self.nn)
-            nn = max(d[~np.isinf(d)]) if np.isinf(d[-1]) else d[-1]
-            # all dims have same bandwidth
-            self.bandwidths[i] = np.ones(self.ndim) * nn
-        self.set_mvns()
-
 class VariableBandwidthKde(FixedBandwidthKde):
 
     def set_bandwidths(self, *args, **kwargs):
-        if 'nn' in kwargs:
-            self.nn = kwargs.pop('nn')
-            self.compute_nn_bandwidth()
-        elif 'bandwidths' in kwargs:
+        if 'bandwidths' in kwargs:
             bandwidths = np.array(kwargs.pop('bandwidths'), dtype=float)
             if ( len(bandwidths.shape) == 1 ) and ( self.ndim == 1 ) and ( bandwidths.size == self.ndata ):
                 self.bandwidths = bandwidths
@@ -180,6 +160,22 @@ class VariableBandwidthKde(FixedBandwidthKde):
                 self.bandwidths = bandwidths
             else:
                 raise AttributeError("Number of supplied bandwidths does not match the dimensionality of the data")
+        else:
+            raise AttributeError("Class instantiation requires a supplied bandwidth kwarg.")
+
+        self.set_mvns()
+
+    @property
+    def normed_data(self):
+        return self.data / self.raw_std_devs
+
+
+class VariableBandwidthNnKde(VariableBandwidthKde):
+
+    def set_bandwidths(self, *args, **kwargs):
+        if 'nn' in kwargs:
+            self.nn = kwargs.pop('nn')
+            self.compute_nn_bandwidth()
         else:
             # default nn values
             self.nn = min(100, self.ndata) if self.ndim == 1 else min(15, self.ndata)
@@ -191,26 +187,62 @@ class VariableBandwidthKde(FixedBandwidthKde):
         from scipy.spatial import KDTree
         if self.nn <= 1:
             raise Exception("The number of nearest neighbours for variable KDE must be >1")
-        # compute nn distances
+        # compute nn distances on normed data
         nd = self.normed_data
         std = self.raw_std_devs
         kd = KDTree(nd)
-        # kd = KDTree(self.data)
 
         self.nn_distances = np.zeros(self.ndata)
         self.bandwidths = np.zeros((self.ndata, self.ndim))
 
         for i in range(self.ndata):
             d, _ = kd.query(nd[i, :], k=self.nn)
-            # d, _ = kd.query(self.data[i, :], k=self.nn)
             self.nn_distances[i] = max(d[~np.isinf(d)]) if np.isinf(d[-1]) else d[-1]
             self.bandwidths[i] = std * self.nn_distances[i]
-            # self.bandwidths[i] = np.ones(self.ndim) * self.nn_distances[i]
 
-    @property
-    def raw_std_devs(self):
-        return np.std(self.data, axis=0)
 
-    @property
-    def normed_data(self):
-        return self.data / self.raw_std_devs
+class FixedBandwidthXValidationKde(FixedBandwidthKde):
+
+    def set_bandwidths(self, *args, **kwargs):
+        self.xvfold = kwargs.pop('xvfold', min(20, self.ndata))
+        self.compute_xv_bandwidth()
+        self.set_mvns()
+
+    def compute_xv_bandwidth(self, hmin=None, hmax=None):
+        from itertools import combinations
+        from scipy import optimize
+        # define a range for the bandwidth
+        hmin = hmin or 0.1 # 1/10 x standard deviation
+        hmax = hmax or 5 # 5 x standard deviation
+
+        idx = np.random.permutation(self.ndata)
+        idx_sets = [idx[i::self.xvfold] for i in range(self.xvfold)]
+
+        # CV score for minimisation
+        def cv_score(h):
+            bandwidths = self.raw_std_devs * h
+            all_mvns = np.array([kernels.MultivariateNormal(self.data[i], bandwidths**2) for i in range(self.ndata)])
+            ll = 0.0 # log likelihood
+            idx_sets_excl = combinations(idx_sets, self.xvfold - 1)
+            for i, test_idx_set in enumerate(idx_sets_excl):
+                testing_data = self.data[idx_sets[i], :]
+                training_mvns = all_mvns[np.concatenate(test_idx_set)]
+                ll += np.sum([np.log(x.pdf(testing_data)) for x in training_mvns])
+            return -ll / float(self.xvfold)
+
+        # minimise CV function over h
+        constraints = [
+            {
+                'type': 'ineq',
+                'fun': lambda x: x - hmin,
+            },
+            {
+                'type': 'ineq',
+                'fun': lambda x: hmax - x,
+            },
+        ]
+        res = optimize.minimize(cv_score, [1.0, ], method='L-BFGS-B', constraints=constraints)
+        if res.success:
+            self.bandwidths = np.tile(self.raw_std_devs * res.x, (self.ndata, 1))
+        else:
+            raise ValueError("Unable to find max likelihood bandwidth")
