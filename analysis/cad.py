@@ -13,8 +13,8 @@ from database.views import month_iterator, week_iterator
 import pandas
 import numpy as np
 import datetime
-from time import time
 import pytz
+from database import logic
 
 UK_TZ = pytz.timezone('Europe/London')
 
@@ -28,13 +28,60 @@ def unix_time(dt):
     return delta.total_seconds()
 
 
-def initial_filter_cad(only_new=False):
-    qset = models.Cad.objects.exclude(cris_entry__isnull=True).exclude(cris_entry__startswith='NOT')\
-            .exclude(att_map__isnull=True)
-    if only_new:
-        return qset.filter(inc_datetime__gte=datetime.datetime(2011, 8, 1, 0, tzinfo=UK_TZ))
-    else:
-        return qset
+class CadSpatialGrid(object):
+    def __init__(self, nicl_number=None, grid=None, only_new=False, dedupe=True):
+        self.nicl_number = nicl_number
+        if nicl_number:
+            self.nicl_name = models.Nicl.objects.get(number=nicl_number).description
+        else:
+            self.nicl_name = 'All crime types'
+        self.grid = grid or models.Division.objects.filter(type='cad_250m_grid')
+        self.shapely_grid = pandas.Series([geodjango_to_shapely([x.mpoly]) for x in self.grid],
+                                          index=[x.name for x in self.grid])
+        # cleaned CAD data
+        cad = logic.initial_filter_cad(nicl_type=nicl_number, only_new=only_new)
+        self.start_date = min([x.inc_datetime for x in cad])
+        self.end_date = max([x.inc_datetime for x in cad])
+
+        # gridded data
+        self.data = logic.cad_aggregate_grid(cad, grid=self.grid, dedupe=dedupe)
+
+
+class CadTemporalAggregation(object):
+    def __init__(self, nicl_number=None, only_new=False, dedupe=True):
+        self.nicl_number = nicl_number
+        if nicl_number:
+            self.nicl_name = models.Nicl.objects.get(number=nicl_number).description
+        else:
+            self.nicl_name = 'All crime types'
+        cad = self.load_data(nicl_number, only_new, dedupe)
+        start_date = min([x.inc_datetime for x in cad])
+        end_date = max([x.inc_datetime for x in cad])
+        bucket_dict = self.bucket_dict(start_date, end_date)
+        self.data = []
+        self.data = self.bucket_data(cad, bucket_dict=bucket_dict)
+
+    def bucket_dict(self, start_date, end_date):
+        return {'all': lambda x: True}
+
+    def load_data(self, nicl_number, only_new, dedupe):
+        cad = logic.initial_filter_cad(nicl_type=nicl_number, only_new=only_new)
+        if dedupe:
+            cad = logic.dedupe_cad(cad)
+        return cad
+
+    @staticmethod
+    def bucket_data(cad, bucket_dict):
+        return logic.time_aggregate_data(cad, bucket_dict=bucket_dict)
+
+
+class CadDaily(CadTemporalAggregation):
+    def bucket_dict(self, start_date, end_date):
+        gen_day = logic.n_day_iterator(start_date, end_date)
+        return collections.OrderedDict(
+            [(sd, lambda x: sd <= x.inc_datetime < ed) for sd, ed in gen_day]
+        )
+
 
 class CadByGrid(object):
 
@@ -45,7 +92,7 @@ class CadByGrid(object):
         self.shapely_grid = pandas.Series([geodjango_to_shapely([x.mpoly]) for x in self.grid],
                                           index=[x.name for x in self.grid])
         # preliminary cad filter
-        self.cad = initial_filter_cad()
+        self.cad = logic.initial_filter_cad()
 
         self.res, self.start_date, self.end_date = self.compute_array()
 
@@ -105,7 +152,6 @@ class CadByGrid(object):
             ]
         )
         return self.time_aggregate_data(bucket_dict)
-
 
     def time_aggregate_data(self, bucket_dict):
         index = [x.name for x in self.grid]
@@ -397,7 +443,7 @@ def something_else():
 
 
 def pairwise_distance(nicl_number=3):
-    cad = initial_filter_cad()
+    cad = logic.initial_filter_cad()
     cad = cad.filter(Q(cl01=nicl_number) | Q(cl02=nicl_number) | Q(cl03=nicl_number)).distinct('cris_entry')
     cad = sorted(cad, key=lambda x: x.inc_datetime)
     coords = np.array([x.att_map.coords for x in cad])
@@ -410,7 +456,7 @@ def pairwise_distance(nicl_number=3):
 
 def pairwise_time_difference(nicl_number=3):
     from itertools import combinations
-    cad = initial_filter_cad()
+    cad = logic.initial_filter_cad()
     cad = cad.filter(Q(cl01=nicl_number) | Q(cl02=nicl_number) | Q(cl03=nicl_number)).distinct('cris_entry')
     cad = sorted(cad, key=lambda x: x.inc_datetime)
 
@@ -437,7 +483,7 @@ def pairwise_time_lag_events(max_distance=200, nicl_numbers=None, num_bins=None)
     nicl_numbers = nicl_numbers or [1, 3, 13]
     n = len(nicl_numbers)
     res = []
-    cad = initial_filter_cad(only_new=True)
+    cad = logic.initial_filter_cad(only_new=True)
     for nicl in nicl_numbers:
         pd = pairwise_distance(nicl)
         pt = pairwise_time_difference(nicl)
@@ -467,7 +513,7 @@ def pairwise_distance_events(max_time=14, nicl_numbers=None, num_bins=50):
     nicl_numbers = nicl_numbers or [1, 3, 13]
     n = len(nicl_numbers)
     res = []
-    cad = initial_filter_cad(only_new=True)
+    cad = logic.initial_filter_cad(only_new=True)
     for nicl in nicl_numbers:
         pd = pairwise_distance(nicl)
         pt = pairwise_time_difference(nicl)

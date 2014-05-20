@@ -6,9 +6,8 @@ import collections
 import os
 import csv
 import numpy as np
-import datetime
-import pytz
 from matplotlib import pyplot as plt
+from logic import month_iterator, week_iterator
 
 cris_nicl_mapping = {
     'Burglary': [3, 4],
@@ -18,41 +17,6 @@ cris_nicl_mapping = {
     'Theft & Handling': [6, 7, 8, 13],
     'Violence Against The Person': [1],
 }
-
-def month_iterator(start_date, end_date):
-    try:
-        start_date.tzinfo
-    except AttributeError:
-        kwargs = {}
-    else:
-        kwargs = {'tzinfo': pytz.utc}
-
-    this_type = type(start_date)
-    sd = start_date
-    while sd < end_date:
-        next_year = sd.year
-        next_month = sd.month + 1
-        if sd.month == 12:
-            next_year += 1
-            next_month = 1
-        ed = this_type(next_year, next_month, 1, **kwargs)
-        if ed <= end_date:
-            yield (sd, ed)
-        else:
-            yield (sd, end_date+datetime.timedelta(days=1))
-        sd = ed
-
-
-def week_iterator(start_date, end_date):
-
-    sd = start_date
-    while sd < end_date:
-        ed = sd + datetime.timedelta(days=7)
-        if ed <= end_date:
-            yield (sd, ed)
-        else:
-            yield (sd, end_date+datetime.timedelta(days=1))
-        sd = ed
 
 
 def cris_cad_comparison():
