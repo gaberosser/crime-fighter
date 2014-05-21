@@ -14,6 +14,7 @@
 #include <iterator>
 #include <algorithm>
 #include <vector>
+#include <exception>
 
 #include "mvn.h"
 #include "libalg/src/alglibmisc.h"
@@ -30,7 +31,7 @@ public:
 	FixedBandwidthKde(vector<vector <double> > data, vector <double> bdwidths, bool normed);
 	FixedBandwidthKde(vector<vector <double> > data, double bdwidth, bool normed);
 	void set_mvns();
-	vector <double> pdf(vector<vector <double> > x);
+	double pdf(vector <double> x);
 private:
 	void set_bandwidths(double bdwidth);
 	void set_bandwidths(vector<double> bdwidths);

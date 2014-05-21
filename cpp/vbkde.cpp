@@ -22,13 +22,11 @@ real_2d_array vector_2d_to_array(vector<vector<double> > x) {
 	return res;
 }
 
-double standard_deviation(vector<double> v) {
-	// TODO@ make this UNBIASED
+double st_dev(vector<double> v, bool ub=true) {
+	double k = ub ? v.size() - 1 : v.size();
 	double sum = std::accumulate(v.begin(), v.end(), 0.0);
-	double mean = sum / v.size();
-
 	double sq_sum = std::inner_product(v.begin(), v.end(), v.begin(), 0.0);
-	return std::sqrt(sq_sum / v.size() - mean * mean);
+	return sqrt((sq_sum - sum * sum / double(v.size())) / k);
 }
 
 FixedBandwidthKde::FixedBandwidthKde(vector<vector <double> > data, bool normed) {
@@ -70,10 +68,13 @@ void FixedBandwidthKde::set_mvns() {
 	}
 }
 
-vector <double> FixedBandwidthKde::pdf(vector<vector <double> > x) {
-	vector<double> res(ndata, 0.);
+double FixedBandwidthKde::pdf(vector <double> x) {
+//	if (x.size() != ndim) {
+//		throw exception("Input vector has wrong size");
+//	}
+	double res = 0;
 	for (int i=0; i<ndata; ++i) {
-		res[i] = mvns[i].pdf(x[i]);
+		res += mvns[i].pdf(x);
 	}
 	return res;
 }
@@ -92,7 +93,7 @@ void VariableBandwidthKde::set_bandwidths(int nn) {
 		for (int j=0; j<ndim; ++j) {
 			this_vec.push_back(data[j][i]);
 		}
-		stds[i] = standard_deviation(this_vec);
+		stds[i] = st_dev(this_vec);
 	}
 
 	// get bandwidths using nearest neighbours
