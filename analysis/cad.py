@@ -28,59 +28,84 @@ def unix_time(dt):
     return delta.total_seconds()
 
 
-class CadSpatialGrid(object):
-    def __init__(self, nicl_number=None, grid=None, only_new=False, dedupe=True):
-        self.nicl_number = nicl_number
-        if nicl_number:
-            self.nicl_name = models.Nicl.objects.get(number=nicl_number).description
-        else:
-            self.nicl_name = 'All crime types'
-        self.grid = grid or models.Division.objects.filter(type='cad_250m_grid')
-        self.shapely_grid = pandas.Series([geodjango_to_shapely([x.mpoly]) for x in self.grid],
-                                          index=[x.name for x in self.grid])
-        # cleaned CAD data
-        cad = logic.initial_filter_cad(nicl_type=nicl_number, only_new=only_new)
-        self.start_date = min([x.inc_datetime for x in cad])
-        self.end_date = max([x.inc_datetime for x in cad])
-
-        # gridded data
-        self.data = logic.cad_aggregate_grid(cad, grid=self.grid, dedupe=dedupe)
-
-
-class CadTemporalAggregation(object):
+class CadAggregate(object):
     def __init__(self, nicl_number=None, only_new=False, dedupe=True):
         self.nicl_number = nicl_number
         if nicl_number:
             self.nicl_name = models.Nicl.objects.get(number=nicl_number).description
         else:
             self.nicl_name = 'All crime types'
-        cad = self.load_data(nicl_number, only_new, dedupe)
-        start_date = min([x.inc_datetime for x in cad])
-        end_date = max([x.inc_datetime for x in cad])
-        bucket_dict = self.bucket_dict(start_date, end_date)
-        self.data = []
-        self.data = self.bucket_data(cad, bucket_dict=bucket_dict)
+        self.only_new = only_new
+        self.dedupe = dedupe
+        self.cad = None
+        self.load_data()
 
-    def bucket_dict(self, start_date, end_date):
+    def load_data(self):
+        self.cad = logic.initial_filter_cad(nicl_type=self.nicl_number, only_new=self.only_new)
+        if self.dedupe:
+            self.cad = logic.dedupe_cad(self.cad)
+
+    @property
+    def start_date(self):
+        return min([x.inc_datetime for x in self.cad]).replace(hour=0, minute=0, second=0)
+
+    @property
+    def end_date(self):
+        return max([x.inc_datetime for x in self.cad])
+
+    def aggregate(self):
+        raise NotImplementedError()
+
+
+class CadSpatialGrid(CadAggregate):
+    def __init__(self, nicl_number=None, grid=None, only_new=False, dedupe=True):
+        # defer dedupe until after spatial aggregation
+        super(CadSpatialGrid, self).__init__(nicl_number=nicl_number, only_new=only_new, dedupe=False)
+        self.dedupe = dedupe
+        # load grid or use one provided
+        self.grid = grid or models.Division.objects.filter(type='cad_250m_grid')
+        self.shapely_grid = pandas.Series([geodjango_to_shapely([x.mpoly]) for x in self.grid],
+                                          index=[x.name for x in self.grid])
+        # gridded data
+        self.data = self.aggregate()
+
+    def aggregate(self):
+        return logic.cad_aggregate_grid(self.cad, grid=self.grid, dedupe=self.dedupe)
+
+
+class CadTemporalAggregation(CadAggregate):
+    def __init__(self, nicl_number=None, only_new=False, dedupe=True):
+        super(CadTemporalAggregation, self).__init__(nicl_number=nicl_number, only_new=only_new, dedupe=dedupe)
+        bucket_dict = self.bucket_dict()
+        self.data = []
+        self.data = self.bucket_data()
+
+    def bucket_dict(self):
         return {'all': lambda x: True}
 
-    def load_data(self, nicl_number, only_new, dedupe):
-        cad = logic.initial_filter_cad(nicl_type=nicl_number, only_new=only_new)
-        if dedupe:
-            cad = logic.dedupe_cad(cad)
-        return cad
-
-    @staticmethod
-    def bucket_data(cad, bucket_dict):
-        return logic.time_aggregate_data(cad, bucket_dict=bucket_dict)
+    def bucket_data(self):
+        return logic.time_aggregate_data(self.cad, bucket_dict=self.bucket_dict())
 
 
 class CadDaily(CadTemporalAggregation):
-    def bucket_dict(self, start_date, end_date):
-        gen_day = logic.n_day_iterator(start_date, end_date)
+    @staticmethod
+    def create_bucket_fun(sd, ed):
+        """ Interesting! If we just generate the lambda function inline in bucket_dict, the scope is updated each time,
+         so the parameters (sd, ed) are also updated.  In essence the final function created is run every time.
+         Instead use a function factory to capture the closure correctly. """
+        return lambda x: sd <= x.inc_datetime < ed
+
+    def bucket_dict(self):
+        gen_day = logic.n_day_iterator(self.start_date, self.end_date)
         return collections.OrderedDict(
-            [(sd, lambda x: sd <= x.inc_datetime < ed) for sd, ed in gen_day]
+            [(sd, self.create_bucket_fun(sd, ed)) for sd, ed in gen_day]
         )
+
+
+def cad_space_time_count(cad_temporal, cad_spatial):
+    # create numpy array with counts
+    res = logic.combine_aggregations_into_count(cad_temporal.data, cad_spatial.data)
+    return pandas.DataFrame(res, index=cad_temporal.data.keys(), columns=cad_spatial.data.keys())
 
 
 class CadByGrid(object):
