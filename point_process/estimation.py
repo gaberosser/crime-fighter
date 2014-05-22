@@ -1,5 +1,6 @@
 __author__ = 'gabriel'
 import numpy as np
+import operator
 import time
 import multiprocessing
 PI = np.pi
@@ -43,8 +44,11 @@ def sample_bg_and_interpoint(data, P):
     return np.array(bg), np.array(interpoint)
 
 
-def pairwise_differences(data, b_iter=False):
-    # compute pairwise (t, x, y) difference vector
+def pairwise_differences(data, b_iter=False, dtype=None):
+    """ Compute pairwise (t, x, y) difference vector.
+        Setting b_iter=True calls an alternative iteration-based calculation to save memory. """
+
+    dtype = dtype or np.float64
 
     if b_iter:
         # use this routine if the system memory is limited:
@@ -55,16 +59,10 @@ def pairwise_differences(data, b_iter=False):
                 pdiff[j, i, :] = data[i] - data[j]
         return pdiff
 
-    t1, t2 = np.meshgrid(data[:, 0], data[:, 0])
-    td = t1 - t2
-    del t1, t2
-    x1, x2 = np.meshgrid(data[:, 1], data[:, 1])
-    xd = x1 - x2
-    del x1, x2
-    y1, y2 = np.meshgrid(data[:, 2], data[:, 2])
-    yd = y1 - y2
-    del y1, y2
-    return np.dstack((td, xd, yd))
+    td = reduce(operator.sub, np.meshgrid(data[:, 0], data[:, 0], copy=False))
+    xd = reduce(operator.sub, np.meshgrid(data[:, 1], data[:, 1], copy=False))
+    yd = reduce(operator.sub, np.meshgrid(data[:, 2], data[:, 2], copy=False))
+    return np.dstack((td, xd, yd)).astype(dtype)
 
 
 def initial_guess(data):
@@ -153,39 +151,32 @@ def find_acceptance_region_interpoints(k, data, tol=0.95):
     diff_data = data[j, :] - data[i, :]
     return i, j, diff_data
 
-def evaluate_trigger_kde(k, data, tol=0.95, ngrid=100):
-    """ Approximate method to evaluate the trigger KDE, designed to work around the very large number of targets
-        typically requested.
-        First filter by acceptance region, based on tolerance.
-        Next, generate a 3D grid of points and use zero-order (nn) interpolation to approximate all data within
-        acceptance region.
-    """
-    i, j, diff_data = find_acceptance_region_interpoints(k, data, tol=tol)
-    t_max = np.max(diff_data[:, 0])
-    x_min = np.min(diff_data[:, 1])
-    x_max = np.max(diff_data[:, 1])
-    y_min = np.min(diff_data[:, 2])
-    y_max = np.max(diff_data[:, 2])
-    tgrid, xgrid, ygrid = np.meshgrid(np.linspace(0, t_max, ngrid), np.linspace(x_min, x_max, ngrid), np.linspace(y_min, y_max, ngrid))
-    f = k.pdf_interp_fn(tgrid, xgrid, ygrid)
+# def evaluate_trigger_kde(k, data, tol=0.95, ngrid=100):
+#     """ Approximate method to evaluate the trigger KDE, designed to work around the very large number of targets
+#         typically requested.
+#         First filter by acceptance region, based on tolerance.
+#         Next, generate a 3D grid of points and use zero-order (nn) interpolation to approximate all data within
+#         acceptance region.
+#     """
+#     i, j, diff_data = find_acceptance_region_interpoints(k, data, tol=tol)
+#     t_max = np.max(diff_data[:, 0])
+#     x_min = np.min(diff_data[:, 1])
+#     x_max = np.max(diff_data[:, 1])
+#     y_min = np.min(diff_data[:, 2])
+#     y_max = np.max(diff_data[:, 2])
+#     tgrid, xgrid, ygrid = np.meshgrid(np.linspace(0, t_max, ngrid), np.linspace(x_min, x_max, ngrid), np.linspace(y_min, y_max, ngrid))
+#     f = k.pdf_interp_fn(tgrid, xgrid, ygrid)
+#
+#     ndata = data.shape[0]
+#     g = np.zeros((ndata, ndata))
+#     g[i, j] = f(diff_data)
+#     return g
 
+
+def evaluate_trigger_kde(k, data, linkage):
+    """ Evaluate trigger KDE at the interpoint distances given by the indices in linkage arrays """
     ndata = data.shape[0]
+    diff_data = data[linkage[1], :] - data[linkage[0], :]
     g = np.zeros((ndata, ndata))
-    g[i, j] = f(diff_data)
-    return g
-
-
-def evaluate_trigger_kde_exact(k, data, tol=0.95):
-    """ Exact version.  Find datapoints in the acceptance region then evaluate the PDF at those points. """
-
-    i, j, diff_data = find_acceptance_region_interpoints(k, data, tol=tol)
-    t_max = np.max(diff_data[:, 0])
-    x_min = np.min(diff_data[:, 1])
-    x_max = np.max(diff_data[:, 1])
-    y_min = np.min(diff_data[:, 2])
-    y_max = np.max(diff_data[:, 2])
-
-    ndata = data.shape[0]
-    g = np.zeros((ndata, ndata))
-    g[i, j] = k.pdf(diff_data)
+    g[linkage] = k.pdf(diff_data[:, 0], diff_data[:, 1], diff_data[:, 2]) / float(ndata)
     return g

@@ -63,13 +63,13 @@ def plot_txy_kde(k, max_x, max_y, npt_1d=50, tpt=None, **kwargs):
     return fig
 
 
-def _plot_marginals(k, dim, data_min=0., data_max=None, npt_1d=200, **kwargs):
+def _plot_marginals(k, dim, norm=1.0, data_min=0., data_max=None, npt_1d=200, **kwargs):
     style = kwargs.pop('style', 'k-')
     # if data_max is missing, use the 95th percentile
     if data_max is None:
         data_max = k.marginal_icdf(0.95, dim=dim)
     t = np.linspace(data_min, data_max, npt_1d)
-    z = k.marginal_pdf(t, dim=dim)
+    z = k.marginal_pdf(t, dim=dim) / float(norm)
     fig = plt.figure()
     ax = fig.add_subplot(111)
     ax.plot(t, z, style)
@@ -77,22 +77,22 @@ def _plot_marginals(k, dim, data_min=0., data_max=None, npt_1d=200, **kwargs):
     return fig, ax
 
 
-def plot_txy_t_marginals(k, t_max=50, npt_1d=200, **kwargs):
-    fig, ax = _plot_marginals(k, 0, data_max=t_max, npt_1d=npt_1d, **kwargs)
+def plot_txy_t_marginals(k, norm=1.0, t_max=50, npt_1d=200, **kwargs):
+    fig, ax = _plot_marginals(k, 0, norm=norm, data_max=t_max, npt_1d=npt_1d, **kwargs)
     ax.set_xlabel('Time (days)')
     ax.set_ylabel('Density')
     return fig
 
 
-def plot_txy_x_marginals(k, x_max=50, npt_1d=200, **kwargs):
-    fig, ax = _plot_marginals(k, 1, data_min=-x_max, data_max=x_max, npt_1d=npt_1d)
+def plot_txy_x_marginals(k, norm=1.0, x_max=50, npt_1d=200, **kwargs):
+    fig, ax = _plot_marginals(k, 1, norm=norm, data_min=-x_max, data_max=x_max, npt_1d=npt_1d)
     ax.set_xlabel('X (metres)')
     ax.set_ylabel('Density')
     return fig
 
 
-def plot_txy_y_marginals(k, y_max=50, npt_1d=200, **kwargs):
-    fig, ax = _plot_marginals(k, 2, data_min=-y_max, data_max=y_max, npt_1d=npt_1d)
+def plot_txy_y_marginals(k, norm=1.0, y_max=50, npt_1d=200, **kwargs):
+    fig, ax = _plot_marginals(k, 2, norm=norm, data_min=-y_max, data_max=y_max, npt_1d=npt_1d)
     ax.set_xlabel('Y (metres)')
     ax.set_ylabel('Density')
     return fig

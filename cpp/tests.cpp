@@ -57,17 +57,25 @@ void KdeTestSuite::test_fixed_bandwidth_kde()
 	double s[] = {1.0, 2.0, 3.0};
 	vector<double> means(m, m + sizeof(m)/sizeof(double));
 	vector<double> stdevs(s, s + sizeof(s)/sizeof(double));
-	vector<vector<double> > data(2, means);
+	double x1_[] = {0.0, 0.0, 0.0};
+	double x2_[] = {1.0, 0.0, 0.0};
+	double x3_[] = {0.5, 0.0, 0.0};
+	vector<double> x1(x1_, x1_ + 3);
+	vector<double> x2(x2_, x2_ + 3);
+	vector<double> x3(x3_, x3_ + 3);
+	vector<vector<double> > data;
+	data.push_back(x1);
+	data.push_back(x2);
 	// normed KDE
 	FixedBandwidthKde fk(data, stdevs, true);
-	double p = fk.pdf(data[0]);
-	cout << p << endl;
-	TEST_ASSERT_DELTA(p, pow(2*PI, -1.5) / 6.0, eps);
+	double p1 = fk.pdf(x1);
+	cout << p1 << endl;
+	TEST_ASSERT_DELTA(p1, pow(2*PI, -1.5) / 6.0, eps);
 	// unnormed KDE
 	fk.normed = false;
-	p = fk.pdf(data[0]);
-	cout << p << endl;
-	TEST_ASSERT_DELTA(p, pow(2*PI, -1.5) / 6.0, eps);
+	p1 = fk.pdf(data[0]);
+	cout << p1 << endl;
+	TEST_ASSERT_DELTA(p1, pow(2*PI, -1.5) / 6.0, eps);
 
 }
 

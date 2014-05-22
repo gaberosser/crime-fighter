@@ -8,16 +8,28 @@ from matplotlib import pyplot as plt
 from matplotlib.lines import Line2D
 
 class PointProcess(object):
-    def __init__(self, data, p=None):
-        self.data = np.array(data)
-        # sort by time
+    def __init__(self, data, p=None, max_trigger_d=None, max_trigger_t=None, dtype=np.float64):
+        self.data = np.array(data, dtype=dtype)
+        # sort data by time
         self.data = self.data[self.data[:, 0].argsort()]
+
+        # set threshold distance and time if not provided
+        self.max_trigger_t = max_trigger_t or np.ptp(self.data[:, 0]) / 10.
+        self.max_trigger_d = max_trigger_d or np.sqrt(np.ptp(self.data[:, 1])**2 + np.ptp(self.data[:, 2])**2) / 20.
+        self.dtype = dtype
+
+        # compute linkage indices
+        self.set_linkages()
+
+        # initialise matrix p or use one provided
         if p:
             self.p = p
             self.pset = True
         else:
             self.p = np.zeros((self.ndata, self.ndata))
             self.pset = False
+
+        # init storage containers
         self.run_times = []
         self.num_bg = []
         self.num_trig = []
@@ -29,6 +41,11 @@ class PointProcess(object):
     @property
     def ndata(self):
         return self.data.shape[0]
+
+    def set_linkages(self):
+        pdiff = estimation.pairwise_differences(self.data, dtype=self.dtype)
+        distances = np.sqrt(pdiff[:, :, 1] ** 2 + pdiff[:, :, 2] ** 2)
+        self.linkage = np.where((distances < self.max_trigger_d) & (pdiff[:, :, 0] > 0) & (pdiff[:, :, 0] < self.max_trigger_t))
 
     def run(self, niter=30, verbose=True):
         # precompute error norm denominator
@@ -61,10 +78,10 @@ class PointProcess(object):
             # evaluate BG at data points
             m_xy = self.bg_xy_kde.pdf(self.data[:, 1], self.data[:, 2])
             m_t = self.bg_t_kde.pdf(self.data[:, 0])
-            m = m_xy * m_t
+            m = (m_xy * m_t) / float(self.ndata)
 
             # evaluate trigger KDE at all interpoint distances
-            g = estimation.evaluate_trigger_kde(self.trigger_kde, self.data, tol=0.99, ngrid=100)
+            g = estimation.evaluate_trigger_kde(self.trigger_kde, self.data, self.linkage)
 
             # sanity check
             if np.any(np.diagonal(g) != 0):
@@ -103,7 +120,7 @@ if __name__ == '__main__':
     data = data[data[:, 0].argsort()]
     print "Complete"
 
-    r = PointProcess(data)
+    r = PointProcess(data, max_trigger_d=0.75, max_trigger_t=80)
     r.run(num_iter)
 
     # precompute error norm denominator
@@ -185,33 +202,33 @@ if __name__ == '__main__':
     t = np.linspace(0, 60, 200)
     w = c.off_omega
     th = c.off_theta
-    z = th * w * np.exp(-w * t)
-    fig = plotting.plot_txy_t_marginals(r.trigger_kde, t_max=60)
-    plt.plot(t, z, 'k--')
+    zt = th * w * np.exp(-w * t)
+    fig = plotting.plot_txy_t_marginals(r.trigger_kde, norm=r.ndata, t_max=60)
+    plt.plot(t, zt, 'k--')
     ax = fig.gca()
-    ax.set_ylim([0, w * 1.02])
+    ax.set_ylim([0, w * th * 1.02])
     ax.legend(ax.get_lines(), ('Inferred', 'True'), 'upper right')
 
-    t = np.linspace(-0.05, 0.05, 200)
+    x = np.linspace(-0.05, 0.05, 200)
     sx = c.off_sigma_x
-    z = 1/(np.sqrt(2 * np.pi) * sx) * np.exp(-(t**2) / (2 * sx**2))
-    fig = plotting.plot_txy_x_marginals(r.trigger_kde, x_max=0.05)
-    plt.plot(t, z, 'k--')
+    zx = th / (np.sqrt(2 * np.pi) * sx) * np.exp(-(x**2) / (2 * sx**2))
+    fig = plotting.plot_txy_x_marginals(r.trigger_kde, norm=r.ndata, x_max=0.05)
+    plt.plot(x, zx, 'k--')
     ax = fig.gca()
-    ax.set_ylim([0, 1.05/(np.sqrt(2 * np.pi) * sx)])
+    ax.set_ylim([0, 1.05 * th / (np.sqrt(2 * np.pi) * sx)])
     ax.set_xlim([-0.05, 0.05])
     ax.legend(ax.get_lines(), ('Inferred', 'True'), 'upper right')
 
-    t = np.linspace(-0.5, 0.5, 200)
+    y = np.linspace(-0.5, 0.5, 200)
     sy = c.off_sigma_y
-    z = 1/(np.sqrt(2 * np.pi) * sy) * np.exp(-(t**2) / (2 * sy**2))
-    fig = plotting.plot_txy_y_marginals(r.trigger_kde, y_max=0.5)
+    zy = th/(np.sqrt(2 * np.pi) * sy) * np.exp(-(y**2) / (2 * sy**2))
+    fig = plotting.plot_txy_y_marginals(r.trigger_kde, norm=r.ndata, y_max=0.5)
     ax = fig.gca()
     line = ax.get_lines()[0]
-    plt.plot(t, z, 'k--')
+    plt.plot(y, zy, 'k--')
     ax = fig.gca()
-    ymax_theor = 1.05/(np.sqrt(2 * np.pi) * sy)
-    ymax_infer = 1.05 * max(line.get_ydata())
-    ax.set_ylim([0, max(ymax_infer, ymax_theor)])
+    ymax_theor = th/(np.sqrt(2 * np.pi) * sy)
+    ymax_infer = max(line.get_ydata())
+    ax.set_ylim([0, 1.05 * max(ymax_infer, ymax_theor)])
     ax.set_xlim([-0.5, 0.5])
     ax.legend(ax.get_lines(), ('Inferred', 'True'), 'upper right')
