@@ -52,11 +52,11 @@ FixedBandwidthKde::FixedBandwidthKde(vector<vector <double> > data, double bdwid
 }
 
 void FixedBandwidthKde::set_bandwidths(double bdwidth) {
-	this->bandwidths = vector<vector<double> >(ndata, vector<double>(ndim, bdwidth));
+	this->bandwidths = vector<vector<double> >(ndata(), vector<double>(ndim, bdwidth));
 }
 
 void FixedBandwidthKde::set_bandwidths(vector<double> bdwidths) {
-	this->bandwidths = vector<vector<double> >(ndata, bdwidths);
+	this->bandwidths = vector<vector<double> >(ndata(), bdwidths);
 }
 
 void FixedBandwidthKde::set_mvns() {
@@ -74,7 +74,8 @@ double FixedBandwidthKde::pdf(vector <double> x) {
 		res += mvns[i].pdf(x);
 	}
 	if (normed) {
-		res /= double(ndata())
+		res /= double(ndata());
+	}
 	return res;
 }
 
@@ -83,7 +84,7 @@ VariableBandwidthKde::VariableBandwidthKde(vector<vector <double> > data, bool n
 }
 
 void VariableBandwidthKde::set_bandwidths(int nn) {
-	this->bandwidths = vector<vector<double> >(ndata, vector<double>(ndim, 0.0));
+	this->bandwidths = vector<vector<double> >(ndata(), vector<double>(ndim, 0.0));
 	// normalise data according to stdev
 	vector<double> stds(3, 0.0);
 	for (int i=0; i<ndim; ++i) {
