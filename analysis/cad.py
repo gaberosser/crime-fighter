@@ -15,6 +15,7 @@ import numpy as np
 import datetime
 import pytz
 from database import logic
+from point_process import runner, estimation
 
 UK_TZ = pytz.timezone('Europe/London')
 
@@ -106,6 +107,17 @@ def cad_space_time_count(cad_temporal, cad_spatial):
     # create numpy array with counts
     res = logic.combine_aggregations_into_count(cad_temporal.data, cad_spatial.data)
     return pandas.DataFrame(res, index=cad_temporal.data.keys(), columns=cad_spatial.data.keys())
+
+
+def apply_point_process_to_cad(nicl_type=3):
+    qset = logic.clean_dedupe_cad(nicl_type=nicl_type)
+    rel_dt = np.min([x.inc_datetime for x in qset])
+    res = np.array([[(x.inc_datetime - rel_dt).total_seconds()] + list(x.att_map.coords) for x in qset])
+    # manually estimate p initially
+    p = estimation.initial_guess_educated(res, ct=1e-5, cd=0.002)
+    r = runner.PointProcess(res, p=p)
+    r.run(50)
+    return r
 
 
 class CadByGrid(object):

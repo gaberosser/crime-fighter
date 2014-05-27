@@ -78,18 +78,16 @@ def initial_guess(data):
     return P
 
 
-def initial_guess_educated(data):
+def initial_guess_educated(data, ct=None, cd=None):
 
     N = data.shape[0]
     pdiff = pairwise_differences(data)
-    ct = 1
-    cx = cy = 10
+    ct = ct or 1
+    cd = cd or 10
     dt = 1 / (1 + ct * pdiff[:, :, 0])
-    dx = 1 / (1 + cx * np.abs(pdiff[:, :, 1]))
-    dy = 1 / (1 + cy * np.abs(pdiff[:, :, 2]))
-    P = np.triu(dt * dx * dy, 0)
+    dd = 1 / (1 + cd * np.sqrt(pdiff[:, :, 1] ** 2 + pdiff[:, :, 2] ** 2))
+    P = np.triu(dt * dd, 0)
     col_sums = np.sum(P, axis=0)
-    # import ipdb; ipdb.set_trace()
     P /= col_sums
     return P
 
@@ -97,13 +95,13 @@ def initial_guess_educated(data):
 def initial_guess_equality(data):
 
     N = data.shape[0]
-    pdiff = pairwise_differences(data)
-    c = 5
-    P = np.triu(1 / (1 + c * pdiff[:, :, 0]), 0) / (1 + c * np.sqrt(pdiff[:, :, 1]**2 + pdiff[:, :, 2]**2))
+    P = np.ones((N, N))
+    P = np.triu(P)
+    # P = np.eye(N) * np.arange(N)
+    # P[0, 0] = 1
+    # P[np.triu_indices(N, k=1)] = 1.
     col_sums = np.sum(P, axis=0)
-    for i in range(1, N):
-        P[i, i] = (col_sums[i] - 1.)
-        P[:, i] /= (2 * (col_sums[i] - 1))
+    P /= col_sums
     return P
 
 
