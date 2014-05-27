@@ -85,6 +85,16 @@ void KdeTestSuite::test_fixed_bandwidth_kde()
 	TEST_ASSERT_DELTA(p1, expct1, eps);
 	TEST_ASSERT_DELTA(p2, expct2 * 2.0, eps);
 
+	// pdf call with multiple targets
+	vector<vector<double> > targets;
+	targets.push_back(x1);
+	targets.push_back(x2);
+	targets.push_back(x3);
+	vector <double> P = fk.pdf(targets);
+	TEST_ASSERT_DELTA(P[0], expct1, eps);
+	TEST_ASSERT_DELTA(P[1], expct1, eps);
+	TEST_ASSERT_DELTA(P[2], expct2 * 2.0, eps);
+
 }
 
 void KdeTestSuite::test_variable_bandwidth_kde() {

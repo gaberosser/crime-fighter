@@ -33,6 +33,7 @@ public:
 	void set_mvns(); // TODO move to private
 	int ndata() { return data.size(); }
 	double pdf(vector <double> x);
+	vector<double> pdf(vector< vector<double> > X);
 private:
 	void set_bandwidths(double bdwidth);
 	void set_bandwidths(vector<double> bdwidths);

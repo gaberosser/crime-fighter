@@ -79,6 +79,15 @@ double FixedBandwidthKde::pdf(vector <double> x) {
 	return res;
 }
 
+vector<double> FixedBandwidthKde::pdf(vector <vector<double> > X) {
+	int nt = X.size();
+	vector<double> res;
+	for (int i=0; i<nt; ++i) {
+		res.push_back(this->pdf(X.at(i)));
+	}
+	return res;
+}
+
 VariableBandwidthKde::VariableBandwidthKde(vector<vector <double> > data, bool normed) : FixedBandwidthKde(data, normed) {
 
 }
