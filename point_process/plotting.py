@@ -100,6 +100,8 @@ def plot_txy_y_marginals(k, norm=1.0, y_max=50, npt_1d=200, **kwargs):
 
 def data_scatter_movie(data, outdir=None, **kwargs):
 
+    from matplotlib import animation
+
     outdir = outdir or 'output/%s/' % datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     if not os.path.isdir(outdir):
         os.mkdir(outdir)
@@ -107,7 +109,8 @@ def data_scatter_movie(data, outdir=None, **kwargs):
     dt = kwargs.pop('dt', 0.5)
     fade = kwargs.pop('fade', 0.03)
     t_max = np.max(data[:, 0])
-    t_fade = t_max * fade
+    t_min = np.min(data[:, 0])
+    t_fade = (t_max - t_min) * fade
     x_min = np.min(data[:, 1])
     x_max = np.max(data[:, 1])
     y_min = np.min(data[:, 2])
@@ -115,7 +118,7 @@ def data_scatter_movie(data, outdir=None, **kwargs):
     xlim = np.array([x_min, x_max]) * 1.02
     ylim = np.array([y_min, y_max]) * 1.02
 
-    niter = int(t_max / dt) + 1
+    niter = int((t_max - t_min) / dt) + 1
     fig = plt.figure()
     ax = fig.add_subplot(111)
 
@@ -123,33 +126,69 @@ def data_scatter_movie(data, outdir=None, **kwargs):
     for n in range(niter):
         ax.cla()
         fname = os.path.join(outdir, "%04d.png" % (n+1))
-        vis_data = data[data[:, 0] <= t, :]
+        vis_idx = np.where(data[:, 0] <= t)[0]
+        vis_data = data[vis_idx, :]
         tdiff = t - vis_data[:, 0]
         tdiff /= float(t_fade)
-        tdiff[tdiff > 1.0] = 1.0
-        bg_idx = vis_data[:, 3] == 1.
-        ash_idx = vis_data[:, 3] == 0.
+
+        vis_idx = vis_idx[tdiff <= 1.0]
+        vis_data = vis_data[tdiff <= 1.0]
+        tdiff = tdiff[tdiff <= 1.0]
+
+        bg_idx = np.isnan(vis_data[:, 3])
+        ash_idx = ~np.isnan(vis_data[:, 3])
         bg = vis_data[bg_idx, :]
         ash = vis_data[ash_idx, :]
-        bg_c = 1.0
-        if len(bg.shape) > 1:
+
+        if bg.size:
             bg_c = np.zeros((sum(bg_idx), 4))
             bg_c[:, 3] = 1. - tdiff[bg_idx]
-        ash_c = 1.0
-        if len(ash.shape) > 1:
+
+        links = []
+        if ash.size:
             ash_c = np.zeros((sum(ash_idx), 4))
             ash_c[:, 0] = 1.0
             ash_c[:, 3] = 1.0 - tdiff[ash_idx]
+            # compute links
+            for i, a in enumerate(ash):
+
+                if a[3] < 0:
+                    continue
+
+                if a[3] not in vis_idx:
+                    # too far back to be visible
+                    continue
+
+                src = data[a[3], :]
+                if np.isnan(src[3]):
+                    # parent is bg
+                    this_col = [0, 0, 0, ash_c[i, 3]]
+                else:
+                    # parent is offspring
+                    this_col = [1, 0, 0, ash_c[i, 3]]
+                links.append(([src[1], src[2], a[1]-src[1], a[2]-src[2]], list(this_col)))
+
         try:
-            h1 = ax.scatter(bg[:, 1], bg[:, 2], marker='o', c=bg_c)
-            h2 = ax.scatter(ash[:, 1], ash[:, 2], marker='o', c=ash_c)
-        except ValueError:
-            import pdb; pdb.set_trace()
+            if bg.size:
+                h1 = ax.scatter(bg[:, 1], bg[:, 2], marker='o', c=bg_c)
+                h1.set_edgecolor('face')
+            if ash.size:
+                h2 = ax.scatter(ash[:, 1], ash[:, 2], marker='o', c=ash_c)
+                h2.set_edgecolor('face')
+            if links:
+                hlines = []
+                harrows = []
+                # import ipdb; ipdb.set_trace()
+                for i in range(len(links)):
+                    # hlines.append(ax.plot(links[i][0], links[i][1], linestyle='-', c=[0, 0, 0, ash_c[i][3]]))
+                    harrows.append(ax.arrow(*links[i][0], head_width=0.25, length_includes_head=True, color=links[i][1]))
+
+        except Exception as exc:
+            import ipdb; ipdb.set_trace()
         ax.set_title("t = %.2f s" % t)
         ax.set_xlim(xlim)
         ax.set_ylim(xlim)
-        h1.set_edgecolor('face')
-        h2.set_edgecolor('face')
+
         fig.savefig(fname)
         t += dt
 

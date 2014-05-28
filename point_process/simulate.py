@@ -41,20 +41,34 @@ class MohlerSimulation():
         self.off_sigma_x = 0.01 # aftershock x width (m)
         self.off_sigma_y = 0.1 # aftershock y width (m)
 
-        self.bg_var = self.bg_sigma ** 2
-        self.off_var_x = self.off_sigma_x ** 2
-        self.off_var_y = self.off_sigma_y ** 2
         self.off_mean = np.zeros(2)
-        self.off_cov = np.array([[self.off_var_x, 0.], [0., self.off_var_y]])
 
         """ May need a normalisation constant in the aftershock process for direct comparison with Mohler,
             as the authors don't use a normalised distribution in that case. """
         K = 1/float(2 * PI * self.off_sigma_x * self.off_sigma_y)
 
-        # inverse function for simulating non-stationary poisson process
-        self.inv_func = lambda a: -1/float(self.off_omega) * math.log((self.off_theta - a)/self.off_theta)
+        self.data = np.zeros((1, 4))
 
-        self.data = np.empty((0, 4))
+    def data_iter(self):
+        i = 0
+        while i<self.ndata:
+            yield self.data[i, :]
+            i += 1
+
+
+    @property
+    def off_cov(self):
+        off_var_x = self.off_sigma_x ** 2
+        off_var_y = self.off_sigma_y ** 2
+        return np.array([[off_var_x, 0.], [0., off_var_y]])
+
+    @property
+    def bg_var(self):
+        return self.bg_sigma ** 2
+
+    def non_stationary_poisson_inverse(self, x):
+        # inverse function for simulating non-stationary poisson process
+        return -1.0 / float(self.off_omega) * math.log((self.off_theta - x)/self.off_theta)
 
     def initialise_background(self):
         """ Simulate background events
@@ -72,7 +86,7 @@ class MohlerSimulation():
             Shocks are appended to list """
         # generate further points
         t_max = self.t_total
-        new_t = nonstationary_poisson(self.inv_func, self.t_total - t)
+        new_t = nonstationary_poisson(self.non_stationary_poisson_inverse, self.t_total - t)
         shocks = []
         loc = np.random.multivariate_normal(self.off_mean, self.off_cov, size=len(new_t))
         for tn, ln in zip(new_t, loc):
@@ -84,7 +98,9 @@ class MohlerSimulation():
         shocks = []
         n_init = self.data.shape[0]
         n_shocks = 0
-        for (i, t, x, y, _) in self.data:
+        gen = self.data_iter()
+        for (i, t, x, y, _) in gen:
+            print "%u: %u / %u" % (i, len(self.data), n_init)
             new_shocks = self._point_aftershocks(t, x, y, i)
             shocks.extend(new_shocks)
             if i < n_init:

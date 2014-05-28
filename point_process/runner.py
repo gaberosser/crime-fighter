@@ -22,7 +22,7 @@ class PointProcess(object):
         self.set_linkages()
 
         # initialise matrix p or use one provided
-        if p:
+        if p is not None:
             self.p = p
             self.pset = True
         else:
@@ -62,8 +62,10 @@ class PointProcess(object):
             # sanity check
             colsum = np.sum(self.p, axis=0)
             if np.any((colsum < (1 - 1e-12)) | (colsum > (1 + 1e-12))):
+                import ipdb; ipdb.set_trace()
                 raise AttributeError("Matrix P failed requirement that columns sum to 1 within tolerance.")
             if np.any(np.tril(self.p, k=-1) != 0.):
+                import ipdb; ipdb.set_trace()
                 raise AttributeError("Matrix P failed requirement that lower diagonal is zero.")
 
             bg, interpoint = estimation.sample_bg_and_interpoint(self.data, self.p)
@@ -71,9 +73,12 @@ class PointProcess(object):
             self.num_trig.append(interpoint.shape[0])
 
             # compute KDEs
-            self.bg_t_kde = pp_kde.VariableBandwidthNnKde(bg[:, 0], normed=False)
-            self.bg_xy_kde = pp_kde.VariableBandwidthNnKde(bg[:, 1:], normed=False)
-            self.trigger_kde = pp_kde.VariableBandwidthNnKde(interpoint, normed=False)
+            try:
+                self.bg_t_kde = pp_kde.VariableBandwidthNnKde(bg[:, 0], normed=False)
+                self.bg_xy_kde = pp_kde.VariableBandwidthNnKde(bg[:, 1:], normed=False)
+                self.trigger_kde = pp_kde.VariableBandwidthNnKde(interpoint, normed=False)
+            except Exception:
+                import ipdb; ipdb.set_trace()
 
             # evaluate BG at data points
             m_xy = self.bg_xy_kde.pdf(self.data[:, 1], self.data[:, 2])
@@ -121,7 +126,10 @@ if __name__ == '__main__':
     print "Complete"
 
     r = PointProcess(data, max_trigger_d=0.75, max_trigger_t=80)
-    r.run(num_iter)
+    try:
+        r.run(num_iter)
+    except Exception:
+        num_iter = len(r.num_bg)
 
     # precompute error norm denominator
     # err_denom = float(ndata*(ndata + 1)) / 2.

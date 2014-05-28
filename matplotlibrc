@@ -8,5 +8,7 @@ font.size           : 16.0
 text.usetex         : True
 axes.color_cycle    : k, r, b, g, c, m, y
 figure.figsize      : 8, 6
-figure.dpi          : 300
+figure.dpi          : 75
 figure.facecolor    : white
+backend             : TkAgg
+interactive         : True
