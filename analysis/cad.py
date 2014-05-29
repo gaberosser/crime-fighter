@@ -1,6 +1,4 @@
 __author__ = 'gabriel'
-from database import models
-from stats import logic
 import matplotlib as mpl
 from matplotlib import pyplot as plt
 import cartopy.crs as ccrs
@@ -14,7 +12,7 @@ import pandas
 import numpy as np
 import datetime
 import pytz
-from database import logic
+from database import logic, models
 from point_process import runner, estimation
 
 UK_TZ = pytz.timezone('Europe/London')
@@ -118,6 +116,31 @@ def apply_point_process_to_cad(nicl_type=3):
     r = runner.PointProcess(res, p=p)
     r.run(50)
     return r
+
+
+def diggle_st_clustering(nicl_type=3):
+    ## TODO: TEST ME
+    qset = logic.clean_dedupe_cad(nicl_type=nicl_type)
+    rel_dt = np.min([x.inc_datetime for x in qset])
+    res = np.array([[(x.inc_datetime - rel_dt).total_seconds()] + list(x.att_map.coords) for x in qset])
+    # get combined domain of all grid squares
+    domain = models.Division.objects.filter(type='cad_250m_grid').unionagg()
+    A = domain.area
+    T = np.max(res[:, 0])
+    n = res.shape[0]
+    t2, t1 = np.meshgrid(res[:, 0], res[:, 0], copy=True)
+    x2, x1 = np.meshgrid(res[:, 1], res[:, 1], copy=True)
+    y2, y1 = np.meshgrid(res[:, 2], res[:, 2], copy=True)
+    u = np.abs(t2 - t1)
+    d = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+    ## TODO: compute w matrix
+    v_tmp = np.repeat(res[:, 0], n).reshape((n, n))
+    v = np.ones((n, n))
+    v[(v_tmp - u) < 0] = 2
+    v[(v_tmp + u) > T] = 2
+    v[np.diag_indices(n)] = 0
+    
+
 
 
 class CadByGrid(object):

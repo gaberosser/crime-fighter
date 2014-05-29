@@ -100,7 +100,6 @@ class MohlerSimulation():
         n_shocks = 0
         gen = self.data_iter()
         for (i, t, x, y, _) in gen:
-            print "%u: %u / %u" % (i, len(self.data), n_init)
             new_shocks = self._point_aftershocks(t, x, y, i)
             shocks.extend(new_shocks)
             if i < n_init:

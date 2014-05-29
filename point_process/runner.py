@@ -8,7 +8,7 @@ from matplotlib import pyplot as plt
 from matplotlib.lines import Line2D
 
 class PointProcess(object):
-    def __init__(self, data, p=None, max_trigger_d=None, max_trigger_t=None, dtype=np.float64):
+    def __init__(self, data, p=None, max_trigger_d=None, max_trigger_t=None, dtype=np.float64, estimator=None):
         self.data = np.array(data, dtype=dtype)
         # sort data by time
         self.data = self.data[self.data[:, 0].argsort()]
@@ -28,6 +28,8 @@ class PointProcess(object):
         else:
             self.p = np.zeros((self.ndata, self.ndata))
             self.pset = False
+            # look for an estimator function
+            self.estimator = estimator or estimation.initial_guess_educated
 
         # init storage containers
         self.run_times = []
@@ -53,7 +55,7 @@ class PointProcess(object):
 
         # initial estimate for p if required
         if not self.pset:
-            self.p = estimation.initial_guess_educated(self.data)
+            self.p = self.estimator(self.data)
 
         for i in range(niter):
 
@@ -111,7 +113,7 @@ class PointProcess(object):
 
 if __name__ == '__main__':
 
-    num_iter = 50
+    num_iter = 20
 
     print "Starting simulation..."
     # simulate data
