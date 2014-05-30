@@ -6,6 +6,7 @@ from scipy.spatial.distance import pdist, squareform
 import collections
 from django.db.models import Q, Count, Sum, Min, Max
 from django.contrib.gis.measure import D
+from django.contrib.gis.geos import Polygon, MultiPolygon, LinearRing, Point
 from plotting import geodjango_to_shapely
 from database.views import month_iterator, week_iterator
 import pandas
@@ -119,6 +120,7 @@ def apply_point_process_to_cad(nicl_type=3):
 
 
 def diggle_st_clustering(nicl_type=3):
+    from stats.logic import create_ring
     ## TODO: TEST ME
     qset = logic.clean_dedupe_cad(nicl_type=nicl_type)
     rel_dt = np.min([x.inc_datetime for x in qset])
@@ -133,13 +135,30 @@ def diggle_st_clustering(nicl_type=3):
     y2, y1 = np.meshgrid(res[:, 2], res[:, 2], copy=True)
     u = np.abs(t2 - t1)
     d = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
-    ## TODO: compute w matrix
+
     v_tmp = np.repeat(res[:, 0], n).reshape((n, n))
     v = np.ones((n, n))
     v[(v_tmp - u) < 0] = 2
     v[(v_tmp + u) > T] = 2
     v[np.diag_indices(n)] = 0
-    
+
+    ## TODO: this is SO SLOW
+    w = np.ones((n, n))
+    for i in range(n):
+        print i
+        centre = res[i, 1:3]
+        for j in range(n):
+            if i== j:
+                w[i, j] = 0
+                continue
+            radius = d[i, j]
+            if d[i, j] < 1e-12:
+                # exact repeat or same grid snapping
+                w[i, j] = 1.
+                continue
+            circ = Point(*centre).buffer(radius).exterior_ring
+            l = domain.intersection(circ).length
+            w[i, j] = 2 * np.pi * radius / l
 
 
 

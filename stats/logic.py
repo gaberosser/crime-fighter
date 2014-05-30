@@ -143,11 +143,3 @@ def rook_boolean_connectivity(areal_unit_qset):
         except ZeroDivisionError:
             pass
     return W
-
-
-def create_ring(centre, radius, npts=None):
-    npts = npts or min(max(10, int(2 * np.pi * radius)), 50)
-    x = centre[0] + radius * np.cos(np.linspace(0, 2 * np.pi, npts + 1))
-    y = centre[1] + radius * np.sin(np.linspace(0, 2 * np.pi, npts + 1))
-    return LinearRing(*zip(x, y))
-
