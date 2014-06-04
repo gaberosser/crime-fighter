@@ -39,6 +39,7 @@ INSTALLED_APPS = (
     'django.contrib.gis',
     'south',
     'database',
+    'analysis'
 )
 
 MIDDLEWARE_CLASSES = (

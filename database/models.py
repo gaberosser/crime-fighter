@@ -78,6 +78,9 @@ class Cad(models.Model):
     def __str__(self):
         return "%u - %s - %s" % (self.inc_number, self.call_sign, str(self.inc_datetime))
 
+    class Meta:
+        app_label = 'database'
+
 
 class DivisionType(models.Model):
     name = models.CharField(help_text='Name for this division set', max_length=128, primary_key=True)

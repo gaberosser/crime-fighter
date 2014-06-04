@@ -86,6 +86,17 @@ def clean_dedupe_cad(nicl_type=None, only_new=False):
     return dedupe_cad(qset)
 
 
+def cad_queryset_to_r(qset, outfile='from_python.gzip'):
+    from rpy2.robjects import r
+    import pandas.rpy.common as com
+    from pandas import DataFrame
+    rel_dt = np.min([x.inc_datetime for x in qset])
+    res = np.array([[(x.inc_datetime - rel_dt).total_seconds()] + list(x.att_map.coords) for x in qset])
+    df = com.convert_to_r_dataframe(DataFrame(res))
+    r.assign("foo", df)
+    r("save(foo, file='%s', compress=TRUE)" % outfile)
+
+
 def time_aggregate_data(cad_list, bucket_dict=None):
         bucket_dict = bucket_dict = bucket_dict or {'all': lambda x: True}
         res = collections.OrderedDict()
