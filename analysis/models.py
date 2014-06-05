@@ -18,6 +18,9 @@ class CadCircles(models.Model):
 
     objects = models.GeoManager()
 
+    class Meta:
+        unique_together = ('cad_i_id', 'cad_j_id') # no duplicate pairings
+
 
 def _create_cad_circle(pqset0, pqset1):
     import numpy as np
