@@ -2,6 +2,7 @@ __author__ = 'gabriel'
 import unittest
 import simulate
 import estimation
+import validate
 import numpy as np
 from mock import patch
 from scipy.spatial import KDTree
@@ -172,3 +173,61 @@ class TestKDNearestNeighbours(unittest.TestCase):
         self.assertAlmostEqual(d[3], np.sqrt(2))
         self.assertEqual(idx[0], 0)
         self.assertEqual(idx[3], 11)
+
+
+class TestValidate(unittest.TestCase):
+
+    def test_spatial_grid(self):
+        from django.contrib.gis.geos import Polygon
+        # create a circle polygon centred at origin
+        x = 5. * np.cos(np.linspace(0, 2 * np.pi, 101))
+        y = 5. * np.sin(np.linspace(0, 2 * np.pi, 101))
+        x[-1] = x[0]
+        y[-1] = y[0]
+        circ = Polygon(zip(x, y))
+
+        a = validate.ValidationBase([], [], circ)
+
+        edges, centres = a.create_spatial_grid(grid_length=1.0)
+        self.assertEqual(len(edges), 121)
+        self.assertEqual(len(centres), 100)
+        expctd_edges = np.meshgrid(range(-5, 6), range(-5, 6))
+        expctd_edges = np.vstack((expctd_edges[0].flatten(), expctd_edges[1].flatten())).transpose().astype(float)
+        for x, y in zip(np.array(edges)[:, 0], expctd_edges[:, 0]):
+            self.assertAlmostEqual(x, y)
+        for x, y in zip(np.array(edges)[:, 1], expctd_edges[:, 1]):
+            self.assertAlmostEqual(x, y)
+        expctd_centres = np.meshgrid(np.arange(-4.5, 5.5), np.arange(-4.5, 5.5))
+        expctd_centres = np.vstack((expctd_centres[0].flatten(), expctd_centres[1].flatten())).transpose().astype(float)
+        for x, y in zip(np.array(centres)[:, 0], expctd_centres[:, 0]):
+            self.assertAlmostEqual(x, y)
+        for x, y in zip(np.array(centres)[:, 1], expctd_centres[:, 1]):
+            self.assertAlmostEqual(x, y)
+
+        edges, centres = a.create_spatial_grid(grid_length=1.5)
+        self.assertEqual(len(edges), 81)
+        self.assertEqual(len(centres), 64)
+        self.assertAlmostEqual(np.min(np.array(edges)[:, 0]), -6.0)
+        self.assertAlmostEqual(np.max(np.array(edges)[:, 0]), 6.0)
+
+        edges, centres = a.create_spatial_grid(grid_length=1., offset_coords=(0.1, 0.2))
+        self.assertEqual(len(edges), 144)
+        self.assertEqual(len(centres), 121)
+        self.assertAlmostEqual(np.min(np.array(edges)[:, 0]), -5.9)
+        self.assertAlmostEqual(np.max(np.array(edges)[:, 0]), 5.1)
+        self.assertAlmostEqual(np.min(np.array(edges)[:, 1]), -5.8)
+        self.assertAlmostEqual(np.max(np.array(edges)[:, 1]), 5.2)
+
+    def test_split_data(self):
+        data = np.arange(300).reshape((100, 3))
+        a = validate.ValidationBase(data, [], [])
+        prng = np.random.RandomState(42)
+        expctd_p = prng.rand(100)
+        with patch('numpy.random.random', side_effect=lambda x:np.random.RandomState(42).rand(x)) as mock:
+            a.split_data(test_frac=0.2)
+        self.assertEqual(len(a.test_idx[0]), sum(expctd_p < 0.2))
+        self.assertEqual(len(a.train_idx[0]), sum(expctd_p >= 0.2))
+        for i, idx in enumerate(np.where(expctd_p < 0.2)[0]):
+            self.assertListEqual(list(a.testing[i]), list(data[idx]))
+        for i, idx in enumerate(np.where(expctd_p >= 0.2)[0]):
+            self.assertListEqual(list(a.training[i]), list(data[idx]))

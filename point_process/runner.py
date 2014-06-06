@@ -44,12 +44,33 @@ class PointProcess(object):
     def ndata(self):
         return self.data.shape[0]
 
+    @property
+    def niter(self):
+        return len(self.l2_differences)
+
     def set_linkages(self):
         pdiff = estimation.pairwise_differences(self.data, dtype=self.dtype)
         distances = np.sqrt(pdiff[:, :, 1] ** 2 + pdiff[:, :, 2] ** 2)
         self.linkage = np.where((distances < self.max_trigger_d) & (pdiff[:, :, 0] > 0) & (pdiff[:, :, 0] < self.max_trigger_t))
 
-    def run(self, niter=30, verbose=True):
+    def evaluate_conditional_intensity(self, t, x, y, data=None):
+        """
+        Evaluate the conditional intensity, lambda, at point (t, x, y) or at points specified in 1D arrays t, x, y.
+        Optionally provide data matrix to incorporate new history, otherwise run with training data.
+        """
+        data = data or self.data
+        # ndata = data.shape[0] if len(data.shape) > 1 else 1
+
+        bg = self.bg_t_kde.pdf(t) * self.bg_xy_kde(x, y)
+
+        ttarget, tdata = np.meshgrid(np.array(t), data[:, 0])
+        xtarget, xdata = np.meshgrid(np.array(x), data[:, 1])
+        ytarget, ydata = np.meshgrid(np.array(y), data[:, 2])
+        trigger = np.sum(self.trigger_kde.pdf(ttarget - tdata, xtarget - xdata, ytarget - ydata), axis=1)
+
+        return bg + trigger
+
+    def train(self, niter=30, verbose=True, tol_p=0.):
         # precompute error norm denominator
         err_denom = float(self.ndata * (self.ndata + 1)) / 2.
 
@@ -110,6 +131,9 @@ class PointProcess(object):
             if verbose:
                 print "Completed %d / %d iterations in %f s" % (i+1, niter, self.run_times[-1])
 
+            if tol_p != 0. and self.l2_differences[-1] < tol_p:
+                break
+
 
 if __name__ == '__main__':
 
@@ -129,69 +153,9 @@ if __name__ == '__main__':
 
     r = PointProcess(data, max_trigger_d=0.75, max_trigger_t=80)
     try:
-        r.run(num_iter)
+        r.train(num_iter)
     except Exception:
         num_iter = len(r.num_bg)
-
-    # precompute error norm denominator
-    # err_denom = float(ndata*(ndata + 1)) / 2.
-
-    # P = np.zeros((ndata, ndata, num_iter + 1))
-    # k_bgt = []
-    # k_bgxy = []
-    # k_ash = []
-    # l2_errors = []
-    # n_bg = []
-    # n_ash = []
-    #
-    # P[:, :, 0] = estimation.initial_guess_educated(data)
-    # # start main simulation loop
-    # for i in range(num_iter):
-    #     print "Iteration", i
-    #     tic = time()
-    #     # sampling
-    #     bg, interpoint = estimation.sample_bg_and_interpoint(data, P[:, :, i])
-    #     n_bg.append(bg.shape[0])
-    #     n_ash.append(interpoint.shape[0])
-    #
-    #     # compute KDEs
-    #     # BG
-    #     bg_t_kde = pp_kde.VariableBandwidthKde(bg[:, 0], normed=False)
-    #     bg_xy_kde = pp_kde.VariableBandwidthKde(bg[:, 1:], normed=False)
-    #     # interpoint / trigger KDE
-    #     trigger_kde = pp_kde.VariableBandwidthKde(interpoint, normed=False)
-    #     k_bgt.append(bg_t_kde)
-    #     k_bgxy.append(bg_xy_kde)
-    #     k_ash.append(trigger_kde)
-    #
-    #     # evaluate BG at data points
-    #     m_xy = bg_xy_kde.pdf(data[:, 1], data[:, 2])
-    #     m_t = bg_t_kde.pdf(data[:, 0])
-    #     m = m_xy * m_t
-    #
-    #     # evaluate trigger KDE
-    #     g = estimation.evaluate_trigger_kde(trigger_kde, data, tol=0.99, ngrid=100)
-    #
-    #     # sanity check
-    #     if np.any(g[range(ndata), range(ndata)] != 0):
-    #         raise AttributeError("Non-zero diagonal values found in g.")
-    #
-    #     # recompute P
-    #     l = np.sum(g, axis=0) + m
-    #     P[:, :, i+1] = (m / l) * np.eye(ndata) + (g / l)
-    #
-    #     # sanity check
-    #     eps = 1e-12
-    #     colsum = np.sum(P[:, :, i+1], axis=0)
-    #     if np.any((colsum < (1 - eps)) | (colsum > (1 + eps))):
-    #         raise AttributeError("Matrix P failed requirement that columns sum to 1 within tolerance.")
-    #     if np.any(np.tril(P[:, :, i+1], k=-1) != 0.):
-    #         raise AttributeError("Matrix P failed requirement that lower diagonal is zero.")
-    #
-    #     # error analysis between iterations
-    #     q = P[:, :, i+1] - P[:, :, i]
-    #     l2_errors.append(np.sqrt(np.sum(q**2)) / err_denom)
-    #     print "Completed in %f s" % (time() - tic)
 
 
     # plots

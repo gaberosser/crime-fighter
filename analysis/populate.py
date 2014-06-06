@@ -29,8 +29,6 @@ y1, y2 = np.meshgrid(coords_y, coords_y, copy=False)
 dy = np.array(y1 - y2, dtype=float)
 radii = np.sqrt(dx**2 + dy**2)
 
-# x, y = np.meshgrid(coords_x, coords_y, copy=False)
-
 
 def create_circle_coords(centres_x, centres_y, rad, npt=20):
     assert centres_x.size == centres_y.size == rad.size
@@ -80,25 +78,11 @@ def _create_cad_circle(i):
             'radius': this_radii[n],
             'linear_ring': LineString(zip(lr_coords_x[n, :], lr_coords_y[n, :])),
             }
-        # res.append(CadCircles(**d))
         res.append(d)
 
     return res
 
-    # print "idx %d, commencing bulk_create" % idx.start
-    # try:
-    #     with transaction.atomic():
-    #         CadCircles.objects.bulk_create(res)
-    # except Exception as exc:
-    #     print repr(exc)
-    #     raise exc
-    # else:
-    #     print "idx %d iteration complete" % idx.start
-    # return [(t.cad_i.id, t.cad_j.id) for t in res]
-
-
 if __name__ == "__main__":
-    # res = _create_cad_circle(0)
     niter = int(dx.size / CHUNKSIZE) + 1
     pool = multiprocessing.Pool()
     m = pool.map_async(_create_cad_circle, range(niter))
@@ -110,4 +94,4 @@ if __name__ == "__main__":
     tic = time()
     with transaction.atomic():
         CadCircles.objects.bulk_create(res)
-    print "Completed in %f seconds" % (tic-time())
+    print "Completed in %f seconds" % (time() - tic)
