@@ -35,7 +35,7 @@ def marginal_icdf_optimise(k, y, dim=0, tol=1e-8):
     return x0
 
 
-class FixedBandwidthKde():
+class FixedBandwidthKde(object):
     def __init__(self, data, normed=True, *args, **kwargs):
         self.data = data
         self.normed = normed
@@ -172,19 +172,22 @@ class VariableBandwidthKde(FixedBandwidthKde):
 
 class VariableBandwidthNnKde(VariableBandwidthKde):
 
+    def __init__(self, data, normed=True, *args, **kwargs):
+        self.nn = None
+        self.nn_distances = []
+        super(VariableBandwidthNnKde, self).__init__(data, normed, *args, **kwargs)
+        self.set_mvns()
+
     def set_bandwidths(self, *args, **kwargs):
+        tol = 1e-12
+        from scipy.spatial import KDTree
+        default_distance = kwargs.pop('nn_default_distance', None)
         if 'nn' in kwargs:
             self.nn = kwargs.pop('nn')
-            self.compute_nn_bandwidth()
         else:
             # default nn values
             self.nn = min(100, self.ndata) if self.ndim == 1 else min(15, self.ndata)
-            self.compute_nn_bandwidth()
 
-        self.set_mvns()
-
-    def compute_nn_bandwidth(self):
-        from scipy.spatial import KDTree
         if self.nn <= 1:
             raise Exception("The number of nearest neighbours for variable KDE must be >1")
         # compute nn distances on normed data
@@ -198,6 +201,19 @@ class VariableBandwidthNnKde(VariableBandwidthKde):
         for i in range(self.ndata):
             d, _ = kd.query(nd[i, :], k=self.nn)
             self.nn_distances[i] = max(d[~np.isinf(d)]) if np.isinf(d[-1]) else d[-1]
+
+            # check for zero distances
+            if self.nn_distances[i] < tol:
+                if default_distance:
+                    self.nn_distances[i] = default_distance
+                else:
+                    d, _ = kd.query(nd[i, :], k=kd.n) # all NN distance values
+                    idx = (~np.isinf(d)) & (d > tol)
+                    if np.any(idx):
+                        self.nn_distances[i] = d[np.where(idx)[0][0]]
+                    else:
+                        raise AttributeError("No non-zero and finite NN distances available, and no default specified")
+
             self.bandwidths[i] = std * self.nn_distances[i]
 
 

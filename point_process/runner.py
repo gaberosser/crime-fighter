@@ -100,8 +100,9 @@ class PointProcess(object):
                 self.bg_t_kde = pp_kde.VariableBandwidthNnKde(bg[:, 0], normed=False)
                 self.bg_xy_kde = pp_kde.VariableBandwidthNnKde(bg[:, 1:], normed=False)
                 self.trigger_kde = pp_kde.VariableBandwidthNnKde(interpoint, normed=False)
-            except Exception:
+            except Exception as exc:
                 import ipdb; ipdb.set_trace()
+                raise exc
 
             # evaluate BG at data points
             m_xy = self.bg_xy_kde.pdf(self.data[:, 1], self.data[:, 2])

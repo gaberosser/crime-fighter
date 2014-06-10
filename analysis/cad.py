@@ -109,18 +109,21 @@ def cad_space_time_count(cad_temporal, cad_spatial):
 
 
 def apply_point_process_to_cad(nicl_type=3):
-    qset = logic.clean_dedupe_cad(nicl_type=nicl_type)
+    max_trigger_t = 60 * 24 * 60 * 60 # units seconds
+    max_trigger_d = 1000 # units metres
+    qset = logic.clean_dedupe_cad(nicl_type=nicl_type, only_new=True)
     rel_dt = np.min([x.inc_datetime for x in qset])
     res = np.array([[(x.inc_datetime - rel_dt).total_seconds()] + list(x.att_map.coords) for x in qset])
+    # sort data
+    res = res[np.argsort(res[:, 0])]
     # manually estimate p initially
-    p = estimation.initial_guess_educated(res, ct=1e-5, cd=0.002)
-    r = runner.PointProcess(res, p=p)
-    r.run(50)
+    p = estimation.initial_guess_educated(res, ct=1e-5, cd=0.02)
+    r = runner.PointProcess(res, p=p, max_trigger_t=max_trigger_t, max_trigger_d=max_trigger_d)
+    r.train(niter=25)
     return r
 
 
 def diggle_st_clustering(nicl_type=3):
-    from stats.logic import create_ring
     ## TODO: TEST ME
     qset = logic.clean_dedupe_cad(nicl_type=nicl_type)
     rel_dt = np.min([x.inc_datetime for x in qset])
