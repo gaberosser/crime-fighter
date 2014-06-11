@@ -123,14 +123,17 @@ class TestSampling(unittest.TestCase):
             self.assertTrue(x0 >= x1)
 
         with patch('numpy.random.RandomState', return_value=np.random.RandomState(42)) as mock:
-            bg, interpoint = estimation.sample_bg_and_interpoint(data, P)
+            bg, interpoint, cause_effect = estimation.sample_bg_and_interpoint(data, P)
 
+        self.assertEqual(interpoint.shape[0], cause_effect.shape[0])
         self.assertEqual(bg.shape[0] + interpoint.shape[0], data.shape[0])
         self.assertListEqual(list(bg[0, :]), list(data[0, :]))
 
         # no negative times
         self.assertTrue(np.sum(interpoint[:, 0] < 0) == 0)
 
+        # no cause and effect pairs have the same index
+        self.assertFalse(np.any(cause_effect[:, 0] == cause_effect[:, 1]))
 
         # check division was created as expected
         bg_n = 0

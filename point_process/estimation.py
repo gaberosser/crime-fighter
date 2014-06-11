@@ -14,13 +14,13 @@ def weighted_choice_np(weights):
 
 
 def sample_events(P):
-    n = P.shape[0]
+    n = P.shape[1]
     res = []
     for i in range(n):
         p = P[:, i]
         idx = np.argsort(p)
         idx = idx[::-1]
-        res.append((i, idx[weighted_choice_np(p[idx])]))
+        res.append((i, idx[weighted_choice_np(p[idx])])) # effect, cause
     return res
 
 
@@ -31,6 +31,7 @@ def sample_bg_and_interpoint(data, P):
     sample_idx = sample_events(P)
     bg = []
     interpoint = []
+    cause_effect = []
     for effect, cause in sample_idx:
         if cause == effect:
             # bg
@@ -40,8 +41,9 @@ def sample_bg_and_interpoint(data, P):
             dest = data[effect, :]
             origin = data[cause, :]
             interpoint.append(dest - origin)
+            cause_effect.append((cause, effect))
 
-    return np.array(bg), np.array(interpoint)
+    return np.array(bg), np.array(interpoint), np.array(cause_effect)
 
 
 def pairwise_differences(data, b_iter=False, dtype=None):

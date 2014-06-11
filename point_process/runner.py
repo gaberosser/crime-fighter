@@ -6,9 +6,10 @@ import numpy as np
 from time import time
 from matplotlib import pyplot as plt
 from matplotlib.lines import Line2D
+import ipdb
 
 class PointProcess(object):
-    def __init__(self, data, p=None, max_trigger_d=None, max_trigger_t=None, dtype=np.float64, estimator=None):
+    def __init__(self, data, p=None, max_trigger_d=None, max_trigger_t=None, min_bandwidth=None, dtype=np.float64, estimator=None):
         self.data = np.array(data, dtype=dtype)
         # sort data by time
         self.data = self.data[self.data[:, 0].argsort()]
@@ -16,6 +17,7 @@ class PointProcess(object):
         # set threshold distance and time if not provided
         self.max_trigger_t = max_trigger_t or np.ptp(self.data[:, 0]) / 10.
         self.max_trigger_d = max_trigger_d or np.sqrt(np.ptp(self.data[:, 1])**2 + np.ptp(self.data[:, 2])**2) / 20.
+        self.min_bandwidth = min_bandwidth
         self.dtype = dtype
 
         # compute linkage indices
@@ -85,13 +87,13 @@ class PointProcess(object):
             # sanity check
             colsum = np.sum(self.p, axis=0)
             if np.any((colsum < (1 - 1e-12)) | (colsum > (1 + 1e-12))):
-                import ipdb; ipdb.set_trace()
                 raise AttributeError("Matrix P failed requirement that columns sum to 1 within tolerance.")
             if np.any(np.tril(self.p, k=-1) != 0.):
-                import ipdb; ipdb.set_trace()
+                ipdb.set_trace()
                 raise AttributeError("Matrix P failed requirement that lower diagonal is zero.")
 
-            bg, interpoint = estimation.sample_bg_and_interpoint(self.data, self.p)
+            bg, interpoint, cause_effect = estimation.sample_bg_and_interpoint(self.data, self.p)
+            # ipdb.set_trace()
             self.num_bg.append(bg.shape[0])
             self.num_trig.append(interpoint.shape[0])
 
@@ -99,9 +101,10 @@ class PointProcess(object):
             try:
                 self.bg_t_kde = pp_kde.VariableBandwidthNnKde(bg[:, 0], normed=False)
                 self.bg_xy_kde = pp_kde.VariableBandwidthNnKde(bg[:, 1:], normed=False)
-                self.trigger_kde = pp_kde.VariableBandwidthNnKde(interpoint, normed=False)
+                self.trigger_kde = pp_kde.VariableBandwidthNnKde(interpoint, normed=False,
+                                                                 min_bandwidth=self.min_bandwidth)
             except Exception as exc:
-                import ipdb; ipdb.set_trace()
+                ipdb.set_trace()
                 raise exc
 
             # evaluate BG at data points

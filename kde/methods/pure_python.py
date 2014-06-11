@@ -182,6 +182,7 @@ class VariableBandwidthNnKde(VariableBandwidthKde):
         tol = 1e-12
         from scipy.spatial import KDTree
         default_distance = kwargs.pop('nn_default_distance', None)
+        min_bandwidth = kwargs.pop('min_bandwidth', None)
         if 'nn' in kwargs:
             self.nn = kwargs.pop('nn')
         else:
@@ -215,6 +216,12 @@ class VariableBandwidthNnKde(VariableBandwidthKde):
                         raise AttributeError("No non-zero and finite NN distances available, and no default specified")
 
             self.bandwidths[i] = std * self.nn_distances[i]
+
+        # apply minimum bandwidth constraint if required
+        if min_bandwidth is not None and np.any(self.bandwidths < min_bandwidth):
+            fix_idx = np.where(self.bandwidths < min_bandwidth)
+            rep_min = np.tile(min_bandwidth, (self.ndata, 1))
+            self.bandwidths[fix_idx] = rep_min[fix_idx]
 
 
 class FixedBandwidthXValidationKde(FixedBandwidthKde):

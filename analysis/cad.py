@@ -108,17 +108,39 @@ def cad_space_time_count(cad_temporal, cad_spatial):
     return pandas.DataFrame(res, index=cad_temporal.data.keys(), columns=cad_spatial.data.keys())
 
 
+def jiggle_on_grid_points(x, y):
+    """ randomly distribute points located at the centroid of the grid squares in order to avoid the issues arising from
+        spurious exact repeats. """
+    divs = models.Division.objects.filter(type='cad_250m_grid')
+    centroids = np.array([t.centroid.coords for t in divs.centroid()])
+    res = []
+    for t in zip(x, y):
+        nt = t
+        if np.any(np.sum(centroids == t, axis=1) == 2):
+            # pick new coords
+            nt = (np.random.random(2) * 250 - 125) + t
+            # print t, " -> ", nt
+        res.append(nt)
+    return np.array(res)
+
+
 def apply_point_process_to_cad(nicl_type=3):
-    max_trigger_t = 60 * 24 * 60 * 60 # units seconds
-    max_trigger_d = 1000 # units metres
-    qset = logic.clean_dedupe_cad(nicl_type=nicl_type, only_new=True)
+    max_trigger_t = 30 # units days
+    max_trigger_d = 500 # units metres
+    # min_bandwidth = np.array([0., 125., 125.])
+    min_bandwidth = None
+    qset = logic.clean_dedupe_cad(nicl_type=nicl_type, only_new=False)
+    xy = np.array([x.att_map.coords for x in qset])
+    new_xy = jiggle_on_grid_points(xy[:, 0], xy[:, 1])
     rel_dt = np.min([x.inc_datetime for x in qset])
-    res = np.array([[(x.inc_datetime - rel_dt).total_seconds()] + list(x.att_map.coords) for x in qset])
+    t = np.array([[(x.inc_datetime - rel_dt).total_seconds() / float(24 * 60 * 60)] for x in qset])
+    res = np.hstack((t, new_xy))
     # sort data
     res = res[np.argsort(res[:, 0])]
     # manually estimate p initially
-    p = estimation.initial_guess_educated(res, ct=1e-5, cd=0.02)
-    r = runner.PointProcess(res, p=p, max_trigger_t=max_trigger_t, max_trigger_d=max_trigger_d)
+    p = estimation.initial_guess_educated(res, ct=1, cd=0.02)
+    r = runner.PointProcess(res, p=p, max_trigger_t=max_trigger_t, max_trigger_d=max_trigger_d,
+                            min_bandwidth=min_bandwidth)
     r.train(niter=25)
     return r
 
