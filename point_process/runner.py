@@ -99,10 +99,10 @@ class PointProcess(object):
 
             # compute KDEs
             try:
-                self.bg_t_kde = pp_kde.VariableBandwidthNnKde(bg[:, 0], normed=False)
-                self.bg_xy_kde = pp_kde.VariableBandwidthNnKde(bg[:, 1:], normed=False)
+                self.bg_t_kde = pp_kde.VariableBandwidthNnKde(bg[:, 0], normed=False) ##FIXME: move normed call to pdfs
+                self.bg_xy_kde = pp_kde.VariableBandwidthNnKde(bg[:, 1:], normed=False) ##FIXME: move normed call to pdfs
                 self.trigger_kde = pp_kde.VariableBandwidthNnKde(interpoint, normed=False,
-                                                                 min_bandwidth=self.min_bandwidth)
+                                                                 min_bandwidth=self.min_bandwidth) ##FIXME: move normed call to pdfs
             except Exception as exc:
                 ipdb.set_trace()
                 raise exc
