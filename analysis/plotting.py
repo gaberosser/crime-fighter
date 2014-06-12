@@ -1,8 +1,11 @@
 __author__ = 'gabriel'
 from database import models
 from shapely import geometry as shapely_geometry
-from django.contrib.gis.geos import Polygon, MultiPolygon
+from django.contrib.gis import geos
 import cartopy.crs as ccrs
+from matplotlib import pyplot as plt
+from descartes import PolygonPatch
+import json
 
 
 def geodjango_to_shapely(x, c=ccrs.OSGB()):
@@ -11,9 +14,39 @@ def geodjango_to_shapely(x, c=ccrs.OSGB()):
 
     polys = []
     for t in x:
-        if isinstance(t, Polygon):
+        if isinstance(t, geos.Polygon):
             polys.append(shapely_geometry.Polygon(t.coords))
-        elif isinstance(t, MultiPolygon):
+        elif isinstance(t, geos.MultiPolygon):
             polys.append(shapely_geometry.MultiPolygon([shapely_geometry.Polygon(x[0]) for x in t.coords]))
 
     return polys
+
+
+def polygonpatch_from_polygon(poly):
+    return PolygonPatch(json.loads(poly.geojson))
+
+def plot_geodjango_shapes(shapes, ax=None):
+    # shapes is an iterable containing Geodjango GEOS objects
+    # returns plot objects
+
+    if not hasattr(shapes, '__iter__'):
+        shapes = [shapes]
+
+    ax = ax or plt.gca()
+    res = []
+
+    for s in shapes:
+        if isinstance(s, geos.Point):
+            res.append(ax.plot(*s.coords))
+        elif isinstance(s, geos.LineString):
+            ##TODO: implement
+            raise NotImplementedError()
+        elif isinstance(s, geos.Polygon):
+            res.append(ax.add_patch(polygonpatch_from_polygon(s)))
+        elif isinstance(s, geos.MultiPolygon):
+            this_res = []
+            for poly in s:
+                this_res.append(ax.add_patch(polygonpatch_from_polygon(poly)))
+            res.append(this_res)
+
+    return res

@@ -36,9 +36,8 @@ def marginal_icdf_optimise(k, y, dim=0, tol=1e-8):
 
 
 class FixedBandwidthKde(object):
-    def __init__(self, data, normed=True, *args, **kwargs):
+    def __init__(self, data, *args, **kwargs):
         self.data = data
-        self.normed = normed
         if len(data.shape) == 1:
             self.data = np.array(data).reshape((len(data), 1))
 
@@ -46,8 +45,6 @@ class FixedBandwidthKde(object):
         self.set_bandwidths(*args, **kwargs)
         self.job_server = None
         self.pool = None
-        # if kwargs.pop('parallel', False):
-        #     self.start_job_server()
 
     def set_bandwidths(self, *args, **kwargs):
 
@@ -90,9 +87,10 @@ class FixedBandwidthKde(object):
     def raw_std_devs(self):
         return np.std(self.data, axis=0)
 
-    def _additive_operation(self, funcstr, normed, *args, **kwargs):
+    def _additive_operation(self, funcstr, *args, **kwargs):
         """ Generic interface to call function named in funcstr on the data, handling normalisation and reshaping """
         # store data shape, flatten to N x ndim array then restore
+        normed = kwargs.pop('normed', True)
         try:
             shp = args[0].shape
         except AttributeError:
@@ -108,7 +106,7 @@ class FixedBandwidthKde(object):
     def pdf(self, *args, **kwargs):
         if len(args) != self.ndim:
             raise AttributeError("Incorrect dimensions for input variable")
-        return self._additive_operation('pdf', self.normed, *args, **kwargs)
+        return self._additive_operation('pdf', *args, **kwargs)
 
     def pdf_interp_fn(self, *args, **kwargs):
         """ Return a callable interpolation function based on the grid points supplied in args. """
@@ -120,11 +118,11 @@ class FixedBandwidthKde(object):
 
     def marginal_pdf(self, x, **kwargs):
         # return the marginal pdf in the dim specified in kwargs (dim=0 default)
-        return self._additive_operation('marginal_pdf', self.normed, x, **kwargs)
+        return self._additive_operation('marginal_pdf', x, **kwargs)
 
     def marginal_cdf(self, x, **kwargs):
         """ Return the marginal cdf in the dim specified in kwargs (dim=0 default) """
-        return self._additive_operation('marginal_cdf', True, x, **kwargs)
+        return self._additive_operation('marginal_cdf', x, **kwargs)
 
     def marginal_icdf(self, y, *args, **kwargs):
         """ Return value of inverse marginal CDF in specified dim """
@@ -172,10 +170,10 @@ class VariableBandwidthKde(FixedBandwidthKde):
 
 class VariableBandwidthNnKde(VariableBandwidthKde):
 
-    def __init__(self, data, normed=True, *args, **kwargs):
+    def __init__(self, data, *args, **kwargs):
         self.nn = None
         self.nn_distances = []
-        super(VariableBandwidthNnKde, self).__init__(data, normed, *args, **kwargs)
+        super(VariableBandwidthNnKde, self).__init__(data, *args, **kwargs)
         self.set_mvns()
 
     def set_bandwidths(self, *args, **kwargs):

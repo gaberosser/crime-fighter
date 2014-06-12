@@ -86,7 +86,6 @@ class TestFixedBandwidthKde(unittest.TestCase):
 class TestVariableBandwidthKde(unittest.TestCase):
 
     def test_kde_1d(self):
-        # NORMED
         data_1d = np.array([0, 3])
         bd_1d = [1., 2.]
         kde = VariableBandwidthKde(data_1d, bandwidths=bd_1d)
@@ -98,18 +97,14 @@ class TestVariableBandwidthKde(unittest.TestCase):
         y_expct = 0.5 * (norm.pdf(x, loc=0.) + norm.pdf(x, loc=3., scale=2))
         for y1, y2 in zip(y, y_expct):
             self.assertAlmostEqual(y1, y2)
-
-        # UNNORMED
-        kde = VariableBandwidthKde(data_1d, bandwidths=bd_1d, normed=False)
-        q = quad(kde.pdf, -10., 20.)
-        self.assertAlmostEqual(q[0], 2.0, places=5)
-        y = kde.pdf(x)
+        # repeat unnormed
+        y = kde.pdf(x, normed=False)
         y_expct *= kde.ndata
         for y1, y2 in zip(y, y_expct):
             self.assertAlmostEqual(y1, y2)
 
+
     def test_kde_3d(self):
-        # NORMED
         d = np.meshgrid(*([[0, 3]]*3))
         data_3d = np.vstack(tuple([x.flatten() for x in d])).transpose()
         bd_3d = np.vstack(tuple([np.ones(3)+np.random.random(3) for i in range(1,9)]))
@@ -125,51 +120,43 @@ class TestVariableBandwidthKde(unittest.TestCase):
         self.assertEqual(np.sum(np.abs((y - y_expct)).flatten()>1e-12), 0) # no single difference > 1e-12
 
         # UNNORMED
-        kde = VariableBandwidthKde(data_3d, bandwidths=bd_3d, normed=False)
-        y = kde.pdf(*x)
+        y = kde.pdf(*x, normed=False)
         y_expct *= kde.ndata
         self.assertEqual(np.sum(np.abs((y - y_expct)).flatten()>1e-12), 0) # no single difference > 1e-12
 
     def test_marginals(self):
-        # NORMED
         d = np.meshgrid(*([[0, 3]]*3))
         data_3d = np.vstack(tuple([x.flatten() for x in d])).transpose()
         bd_3d = np.vstack(tuple([np.ones(3)+np.random.random(3) for i in range(1,9)]))
-        kde_normed = VariableBandwidthKde(data_3d, bandwidths=bd_3d)
-        kde_unnormed = VariableBandwidthKde(data_3d, bandwidths=bd_3d, normed=False)
+        kde = VariableBandwidthKde(data_3d, bandwidths=bd_3d)
         x = np.linspace(-1, 1, 10)
 
         # check marginals in each dim
         for dim in range(3):
 
-            p = kde_normed.marginal_pdf(x, dim=dim)
-            pu = kde_unnormed.marginal_pdf(x, dim=dim)
+            p = kde.marginal_pdf(x, dim=dim)
+            pu = kde.marginal_pdf(x, dim=dim, normed=False)
             p_expct = np.zeros(x.shape)
-            for i in range(kde_normed.ndata):
+            for i in range(kde.ndata):
                 p_expct += norm.pdf(x, loc=data_3d[i, dim], scale=bd_3d[i, dim])
-            p_expct /= kde_normed.ndata
+            p_expct /= kde.ndata
             self.assertEqual(np.sum(np.abs(p - p_expct) > 1e-12), 0) # no single difference > 1e-12
-            self.assertEqual(np.sum(np.abs(p * kde_normed.ndata - pu) > 1e-12), 0)
+            self.assertEqual(np.sum(np.abs(p * kde.ndata - pu) > 1e-12), 0)
 
-            c = kde_normed.marginal_cdf(x, dim=dim)
-            cu = kde_unnormed.marginal_cdf(x, dim=dim)
+            c = kde.marginal_cdf(x, dim=dim)
             c_expct = np.zeros(x.shape)
-            for i in range(kde_normed.ndata):
+            for i in range(kde.ndata):
                 c_expct += norm.cdf(x, loc=data_3d[i, dim], scale=bd_3d[i, dim])
-            c_expct /= kde_normed.ndata
+            c_expct /= kde.ndata
             self.assertEqual(np.sum(np.abs(c - c_expct) > 1e-12), 0) # no single difference > 1e-12
-            self.assertListEqual(list(c), list(cu)) # always norm CDF
 
     def test_inverse_cdf(self):
         d = np.meshgrid(*([[0, 3]]*3))
         data_3d = np.vstack(tuple([x.flatten() for x in d])).transpose()
         bd_3d = np.vstack(tuple([np.ones(3)+np.random.random(3) for i in range(1,9)]))
         kde = VariableBandwidthKde(data_3d, bandwidths=bd_3d)
-        kde_unnormed = VariableBandwidthKde(data_3d, bandwidths=bd_3d, normed=False)
 
         for y in [0.75, 0.9, 0.99, 0.9999]:
             for dim in range(2):
                 x = kde.marginal_icdf(y, dim=dim)
                 self.assertAlmostEqual(kde.marginal_cdf(x, dim=dim), y)
-                xu = kde_unnormed.marginal_icdf(y, dim=dim)
-                self.assertEqual(x, xu)

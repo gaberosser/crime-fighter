@@ -7,7 +7,7 @@ import collections
 from django.db.models import Q, Count, Sum, Min, Max
 from django.contrib.gis.measure import D
 from django.contrib.gis.geos import Polygon, MultiPolygon, LinearRing, Point
-from plotting import geodjango_to_shapely
+from plotting import geodjango_to_shapely, plot_geodjango_shapes
 from database.views import month_iterator, week_iterator
 import pandas
 import numpy as np
@@ -108,6 +108,62 @@ def cad_space_time_count(cad_temporal, cad_spatial):
     return pandas.DataFrame(res, index=cad_temporal.data.keys(), columns=cad_spatial.data.keys())
 
 
+def cad_spatial_repeat_analysis(nicl_type=3):
+    qset = logic.clean_dedupe_cad(nicl_type=nicl_type)
+    divs = models.Division.objects.filter(type='cad_250m_grid')
+    centroids = np.array([t.centroid.coords for t in divs.centroid()])
+    xy = np.array([t.att_map.coords for t in qset])
+    on_grid = collections.defaultdict(int)
+    off_grid_rpt = collections.defaultdict(int)
+    off_grid = collections.defaultdict(int)
+    for t in xy:
+        if np.any(np.sum(centroids == t, axis=1) == 2):
+            on_grid[tuple(t)] += 1
+            continue
+        if np.sum((np.sum(xy == t, axis=1) == 2)) > 1:
+            off_grid_rpt[tuple(t)] += 1
+        else:
+            off_grid[tuple(t)] += 1
+
+    # plotting
+    camden = models.Division.objects.get(name='Camden', type='borough')
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+
+    # camden outline
+    h = plot_geodjango_shapes([camden.mpoly], ax=ax)
+    [x[0].set_facecolor('none') for x in h]
+
+    # grid divisions
+    h = plot_geodjango_shapes([x.mpoly for x in divs], ax=ax)
+    [x[0].set_facecolor('none') for x in h]
+    [x[0].set_edgecolor('#CCCCCC') for x in h[1:]]
+
+    # grid centroid repeat locations
+    ong = np.array(on_grid.keys())
+    ax.plot(ong[:, 0], ong[:, 1], 'or')
+
+    # off-grid repeat locations
+    offg = np.array(off_grid_rpt.keys())
+    ax.plot(offg[:, 0], offg[:, 1], 'ok')
+
+    # off-grid unique locations
+    offgu = np.array(off_grid.keys())
+    ax.plot(offgu[:, 0], offgu[:, 1], 'o', color='#CCCCCC', alpha=0.6)
+
+    x_max, y_max = np.max(np.array(camden.mpoly[0].coords[0]), axis=0)
+    x_min, y_min = np.min(np.array(camden.mpoly[0].coords[0]), axis=0)
+
+    ax.set_xlim(np.array([-150, 150]) + np.array([x_min, x_max]))
+    ax.set_ylim(np.array([-150, 150]) + np.array([y_min, y_max]))
+    ax.set_aspect('equal')
+
+    plt.draw()
+
+    return on_grid, off_grid_rpt, off_grid
+
+
 def jiggle_on_grid_points(x, y):
     """ randomly distribute points located at the centroid of the grid squares in order to avoid the issues arising from
         spurious exact repeats. """
@@ -141,7 +197,7 @@ def apply_point_process_to_cad(nicl_type=3):
     p = estimation.initial_guess_educated(res, ct=1, cd=0.02)
     r = runner.PointProcess(res, p=p, max_trigger_t=max_trigger_t, max_trigger_d=max_trigger_d,
                             min_bandwidth=min_bandwidth)
-    r.train(niter=25)
+    r.train(niter=50)
     return r
 
 
