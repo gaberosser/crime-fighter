@@ -8,7 +8,7 @@ import os
 
 def plot_t_kde(k, max_t=50):
     t = np.linspace(0, max_t, 200)
-    y = k.pdf(t)
+    y = k.pdf(t, normed=False)
     fig = plt.figure()
     ax = fig.add_subplot(111)
     ax.plot(t, y)
@@ -20,7 +20,7 @@ def plot_t_kde(k, max_t=50):
 
 def plot_xy_kde(k, max_x, max_y, npt_1d=50, **kwargs):
     x, y = np.meshgrid(np.linspace(-max_x, max_x, npt_1d), np.linspace(-max_y, max_y, npt_1d))
-    z = k.pdf(x, y)
+    z = k.pdf(x, y, normed=False)
     fig = plt.figure()
     ax = fig.add_subplot(111)
     n_contours = kwargs.pop('n_contours', 40)
@@ -47,7 +47,7 @@ def plot_txy_kde(k, max_x, max_y, npt_1d=50, tpt=None, **kwargs):
     for i in range(4):
         ax = axarr[i]
         t = np.ones(x.shape) * tpt[i]
-        z = k.pdf(t, x, y)
+        z = k.pdf(t, x, y, normed=False)
         caxarr.append(ax.contourf(x, y, z, n_contours, cmap=cmap))
         ax.set_title("t=%d days" % tpt[i])
         z_max = max(z_max, caxarr[-1].get_clim()[1])
@@ -69,7 +69,7 @@ def _plot_marginals(k, dim, norm=1.0, data_min=0., data_max=None, npt_1d=200, **
     if data_max is None:
         data_max = k.marginal_icdf(0.95, dim=dim)
     t = np.linspace(data_min, data_max, npt_1d)
-    z = k.marginal_pdf(t, dim=dim) / float(norm)
+    z = k.marginal_pdf(t, dim=dim, normed=False) / float(norm)
     fig = plt.figure()
     ax = fig.add_subplot(111)
     ax.plot(t, z, style)

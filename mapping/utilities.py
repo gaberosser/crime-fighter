@@ -6,6 +6,7 @@ import os
 import numpy as np
 from settings import DATA_DIR
 
+
 def get_camden_parks():
     parks_file = os.path.join(DATA_DIR, 'osm_london', 'natural')
     camden = models.Division.objects.get(type='borough', name='Camden').mpoly
@@ -31,3 +32,4 @@ def get_camden_parks():
                 camden_parks[name] = poly
 
     return camden_parks
+

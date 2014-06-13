@@ -99,21 +99,23 @@ class PointProcess(object):
 
             # compute KDEs
             try:
-                self.bg_t_kde = pp_kde.VariableBandwidthNnKde(bg[:, 0], normed=False) ##FIXME: move normed call to pdfs
-                self.bg_xy_kde = pp_kde.VariableBandwidthNnKde(bg[:, 1:], normed=False) ##FIXME: move normed call to pdfs
-                self.trigger_kde = pp_kde.VariableBandwidthNnKde(interpoint, normed=False,
-                                                                 min_bandwidth=self.min_bandwidth) ##FIXME: move normed call to pdfs
+                self.bg_t_kde = pp_kde.VariableBandwidthNnKde(bg[:, 0]) ##FIXME: move normed call to pdfs
+                self.bg_xy_kde = pp_kde.VariableBandwidthNnKde(bg[:, 1:]) ##FIXME: move normed call to pdfs
+                self.trigger_kde = pp_kde.VariableBandwidthNnKde(interpoint, min_bandwidth=self.min_bandwidth) ##FIXME: move normed call to pdfs
             except Exception as exc:
                 ipdb.set_trace()
                 raise exc
 
             # evaluate BG at data points
-            m_xy = self.bg_xy_kde.pdf(self.data[:, 1], self.data[:, 2])
-            m_t = self.bg_t_kde.pdf(self.data[:, 0])
+            m_xy = self.bg_xy_kde.pdf(self.data[:, 1], self.data[:, 2], normed=False)
+            m_t = self.bg_t_kde.pdf(self.data[:, 0], normed=False)
             m = (m_xy * m_t) / float(self.ndata)
 
             # evaluate trigger KDE at all interpoint distances
-            g = estimation.evaluate_trigger_kde(self.trigger_kde, self.data, self.linkage)
+            diff_data = self.data[self.linkage[1], :] - self.data[self.linkage[0], :]
+            g = np.zeros((self.ndata, self.ndata))
+            g[self.linkage] = self.trigger_kde.pdf(diff_data[:, 0], diff_data[:, 1], diff_data[:, 2], normed=False)\
+                / float(self.ndata)
 
             # sanity check
             if np.any(np.diagonal(g) != 0):
