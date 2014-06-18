@@ -1,0 +1,6 @@
+rgeos
+DBI
+RPostgreSQL
+ggplot2
+rpanel
+stpp
