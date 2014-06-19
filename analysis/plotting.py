@@ -29,15 +29,12 @@ def plot_geodjango_shapes(shapes, ax=None):
     # shapes is an iterable containing Geodjango GEOS objects
     # returns plot objects
 
-    if not hasattr(shapes, '__iter__'):
-        shapes = [shapes]
-
     ax = ax or plt.gca()
     res = []
 
     for s in shapes:
         if isinstance(s, geos.Point):
-            res.append(ax.plot(*s.coords))
+            res.append(ax.plot(s.coords[0], s.coords[1], 'ko'))
         elif isinstance(s, geos.LineString):
             ##TODO: implement
             raise NotImplementedError()

@@ -1,5 +1,7 @@
 __author__ = 'gabriel'
 import models
+from django.contrib.gis.geos import GEOSGeometry
+from django.db import connection
 from django.db.models import Q, Count, Sum, Min, Max
 import datetime
 import pytz
@@ -54,6 +56,58 @@ def n_day_iterator(start_date, end_date, days=1):
         else:
             yield (sd, end_date+datetime.timedelta(days=1))
         sd = ed
+
+
+def fetch_cad_data(nicl_type=None, dedupe=True, only_new=False):
+
+    """
+    Fetch relevant data from the Cad table.  NB current uncertainty as to how to process results that are initially
+    graded differently to the requested type, but later regraded.  This current query does NOT return these.  The manual
+    Python search code DOES return these, but on the date that they are reclassified, which is also incorrect!
+    :param nicl_type: integer or iterable of integers corresponding to crime types of interest
+    :param dedupe: boolean, True indicates that entries should be unique by CRIS ID
+    :param only_new: returns only those results that are NOT snapped to a 250m grid square
+    :return: deferred queryset containing desired records.
+    """
+    ## TODO: test me
+    sql = ["""SELECT d.inc_datetime, ST_AsText(d.att_map) pt, d.cl01_id, d.cl02_id, d.cl03_id, d.id FROM database_cad d"""]
+    if dedupe:
+      sql.append("""JOIN (SELECT cris_entry, MIN(inc_datetime) md, MIN(id) mid FROM database_cad GROUP BY cris_entry) e
+      ON d.cris_entry = e.cris_entry AND d.id = e.mid""")
+    sql.append("""WHERE NOT (d.cris_entry ISNULL OR d.cris_entry = 'NOT CRIMED')""")
+    sql.append("""AND NOT d.att_map ISNULL""")
+    if nicl_type:
+        try:
+            n = tuple(nicl_type)
+        except TypeError:
+            n = (nicl_type, )
+        nicl_str = "(%s)" % ",".join([str(x) for x in n])
+        sql.append("""AND (d.cl01_id IN {0} OR d.cl02_id IN {0} OR d.cl03_id IN {0})""".format(nicl_str))
+    if only_new:
+        sql.append("""AND d.inc_datetime >= '%s'""" % CAD_GEO_CUTOFF.strftime('%Y-%m-%d'))
+    sql.append("""ORDER BY d.inc_datetime""")
+    # print("\n".join(sql))
+    return models.Cad.objects.raw(" ".join(sql))
+
+
+def fetch_buffered_camden(buf=None):
+    """
+    Return the (multi)polygon corresponding to Camden, buffered by the specified amount.
+    If no buffer is provided, choose one sufficiently large to include ALL Cad entries
+    :param buf: Buffer radius in metres
+    :return: GEOS Multipolygon
+    """
+    cursor = connection.cursor()
+    if not buf:
+        sql = """SELECT 1.05*MAX(ST_Distance(att_map,
+        (SELECT mpoly FROM database_division WHERE name='Camden' AND type_id='borough')
+        )) FROM database_cad WHERE NOT att_map ISNULL"""
+        cursor.execute(sql)
+        buf = cursor.fetchone()[0]
+
+    sql = """SELECT ST_AsGeoJson(ST_Buffer(mpoly, %s)) FROM database_division WHERE name='Camden' AND type_id='borough'"""
+    cursor.execute(sql, (buf, ))
+    return GEOSGeometry(cursor.fetchone()[0])
 
 
 def initial_filter_cad(nicl_type=None, only_new=False):

@@ -7,8 +7,8 @@ cadSTIK <- function(crime_type=3) {
   
 }
 crime_type=3
-camden <- getCamden()
-camden_poly <- camden@polygons[[1]]@Polygons[[1]]@coords
+camden <- getBufferedCamden(20.0)
+camden_poly <- camden@polygons[[1]]@Polygons[[1]]@coords[nrow(camden_poly):1,]
 cad <- getCad(crime_type)
 xy <- apply(array(cad$pt), MARGIN=1, FUN=coordinates)
 x <- xy[1,]
@@ -35,6 +35,7 @@ mhat <- NULL
 for (i in 1:length(atx)) {
   mhat <- c(mhat, Ms$z[atx[i], aty[i]])
 }
-u <- seq(0, 200, 10) # delta distance, m
-v <- seq(0, 30, 2) # delta time, days
-stik <- STIKhat(xyt=cad, s.region=camden_poly[nrow(camden_poly):1,], lambda=mhat*mut, dist=u, times=v, infectious=TRUE)
+u <- seq(0, 50, 1) # delta distance, m
+v <- seq(0, 200, 7) # delta time, days
+stik <- STIKhat(xyt=cad, s.region=camden_poly, t.region=c(1, max(cad[,3])), lambda=mhat*mut, dist=u, times=v, infectious=TRUE)
+g <- PCFhat(xyt=cad, s.region=camden_poly, t.region=c(1, max(cad[,3])), lambda=mhat*mut, dist=u, times=v)

@@ -9,6 +9,13 @@ dbConnection <- function() {
   return(dbConnect(drv, dbname=DB_NAME))
 }
 
+dbExecuteQuery <- function(sql) {
+  con <- dbConnection()
+  res <- dbGetQuery(con, sql)
+  dbDisconnect(con)
+  return(res)
+}
+
 getCamden <- function() {
   ## TODO: buffer the polygon to avoid issues with crimes near the boundary
   con <- dbConnection()
@@ -18,11 +25,22 @@ getCamden <- function() {
   return(poly)
 }
 
+getBufferedCamden <- function(buf=NULL) {
+  if (is.null(buf)) {
+    sql = "SELECT 1.05*MAX(ST_Distance(att_map,
+        (SELECT mpoly FROM database_division WHERE name='Camden' AND type_id='borough')
+        )) FROM database_cad WHERE NOT att_map ISNULL"
+    buf <- dbExecuteQuery(sql)[[1]]
+  }
+  sql = sprintf("SELECT ST_AsText(ST_Buffer(mpoly, %f)) FROM database_division WHERE name='Camden' AND type_id='borough'", buf)
+  return(readWKT(dbExecuteQuery(sql)[[1]]))
+}
+
 getCad <- function(crime_type, dedupe=TRUE, only_new=FALSE) {
   NEW_CUTOFF_DATE = "2011-08-01"
   con <- dbConnection()
   crime_type <- paste(crime_type, collapse=", ")
-  sql = "SELECT d.inc_datetime, ST_AsText(d.att_map) pt, d.cl01_id, d.cl02_id, d.cl03_id FROM database_cad d"
+  sql = "SELECT d.inc_datetime, ST_AsText(d.att_map) pt, d.cl01_id, d.cl02_id, d.cl03_id, d.id FROM database_cad d"
   if (dedupe) {
     sql <- c(sql, "JOIN (SELECT cris_entry, MIN(inc_datetime) md, MIN(id) mid FROM database_cad GROUP BY cris_entry) e ON d.cris_entry = e.cris_entry AND d.id = e.mid")
   }
