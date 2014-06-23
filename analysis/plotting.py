@@ -25,14 +25,21 @@ def geodjango_to_shapely(x, c=ccrs.OSGB()):
 def polygonpatch_from_polygon(poly):
     return PolygonPatch(json.loads(poly.geojson))
 
-def plot_geodjango_shapes(shapes, ax=None):
+def plot_geodjango_shapes(shapes, ax=None, set_axes=True, **kwargs):
     # shapes is an iterable containing Geodjango GEOS objects
     # returns plot objects
 
     ax = ax or plt.gca()
     res = []
+    x_min = y_min = 1e8
+    x_max = y_max = -1e8
 
     for s in shapes:
+        if set_axes:
+            x_min = min(x_min, s.extent[0])
+            y_min = min(y_min, s.extent[1])
+            x_max = max(x_max, s.extent[2])
+            y_max = max(y_max, s.extent[3])
         if isinstance(s, geos.Point):
             res.append(ax.plot(s.coords[0], s.coords[1], 'ko'))
         elif isinstance(s, geos.LineString):
@@ -46,4 +53,9 @@ def plot_geodjango_shapes(shapes, ax=None):
                 this_res.append(ax.add_patch(polygonpatch_from_polygon(poly)))
             res.append(this_res)
 
+    if set_axes:
+        x_range = x_max - x_min
+        y_range = y_max - y_min
+        ax.set_xlim([x_min - x_range * 0.02, x_max + x_range * 0.02])
+        ax.set_ylim([y_min - y_range * 0.02, y_max + y_range * 0.02])
     return res

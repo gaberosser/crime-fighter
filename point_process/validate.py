@@ -91,3 +91,10 @@ class ValidationForecastSequential(ValidationBase):
 
     def predict(self, t, x, y, *args, **kwargs):
         pass
+
+
+class ValidationZerothOrder(ValidationBase):
+
+    def train_model(self, *args, **kwargs):
+        # TODO: simply return same prob as at t=0
+        pass
