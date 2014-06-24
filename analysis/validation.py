@@ -3,39 +3,7 @@ from django.contrib.gis import geos
 import numpy as np
 import mcint
 import math
-
-
-def create_spatial_grid(spatial_domain, grid_length, offset_coords=None):
-    """
-    Compute a grid on the spatial domain.
-    :param grid_length: the length of one side of the grid square
-    :param offset_coords: tuple giving the (x, y) coordinates of the bottom LHS of a gridsquare, default = (0, 0)
-    :return: list of grid vertices and centroids (both (x,y) pairs)
-    """
-    offset_coords = offset_coords or (0, 0)
-    xmin, ymin, xmax, ymax = spatial_domain.extent
-
-    # 1) create grid over entire bounding box
-    sq_x_l = math.ceil((offset_coords[0] - xmin) / grid_length)
-    sq_x_r = math.ceil((xmax - offset_coords[0]) / grid_length)
-    sq_y_l = math.ceil((offset_coords[1] - ymin) / grid_length)
-    sq_y_r = math.ceil((ymax - offset_coords[1]) / grid_length)
-    edges_x = grid_length * np.arange(-sq_x_l, sq_x_r + 1) + offset_coords[0]
-    edges_y = grid_length * np.arange(-sq_y_l, sq_y_r + 1) + offset_coords[1]
-    polys = []
-    for ix in range(len(edges_x) - 1):
-        for iy in range(len(edges_y) - 1):
-            p = geos.Polygon((
-                (edges_x[ix], edges_y[iy]),
-                (edges_x[ix+1], edges_y[iy]),
-                (edges_x[ix+1], edges_y[iy+1]),
-                (edges_x[ix], edges_y[iy+1]),
-                (edges_x[ix], edges_y[iy]),
-            ))
-            if spatial_domain.intersects(p):
-                polys.append(spatial_domain.intersection(p))
-
-    return polys
+from spatial import create_spatial_grid
 
 
 def mc_sampler(poly):
@@ -55,10 +23,14 @@ class ValidationBase(object):
         self.data = np.array(data)[np.argsort(self.t)]
         self.model = model_class
         self.spatial_domain = spatial_domain
-        self.cutoff_t = tmax_initial or self.t[int(self.ndata / 2)]
         self.model_args = model_args or []
         self.model_kwargs = model_kwargs or {}
-        self.model = model_class(data, *self.model_args, **self.model_kwargs)
+        self.model = model_class([], *self.model_args, **self.model_kwargs)
+        self.set_t_cutoff(tmax_initial or self.t[int(self.ndata / 2)])
+
+    def set_t_cutoff(self, cutoff_t):
+        self.cutoff_t = cutoff_t
+        self.train_model()
 
     @property
     def ndata(self):
@@ -72,9 +44,15 @@ class ValidationBase(object):
     def training(self):
         return self.data[self.t <= self.cutoff_t]
 
-    @property
-    def testing(self):
-        return self.data[self.t > self.cutoff_t]
+    def testing(self, dt=None, as_point=False):
+        if dt:
+            d = self.data[(self.t > self.cutoff_t) & (self.t <= (self.cutoff_t + dt))]
+        else:
+            d = self.data[self.t > self.cutoff_t]
+        if as_point:
+            return [(t[0], geos.Point(list(t[1:]))) for t in d]
+        else:
+            return d
 
     def train_model(self, *args, **kwargs):
         """ Train the predictor on training data """
@@ -90,23 +68,78 @@ class ValidationBase(object):
 
     def prediction_accuracy_index(self, dt, grid_size, *args, **kwargs):
         """
-        Test the trained predictor using a metric, etc.
+        Assess the trained model on a grid of supplied size.  Return the PAI metric for varying hit rate
         """
-        domain_area = self.spatial_domain.area
         main_grid_polys = create_spatial_grid(self.spatial_domain, grid_length=grid_size)
         method = kwargs.pop('method', 'centroid')
 
+        # estimate total propensity in each grid poly
         res = []
         for p in main_grid_polys:
             if method == 'int':
-                res.append(self.predict_on_poly(self.cutoff_t + dt, p) * p.area / domain_area)
+                res.append(self.predict_on_poly(self.cutoff_t + dt, p))
             elif method == 'centroid':
                 c = p.centroid.coords
-                res.append(self.predict(self.cutoff_t + dt, c[0], c[1]) * p.area / domain_area)
-        return np.array(res)
+                res.append(self.predict(self.cutoff_t + dt, c[0], c[1]))
+
+        # sort by intensity
+        res = np.array(res)
+        sort_idx = np.argsort(res)[::-1]
+        polys = [main_grid_polys[i] for i in sort_idx]
+        res = res[sort_idx]
+
+        # count actual crimes in testing dataset on same grid
+        true_counts = np.zeros(len(polys))
+        testing = self.testing(dt, as_point=True)
+        for i in range(len(polys)):
+            true_counts[i] += sum([t[1].intersects(polys[i]) for t in testing])
+        a = np.array([t.area for t in polys])
+        N = np.sum(true_counts)
+        A = self.spatial_domain.area
+
+        cfrac = np.cumsum(true_counts) / N
+        pai = np.cumsum(true_counts) * A / (np.cumsum(a) * N)
+        carea = np.cumsum(a) / A
+
+        return polys, res, carea, cfrac, pai
 
     def run(self):
         """
         Run the required train / predict / assess sequence
         """
         raise NotImplementedError()
+
+
+if __name__ == "__main__":
+    from database import logic, models
+    from scipy.stats import multivariate_normal
+    import hotspot
+    from analysis import plotting
+    import matplotlib as mpl
+    from matplotlib import pyplot as plt
+    camden = models.Division.objects.get(name='Camden')
+    xm = 527753
+    ym = 184284
+    nd = 1000
+    data = np.hstack((np.random.random((nd, 1)) * 10,
+                      multivariate_normal.rvs(mean=[xm, ym], cov=np.diag([1e4, 1e4]), size=(nd, 1))))
+    stk = hotspot.STKernelBowers(1, 1e-4)
+    vb = ValidationBase(data, hotspot.Hotspot, camden.mpoly, model_args=(stk,))
+    polys, res, carea, cfrac, pai = vb.prediction_accuracy_index(1, 200)
+    x = [a.centroid.coords[0] for a in polys]
+    y = [a.centroid.coords[1] for a in polys]
+
+    norm = mpl.colors.Normalize(min(res), max(res))
+    cmap = mpl.cm.jet
+    sm = mpl.cm.ScalarMappable(norm, cmap)
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    for (p, r) in zip(polys, res):
+        plotting.plot_geodjango_shapes(shapes=(p,), ax=ax, facecolor=sm.to_rgba(r), set_axes=False)
+    plotting.plot_geodjango_shapes((camden.mpoly,), ax=ax, facecolor='none')
+
+    plotting.plot_surface_on_polygon(camden.mpoly, lambda x,y: vb.predict(1.0, x, y), n=250)
+
+    fig = plt.figure()
+    plt.plot(carea, cfrac)
