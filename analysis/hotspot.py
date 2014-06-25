@@ -10,7 +10,7 @@ class Hotspot(object):
 
     @property
     def ndata(self):
-        return self.data.shape[0]
+        return self.stkernel.ndata
 
     def train(self, data):
         self.stkernel.train(data)
@@ -24,6 +24,11 @@ class STKernelBowers(object):
     def __init__(self, a, b):
         self.a = a
         self.b = b
+        self.data = np.array([])
+
+    @property
+    def ndata(self):
+        return self.data.shape[0]
 
     def _evaluate(self, t, x, y):
         td = self.data[:, 0]
