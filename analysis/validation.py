@@ -17,21 +17,55 @@ def mc_sampler(poly):
 
 class ValidationBase(object):
 
-    def __init__(self, data, model_class, spatial_domain, tmax_initial=None, model_args=None, model_kwargs=None):
+    def __init__(self, data, model_class, spatial_domain=None, grid_length=None, tmax_initial=None, model_args=None, model_kwargs=None):
         # sort data in increasing time
         self.data = data
         self.data = np.array(data)[np.argsort(self.t)]
         self.model = model_class
         self.spatial_domain = spatial_domain
-        self.A = self.spatial_domain.area
+
         self.model_args = model_args or []
         self.model_kwargs = model_kwargs or {}
-        self.model = model_class([], *self.model_args, **self.model_kwargs)
-        self.set_t_cutoff(tmax_initial or self.t[int(self.ndata / 2)])
+        self.model = model_class(*self.model_args, **self.model_kwargs)
+
+        # set initial time cut point
+        self.cutoff_t = tmax_initial or self.t[int(self.ndata / 2)]
+        # self.set_t_cutoff(tmax_initial or self.t[int(self.ndata / 2)])
+
+        # set grid for evaluation
+        self._grid = []
+        self.a = []
+        if grid_length:
+            self.set_grid(grid_length)
 
     def set_t_cutoff(self, cutoff_t):
         self.cutoff_t = cutoff_t
         self.train_model()
+
+    def set_grid(self, grid_length):
+        if not self.spatial_domain:
+            # find minimal bounding rectangle
+            xmin, ymin = np.min(self.data[:, 1:], axis=0)
+            xmax, ymax = np.max(self.data[:, 1:], axis=0)
+            self.spatial_domain = geos.Polygon([
+                (xmin, ymin),
+                (xmax, ymin),
+                (xmax, ymax),
+                (xmin, ymax),
+                (xmin, ymin),
+            ])
+        self._grid = create_spatial_grid(self.spatial_domain, grid_length)
+        self.a = np.array([t.area for t in self._grid])
+
+    @property
+    def grid(self):
+        if len(self._grid):
+            return self._grid
+        raise AttributeError("Grid has not been computed, run set_grid with grid length")
+
+    @property
+    def A(self):
+        return sum([t.area for t in self.grid])
 
     @property
     def ndata(self):
@@ -58,52 +92,58 @@ class ValidationBase(object):
 
     def train_model(self, *args, **kwargs):
         """ Train the predictor on training data """
-        self.model.train(self.training)
+        self.model.train(self.training, *args, **kwargs)
 
     def predict_on_poly(self, t, poly, *args, **kwargs):
         method = kwargs.pop('method', 'centroid')
         if method == 'int':
             res, err = mcint.integrate(lambda x: self.model.predict(t, x[0], x[1]), mc_sampler(poly), n=100)
         elif method == 'centroid':
-            res = self.predict(t, *poly.centroid.coords)
+            res = self.model.predict(t, *poly.centroid.coords)
         else:
             raise NotImplementedError("Unsupported method %s", method)
         return res
 
-    def predict(self, t, x, y, *args, **kwargs):
-        """ Run prediction using the trained model """
-        return self.model.predict(t, x, y)
-
-    def prediction_accuracy_index(self, dt_plus, grid, dt_minus=0., *args, **kwargs):
-        """
-        Assess the trained model on a grid of supplied size.  Return the PAI metric for varying hit rate
-        """
+    def predict(self, t, **kwargs):
         # estimate total propensity in each grid poly
-        res = []
-        for p in grid:
-            res.append(self.predict_on_poly(self.cutoff_t + dt_plus, p, **kwargs))
-
+        res = np.array([self.predict_on_poly(t, p, **kwargs) for p in self.grid])
         # sort by intensity
         res = np.array(res)
         sort_idx = np.argsort(res)[::-1]
-        polys = [grid[i] for i in sort_idx]
-        res = res[sort_idx]
+        return res[sort_idx], sort_idx
+
+    def true_values(self, dt_plus, dt_minus):
+        # count actual crimes in testing dataset on grid
+        n = np.zeros(len(self.grid))
+        testing = self.testing(dt_plus=dt_plus, dt_minus=dt_minus, as_point=True)
+        for i in range(len(self.grid)):
+            n[i] += sum([t[1].intersects(self.grid[i]) for t in testing])
+        return n
+
+    def assess_pai(self, n):
+        N = sum(n)
+        a = np.array([t.area for t in self.grid])
+        cfrac = np.cumsum(n) / N
+        carea = np.cumsum(a) / self.A
+        pai = cfrac * (self.A / np.cumsum(a))
+        return carea, cfrac, pai
+
+    def _predict_assess(self, dt_plus, dt_minus=0., *args, **kwargs):
+        """
+        Assess the trained model on a grid of supplied size.  Return the PAI metric for varying hit rate
+        """
+        pred, sort_idx = self.predict(self.cutoff_t + dt_plus, **kwargs)
+        polys = [self.grid[i] for i in sort_idx]
 
         # count actual crimes in testing dataset on same grid
-        true_counts = np.zeros(len(polys))
-        testing = self.testing(dt_plus=dt_plus, dt_minus=dt_minus, as_point=True)
-        for i in range(len(polys)):
-            true_counts[i] += sum([t[1].intersects(polys[i]) for t in testing])
-        a = np.array([t.area for t in polys])
-        N = np.sum(true_counts)
+        n = self.true_values(dt_plus, dt_minus)
 
-        cfrac = np.cumsum(true_counts) / N
-        pai = np.cumsum(true_counts) * self.A / (np.cumsum(a) * N)
-        carea = np.cumsum(a) / self.A
+        # assessment scores
+        carea, cfrac, pai = self.assess_pai(n)
 
-        return polys, res, carea, cfrac, pai
+        return polys, pred, carea, cfrac, pai
 
-    def run(self, grid_size, dt, t_upper=None):
+    def run(self, dt, t_upper=None, **kwargs):
         """
         Run the required train / predict / assess sequence
         Take the mean of the metrics returned
@@ -112,16 +152,17 @@ class ValidationBase(object):
         t = dt
         t_upper = min(t_upper or np.inf, self.testing()[-1, 0])
 
-        grid = create_spatial_grid(self.spatial_domain, grid_length=grid_size)
         cfrac = []
+        carea = []
         pai = []
+        polys = []
 
         try:
             while self.cutoff_t < t_upper:
                 # predict and assess
-                polys, _, carea, cfrac_, pai_ = self.prediction_accuracy_index(dt_plus=dt, dt_minus=0, grid=grid)
-                cfrac.append(cfrac_)
-                pai.append(pai_)
+                polys, _, carea, this_cfrac, this_pai = self._predict_assess(dt_plus=dt, dt_minus=0, **kwargs)
+                cfrac.append(this_cfrac)
+                pai.append(this_pai)
                 self.set_t_cutoff(self.cutoff_t + dt)
 
         finally:
@@ -133,6 +174,8 @@ class ValidationBase(object):
 if __name__ == "__main__":
     from database import logic, models
     from scipy.stats import multivariate_normal
+    from point_process import models as pp_models
+    from point_process import simulate
     import hotspot
     from analysis import plotting
     import matplotlib as mpl
@@ -152,10 +195,30 @@ if __name__ == "__main__":
         ym + np.linspace(0, -4000, nd).reshape((nd, 1)) + np.random.normal(loc=0, scale=100, size=(nd, 1)),
     ))
 
-    stk = hotspot.STKernelBowers(1, 1e-4)
-    vb = ValidationBase(data, hotspot.Hotspot, camden.mpoly, model_args=(stk,))
-    grid = create_spatial_grid(camden.mpoly, grid_length=200)
-    polys, res, carea, cfrac, pai = vb.prediction_accuracy_index(dt_plus=5, dt_minus=4, grid=grid)
+    # use Bowers kernel
+    # stk = hotspot.STKernelBowers(1, 1e-4)
+    # vb = ValidationBase(data, hotspot.Hotspot, camden.mpoly, model_args=(stk,))
+    # vb.set_grid(grid_length=200)
+    # vb.set_t_cutoff(4.0)
+
+    # use basic historic data spatial hotspot
+    # sk = hotspot.SKernelHistoric(2) # use heatmap from final 2 days data
+    # vb = ValidationBase(data, hotspot.Hotspot, camden.mpoly, model_args=(sk,))
+    # vb.set_grid(grid_length=200)
+    # vb.set_t_cutoff(4.0)
+
+    # use point process model
+    c = simulate.MohlerSimulation()
+    c.run()
+    data = np.array(c.data)[:, :3]  # (t, x, y, b_is_BG)
+    data = data[data[:, 0].argsort()]
+    vb = ValidationBase(data, pp_models.PointProcess,
+                        model_kwargs={'max_trigger_t': 80, 'max_trigger_d': 0.75})
+    vb.set_grid(grid_length=5)
+    vb.train_model(niter=20)
+
+
+    polys, res, carea, cfrac, pai = vb._predict_assess(dt_plus=1, dt_minus=0) # predict one day ahead
     x = [a.centroid.coords[0] for a in polys]
     y = [a.centroid.coords[1] for a in polys]
 
@@ -171,5 +234,8 @@ if __name__ == "__main__":
 
     # plotting.plot_surface_on_polygon(camden.mpoly, lambda x,y: vb.predict(1.0, x, y), n=250)
 
-    fig = plt.figure()
-    plt.plot(carea, cfrac)
+    # _, carea, cfrac, pai = vb.run(dt=1, method='centroid')
+    #
+    # fig = plt.figure()
+    # ax = fig.add_subplot(111)
+    # h = [ax.plot(carea, x) for x in cfrac]

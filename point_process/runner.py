@@ -1,144 +1,145 @@
 __author__ = 'gabriel'
 
-import estimation, simulate, plotting
-from kde.methods import pure_python as pp_kde
-import numpy as np
-from time import time
+import simulate, plotting
+from models import PointProcess
 from matplotlib import pyplot as plt
-from matplotlib.lines import Line2D
-import ipdb
-
-class PointProcess(object):
-    def __init__(self, data, p=None, max_trigger_d=None, max_trigger_t=None, min_bandwidth=None, dtype=np.float64, estimator=None):
-        self.data = np.array(data, dtype=dtype)
-        # sort data by time
-        self.data = self.data[self.data[:, 0].argsort()]
-
-        # set threshold distance and time if not provided
-        self.max_trigger_t = max_trigger_t or np.ptp(self.data[:, 0]) / 10.
-        self.max_trigger_d = max_trigger_d or np.sqrt(np.ptp(self.data[:, 1])**2 + np.ptp(self.data[:, 2])**2) / 20.
-        self.min_bandwidth = min_bandwidth
-        self.dtype = dtype
-
-        # compute linkage indices
-        self.set_linkages()
-
-        # initialise matrix p or use one provided
-        if p is not None:
-            self.p = p
-            self.pset = True
-        else:
-            self.p = np.zeros((self.ndata, self.ndata))
-            self.pset = False
-            # look for an estimator function
-            self.estimator = estimator or estimation.initial_guess_educated
-
-        # init storage containers
-        self.run_times = []
-        self.num_bg = []
-        self.num_trig = []
-        self.l2_differences = []
-        self.bg_t_kde = None
-        self.bg_xy_kde = None
-        self.trigger_kde = None
-
-    @property
-    def ndata(self):
-        return self.data.shape[0]
-
-    @property
-    def niter(self):
-        return len(self.l2_differences)
-
-    def set_linkages(self):
-        pdiff = estimation.pairwise_differences(self.data, dtype=self.dtype)
-        distances = np.sqrt(pdiff[:, :, 1] ** 2 + pdiff[:, :, 2] ** 2)
-        self.linkage = np.where((distances < self.max_trigger_d) & (pdiff[:, :, 0] > 0) & (pdiff[:, :, 0] < self.max_trigger_t))
-
-    def evaluate_conditional_intensity(self, t, x, y, data=None):
-        """
-        Evaluate the conditional intensity, lambda, at point (t, x, y) or at points specified in 1D arrays t, x, y.
-        Optionally provide data matrix to incorporate new history, otherwise run with training data.
-        """
-        data = data or self.data
-        # ndata = data.shape[0] if len(data.shape) > 1 else 1
-
-        bg = self.bg_t_kde.pdf(t) * self.bg_xy_kde(x, y)
-
-        ttarget, tdata = np.meshgrid(np.array(t), data[:, 0])
-        xtarget, xdata = np.meshgrid(np.array(x), data[:, 1])
-        ytarget, ydata = np.meshgrid(np.array(y), data[:, 2])
-        trigger = np.sum(self.trigger_kde.pdf(ttarget - tdata, xtarget - xdata, ytarget - ydata), axis=1)
-
-        return bg + trigger
-
-    def train(self, niter=30, verbose=True, tol_p=0.):
-        # precompute error norm denominator
-        err_denom = float(self.ndata * (self.ndata + 1)) / 2.
-
-        # initial estimate for p if required
-        if not self.pset:
-            self.p = self.estimator(self.data)
-
-        for i in range(niter):
-
-            tic = time()
-
-            # sanity check
-            colsum = np.sum(self.p, axis=0)
-            if np.any((colsum < (1 - 1e-12)) | (colsum > (1 + 1e-12))):
-                raise AttributeError("Matrix P failed requirement that columns sum to 1 within tolerance.")
-            if np.any(np.tril(self.p, k=-1) != 0.):
-                ipdb.set_trace()
-                raise AttributeError("Matrix P failed requirement that lower diagonal is zero.")
-
-            bg, interpoint, cause_effect = estimation.sample_bg_and_interpoint(self.data, self.p)
-            # ipdb.set_trace()
-            self.num_bg.append(bg.shape[0])
-            self.num_trig.append(interpoint.shape[0])
-
-            # compute KDEs
-            try:
-                self.bg_t_kde = pp_kde.VariableBandwidthNnKde(bg[:, 0]) ##FIXME: move normed call to pdfs
-                self.bg_xy_kde = pp_kde.VariableBandwidthNnKde(bg[:, 1:]) ##FIXME: move normed call to pdfs
-                self.trigger_kde = pp_kde.VariableBandwidthNnKde(interpoint, min_bandwidth=self.min_bandwidth) ##FIXME: move normed call to pdfs
-            except Exception as exc:
-                ipdb.set_trace()
-                raise exc
-
-            # evaluate BG at data points
-            m_xy = self.bg_xy_kde.pdf(self.data[:, 1], self.data[:, 2], normed=False)
-            m_t = self.bg_t_kde.pdf(self.data[:, 0], normed=False)
-            m = (m_xy * m_t) / float(self.ndata)
-
-            # evaluate trigger KDE at all interpoint distances
-            diff_data = self.data[self.linkage[1], :] - self.data[self.linkage[0], :]
-            g = np.zeros((self.ndata, self.ndata))
-            g[self.linkage] = self.trigger_kde.pdf(diff_data[:, 0], diff_data[:, 1], diff_data[:, 2], normed=False)\
-                / float(self.ndata)
-
-            # sanity check
-            if np.any(np.diagonal(g) != 0):
-                raise AttributeError("Non-zero diagonal values found in g.")
-
-            # recompute P
-            l = np.sum(g, axis=0) + m
-            new_p = (m / l) * np.eye(self.ndata) + (g / l)
-
-            # compute difference
-            q = new_p - self.p
-            self.l2_differences.append(np.sqrt(np.sum(q**2)) / err_denom)
-
-            # update p
-            self.p = new_p
-
-            # record time taken
-            self.run_times.append(time() - tic)
-            if verbose:
-                print "Completed %d / %d iterations in %f s" % (i+1, niter, self.run_times[-1])
-
-            if tol_p != 0. and self.l2_differences[-1] < tol_p:
-                break
+import numpy as np
+# from kde.methods import pure_python as pp_kde
+# from time import time
+# from matplotlib.lines import Line2D
+# import ipdb
+#
+# class PointProcess(object):
+#     def __init__(self, data, p=None, max_trigger_d=None, max_trigger_t=None, min_bandwidth=None, dtype=np.float64, estimator=None):
+#         self.data = np.array(data, dtype=dtype)
+#         # sort data by time
+#         self.data = self.data[self.data[:, 0].argsort()]
+#
+#         # set threshold distance and time if not provided
+#         self.max_trigger_t = max_trigger_t or np.ptp(self.data[:, 0]) / 10.
+#         self.max_trigger_d = max_trigger_d or np.sqrt(np.ptp(self.data[:, 1])**2 + np.ptp(self.data[:, 2])**2) / 20.
+#         self.min_bandwidth = min_bandwidth
+#         self.dtype = dtype
+#
+#         # compute linkage indices
+#         self.set_linkages()
+#
+#         # initialise matrix p or use one provided
+#         if p is not None:
+#             self.p = p
+#             self.pset = True
+#         else:
+#             self.p = np.zeros((self.ndata, self.ndata))
+#             self.pset = False
+#             # look for an estimator function
+#             self.estimator = estimator or estimation.initial_guess_educated
+#
+#         # init storage containers
+#         self.run_times = []
+#         self.num_bg = []
+#         self.num_trig = []
+#         self.l2_differences = []
+#         self.bg_t_kde = None
+#         self.bg_xy_kde = None
+#         self.trigger_kde = None
+#
+#     @property
+#     def ndata(self):
+#         return self.data.shape[0]
+#
+#     @property
+#     def niter(self):
+#         return len(self.l2_differences)
+#
+#     def set_linkages(self):
+#         pdiff = estimation.pairwise_differences(self.data, dtype=self.dtype)
+#         distances = np.sqrt(pdiff[:, :, 1] ** 2 + pdiff[:, :, 2] ** 2)
+#         self.linkage = np.where((distances < self.max_trigger_d) & (pdiff[:, :, 0] > 0) & (pdiff[:, :, 0] < self.max_trigger_t))
+#
+#     def evaluate_conditional_intensity(self, t, x, y, data=None):
+#         """
+#         Evaluate the conditional intensity, lambda, at point (t, x, y) or at points specified in 1D arrays t, x, y.
+#         Optionally provide data matrix to incorporate new history, otherwise run with training data.
+#         """
+#         data = data or self.data
+#         # ndata = data.shape[0] if len(data.shape) > 1 else 1
+#
+#         bg = self.bg_t_kde.pdf(t) * self.bg_xy_kde(x, y)
+#
+#         ttarget, tdata = np.meshgrid(np.array(t), data[:, 0])
+#         xtarget, xdata = np.meshgrid(np.array(x), data[:, 1])
+#         ytarget, ydata = np.meshgrid(np.array(y), data[:, 2])
+#         trigger = np.sum(self.trigger_kde.pdf(ttarget - tdata, xtarget - xdata, ytarget - ydata), axis=1)
+#
+#         return bg + trigger
+#
+#     def train(self, niter=30, verbose=True, tol_p=0.):
+#         # precompute error norm denominator
+#         err_denom = float(self.ndata * (self.ndata + 1)) / 2.
+#
+#         # initial estimate for p if required
+#         if not self.pset:
+#             self.p = self.estimator(self.data)
+#
+#         for i in range(niter):
+#
+#             tic = time()
+#
+#             # sanity check
+#             colsum = np.sum(self.p, axis=0)
+#             if np.any((colsum < (1 - 1e-12)) | (colsum > (1 + 1e-12))):
+#                 raise AttributeError("Matrix P failed requirement that columns sum to 1 within tolerance.")
+#             if np.any(np.tril(self.p, k=-1) != 0.):
+#                 ipdb.set_trace()
+#                 raise AttributeError("Matrix P failed requirement that lower diagonal is zero.")
+#
+#             bg, interpoint, cause_effect = estimation.sample_bg_and_interpoint(self.data, self.p)
+#             # ipdb.set_trace()
+#             self.num_bg.append(bg.shape[0])
+#             self.num_trig.append(interpoint.shape[0])
+#
+#             # compute KDEs
+#             try:
+#                 self.bg_t_kde = pp_kde.VariableBandwidthNnKde(bg[:, 0]) ##FIXME: move normed call to pdfs
+#                 self.bg_xy_kde = pp_kde.VariableBandwidthNnKde(bg[:, 1:]) ##FIXME: move normed call to pdfs
+#                 self.trigger_kde = pp_kde.VariableBandwidthNnKde(interpoint, min_bandwidth=self.min_bandwidth) ##FIXME: move normed call to pdfs
+#             except Exception as exc:
+#                 ipdb.set_trace()
+#                 raise exc
+#
+#             # evaluate BG at data points
+#             m_xy = self.bg_xy_kde.pdf(self.data[:, 1], self.data[:, 2], normed=False)
+#             m_t = self.bg_t_kde.pdf(self.data[:, 0], normed=False)
+#             m = (m_xy * m_t) / float(self.ndata)
+#
+#             # evaluate trigger KDE at all interpoint distances
+#             diff_data = self.data[self.linkage[1], :] - self.data[self.linkage[0], :]
+#             g = np.zeros((self.ndata, self.ndata))
+#             g[self.linkage] = self.trigger_kde.pdf(diff_data[:, 0], diff_data[:, 1], diff_data[:, 2], normed=False)\
+#                 / float(self.ndata)
+#
+#             # sanity check
+#             if np.any(np.diagonal(g) != 0):
+#                 raise AttributeError("Non-zero diagonal values found in g.")
+#
+#             # recompute P
+#             l = np.sum(g, axis=0) + m
+#             new_p = (m / l) * np.eye(self.ndata) + (g / l)
+#
+#             # compute difference
+#             q = new_p - self.p
+#             self.l2_differences.append(np.sqrt(np.sum(q**2)) / err_denom)
+#
+#             # update p
+#             self.p = new_p
+#
+#             # record time taken
+#             self.run_times.append(time() - tic)
+#             if verbose:
+#                 print "Completed %d / %d iterations in %f s" % (i+1, niter, self.run_times[-1])
+#
+#             if tol_p != 0. and self.l2_differences[-1] < tol_p:
+#                 break
 
 
 if __name__ == '__main__':
@@ -157,9 +158,11 @@ if __name__ == '__main__':
     data = data[data[:, 0].argsort()]
     print "Complete"
 
-    r = PointProcess(data, max_trigger_d=0.75, max_trigger_t=80)
+    # r = PointProcess(data, max_trigger_d=0.75, max_trigger_t=80)
+    r = PointProcess(max_trigger_d=0.75, max_trigger_t=80)
     try:
-        r.train(num_iter)
+        # r.train(niter=num_iter)
+        r.train(data, niter=num_iter)
     except Exception:
         num_iter = len(r.num_bg)
 
@@ -167,13 +170,15 @@ if __name__ == '__main__':
     # plots
 
     # fig A1
+    number_bg = c.number_bg
+    number_aftershocks = c.number_aftershocks
     fig = plt.figure()
     ax = fig.add_subplot(111)
     h = []
     h.append(ax.plot(range(num_iter), r.num_bg, 'k-'))
-    h.append(ax.plot(range(num_iter), c.number_bg * np.ones(num_iter), 'k--'))
+    h.append(ax.plot(range(num_iter), number_bg * np.ones(num_iter), 'k--'))
     h.append(ax.plot(range(num_iter), r.num_trig, 'r-'))
-    h.append(ax.plot(range(num_iter), c.number_aftershocks * np.ones(num_iter), 'r--'))
+    h.append(ax.plot(range(num_iter), number_aftershocks * np.ones(num_iter), 'r--'))
     ax.set_xlabel('Number iterations')
     ax.set_ylabel('Number events')
     ax.legend([t[0] for t in h], ('B/g, inferred', 'B/g, true', 'Trig, inferred', 'Trig, true'), 'right')

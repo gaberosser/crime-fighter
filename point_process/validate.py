@@ -3,6 +3,12 @@ import numpy as np
 import math
 import runner
 from database import models, logic
+from analysis import validation
+
+
+# TODO: refactor this, inheriting almost everything from analysis.validation.ValidationBase
+# main addition is probably a more efficient version of the run() routine in which the previous estimate is applied to
+# improve the convergence of the train algorithm.  Also reduce the number of iterations.
 
 class ValidationBase(object):
 
@@ -28,27 +34,6 @@ class ValidationBase(object):
     @property
     def testing(self):
         return self.data[self.test_idx]
-
-    def create_spatial_grid(self, grid_length, offset_coords=None):
-        """
-        Compute a grid on the spatial domain.
-        :param grid_length: the length of one side of the grid square
-        :param offset_coords: tuple giving the (x, y) coordinates of the bottom LHS of a gridsquare, default = (0, 0)
-        :return: list of grid vertices and centroids (both (x,y) pairs)
-        """
-        offset_coords = offset_coords or (0, 0)
-        xmin, ymin, xmax, ymax = self.spatial_domain.extent
-        sq_x_l = math.ceil((offset_coords[0] - xmin) / grid_length)
-        sq_x_r = math.ceil((xmax - offset_coords[0]) / grid_length)
-        sq_y_l = math.ceil((offset_coords[1] - ymin) / grid_length)
-        sq_y_r = math.ceil((ymax - offset_coords[1]) / grid_length)
-        edges_x = grid_length * np.arange(-sq_x_l, sq_x_r + 1) + offset_coords[0]
-        edges_y = grid_length * np.arange(-sq_y_l, sq_y_r + 1) + offset_coords[1]
-        centres_x = grid_length * 0.5 + edges_x[:-1]
-        centres_y = grid_length * 0.5 + edges_y[:-1]
-        ex, ey = np.meshgrid(edges_x, edges_y, copy=False)
-        cx, cy = np.meshgrid(centres_x, centres_y, copy=False)
-        return zip(ex.flatten(), ey.flatten()), zip(cx.flatten(), cy.flatten())
 
     def split_data(self, test_frac=0.4, *args, **kwargs):
         """ Split the data into training and test """
@@ -77,24 +62,3 @@ class ValidationBase(object):
         Run the required train / predict / assess sequence
         """
         raise NotImplementedError()
-
-
-class ValidationForecastSequential(ValidationBase):
-
-    def split_data(self, t_max=None, *args, **kwargs):
-        """ Split the data into training and test based on the threshold time t_max """
-        if t_max is None:
-            t_max = self.data[int(self.ndata / 2), 0] # half readings
-        idx = self.data[:, 0] < t_max
-        self.train_idx  = np.where(idx)
-        self.test_idx = np.where(~idx)
-
-    def predict(self, t, x, y, *args, **kwargs):
-        pass
-
-
-class ValidationZerothOrder(ValidationBase):
-
-    def train_model(self, *args, **kwargs):
-        # TODO: simply return same prob as at t=0
-        pass
