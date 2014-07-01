@@ -7,7 +7,7 @@ class Hotspot(object):
 
     def __init__(self, stkernel, data=None):
         self.stkernel = stkernel
-        if data:
+        if data is not None:
             self.stkernel.train(data)
 
     @property

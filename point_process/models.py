@@ -65,6 +65,18 @@ class PointProcess(object):
         distances = np.sqrt(pdiff[:, :, 1] ** 2 + pdiff[:, :, 2] ** 2)
         return np.where((distances < self.max_trigger_d) & (pdiff[:, :, 0] > 0) & (pdiff[:, :, 0] < self.max_trigger_t))
 
+    def background_density(self, t, x, y):
+        """
+        Return the (unnormalised) density due to background events
+        """
+        return self.bg_t_kde.pdf(t, normed=False) * self.bg_xy_kde.pdf(x, y, normed=False) / self.ndata
+
+    def trigger_density(self, t, x, y):
+        """
+        Return the (unnormalised) trigger density
+        """
+        return self.trigger_kde(t, x, y, normed=False) / self.ndata
+
     def evaluate_conditional_intensity(self, t, x, y, data=None):
         """
         Evaluate the conditional intensity, lambda, at point (t, x, y) or at points specified in 1D arrays t, x, y.
@@ -171,4 +183,6 @@ class PointProcess(object):
                 print "Completed %d / %d iterations in %f s.  L2 norm = %e" % (i+1, niter, self.run_times[-1], self.l2_differences[-1])
 
             if tol_p != 0. and self.l2_differences[-1] < tol_p:
+                if verbose:
+                    print "Training terminated in %d iterations as tolerance has been met." % (i+1)
                 break

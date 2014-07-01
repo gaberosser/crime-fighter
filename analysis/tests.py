@@ -2,6 +2,7 @@ __author__ = 'gabriel'
 import unittest
 import numpy as np
 import mock
+import math
 from django.contrib.gis import geos
 import spatial
 import hotspot
@@ -69,18 +70,27 @@ class TestHotspot(unittest.TestCase):
         stk = mock.create_autospec(hotspot.STKernelBowers)
 
         data = np.tile(np.arange(10), (3, 1)).transpose()
-        h = hotspot.Hotspot(data, stk)
+        h = hotspot.Hotspot(stk, data=data)
         self.assertEqual(stk.train.call_count, 1)
         self.assertListEqual(list(stk.train.call_args[0][0].flat), list(data.flat))
 
         a = 2
         b = 10
         stk = hotspot.STKernelBowers(a, b)
-        h = hotspot.Hotspot(data, stk)
+        h = hotspot.Hotspot(stk, data=data)
         self.assertEqual(h.predict(1.3, 4.6, 7.8), stk.predict(1.3, 4.6, 7.8))
 
 
 class TestValidation(unittest.TestCase):
+
+    def setUp(self):
+        n = 100
+        t = np.linspace(0, 1, n).reshape((n, 1))
+        np.random.shuffle(t)
+        self.data = np.hstack((t, np.random.RandomState(42).rand(n, 2)))
+        stk = hotspot.SKernelHistoric(1, bdwidth=0.3)
+        self.vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
+        self.vb.train_model()
 
     def test_mcsampler(self):
         poly = geos.Polygon([
@@ -124,10 +134,178 @@ class TestValidation(unittest.TestCase):
         for x, y in zip(expct_draws[in_idx, :], rvs):
             self.assertListEqual(list(x), list(y))
 
-    ## test me: (in setUp) instantiation: sorting data by time, picking correct t_cutoff, calling model 'train' method once
-    ## test me: extracting testing data correctly using dt_plus, dt_minus
-    ## test me: predict_on_poly with lambda x,y: x to check it works
-    ## test me: pai with a few known incidents in different squares
-    ## test me: run correctly steps through time sequence
+    def test_instantiation(self):
+        # check that model is NOT trained initially
+        stk = mock.create_autospec(hotspot.STKernelBowers)
+        vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
+        self.assertEqual(stk.train.call_count, 0)
 
+        # check data are present and sorted
+        self.assertEqual(self.vb.ndata, self.data.shape[0])
+        self.assertTrue(np.all(np.diff(self.vb.data[:, 0]) > 0))
 
+    def test_grid(self):
+
+        #  no grid length provided
+        self.assertEqual(self.vb.spatial_domain, None)
+        with self.assertRaises(Exception):
+            self.vb.grid
+        self.vb.set_grid(0.1)
+
+        # check that spatial extent is now set correctly
+        poly = self.vb.spatial_domain
+        self.assertTupleEqual(poly.extent, (
+            min(self.data[:, 1]),
+            min(self.data[:, 2]),
+            max(self.data[:, 1]),
+            max(self.data[:, 2]),
+        ))
+        self.assertEqual(len(self.vb.grid), 100)
+
+    def test_time_cutoff(self):
+
+        # check time cutoff and training/test split
+        data = self.data[np.argsort(self.data[:, 0])]
+        cutoff_te = data[int(self.data.shape[0] / 2), 0]
+        self.assertEqual(self.vb.cutoff_t, cutoff_te)
+        # training set
+        self.assertEqual(self.vb.training.shape[0], sum(self.data[:, 0] <= cutoff_te))
+        for i in range(int(self.data.shape[0] / 2)):
+            self.assertListEqual(list(self.vb.training[i]), list(data[i]))
+        # testing set
+        testinge = data[data[:, 0] > cutoff_te]
+        self.assertEqual(self.vb.testing().shape[0], len(testinge))
+        for i in range(len(testinge)):
+            self.assertListEqual(list(self.vb.testing()[i]), list(testinge[i]))
+
+        # testing dataset with dt_plus specified
+        dt_plus = data[data[:, 0] > cutoff_te][2, 0] - cutoff_te
+        testinge = data[(data[:, 0] > cutoff_te) & (data[:, 0] <= (cutoff_te + dt_plus))]
+        self.assertEqual(self.vb.testing(dt_plus=dt_plus).shape[0], len(testinge))
+        for i in range(len(testinge)):
+            self.assertListEqual(list(self.vb.testing(dt_plus=dt_plus)[i]), list(testinge[i]))
+
+        # testing dataset with dt_plus and dt_minus
+        dt_plus = data[data[:, 0] > cutoff_te][17, 0] - cutoff_te
+        dt_minus = data[data[:, 0] > cutoff_te][10, 0] - cutoff_te
+        testinge = data[(data[:, 0] > (cutoff_te + dt_minus)) & (data[:, 0] <= (cutoff_te + dt_plus))]
+        self.assertEqual(self.vb.testing(dt_plus=dt_plus, dt_minus=dt_minus).shape[0], len(testinge))
+        for i in range(len(testinge)):
+            self.assertListEqual(list(self.vb.testing(dt_plus=dt_plus, dt_minus=dt_minus)[i]), list(testinge[i]))
+
+    def test_training(self):
+        stk = mock.create_autospec(hotspot.STKernelBowers)
+        vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
+        self.assertEqual(stk.train.call_count, 0)
+        vb.set_t_cutoff(vb.cutoff_t)
+        self.assertEqual(stk.train.call_count, 1)
+        vb.train_model()
+        self.assertEqual(stk.train.call_count, 2)
+
+    def test_predict(self):
+        self.vb.set_grid(0.1)
+        self.vb.train_model()
+        pop = self.vb.predict_on_poly(self.vb.cutoff_t, self.vb.spatial_domain)
+        centroid = self.vb.spatial_domain.centroid.coords
+        pope = self.vb.model.predict(self.vb.cutoff_t, *centroid)
+        self.assertEqual(pop, pope)
+
+        stk = mock.create_autospec(hotspot.STKernelBowers)
+        vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
+        vb.train_model()
+        vb.set_grid(0.1)
+        pop = vb.predict(self.vb.cutoff_t)
+        # FIXME: next assertion may break if we implement a more efficient routine for eval (reducing num of calls)
+        self.assertEqual(stk.predict.call_count, len(vb.grid))
+
+        class MockKernel(hotspot.STKernelBase):
+
+            def _evaluate(self, t, x, y):
+                return sum(self.data[:, 1] - x)
+
+        stk = MockKernel()
+        vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
+        self.assertEqual(stk.ndata, 0)
+        vb.train_model()
+        vb.set_grid(0.1)
+        pop = vb.predict(self.vb.cutoff_t)
+        self.assertEqual(len(pop), len(vb.grid))
+        pope = np.array([np.sum(self.data[self.data[:, 0] <= self.vb.cutoff_t, 1] - x.centroid.coords[0]) for x in vb.grid])
+        for (p, pe) in zip(pop, pope):
+            self.assertAlmostEqual(p, pe)
+
+    def test_true_values(self):
+        self.vb.set_grid(0.1)
+        self.vb.train_model()
+        polys = self.vb.grid
+
+        # check computing true values
+        true = self.vb.true_values(0.2, 0)
+        testing_idx = (self.data[:, 0] > self.vb.cutoff_t) & (self.data[:, 0] <= (self.vb.cutoff_t + 0.2))
+        testing = [geos.Point(x[1], x[2]) for x in self.data[testing_idx]]
+        truee = []
+        for p in polys:
+            truee.append(sum([p.intersects(t) for t in testing]))
+        truee = np.array(truee)
+        self.assertEqual(len(true), len(truee))
+        self.assertListEqual(list(true), list(truee))
+
+    def test_assess(self):
+        self.vb.set_grid(0.1)
+        self.vb.train_model()
+
+        polys, pred, carea, cfrac, pai = self.vb.predict_assess(dt_plus=0.2)
+
+        # check pred and polys
+        self.assertEqual(len(pred), len(self.vb.grid))
+
+        stk = self.vb.model
+        prede = np.array([stk.predict(self.vb.cutoff_t + 0.2, *p.centroid.coords) for p in self.vb.grid])
+        sort_idx = np.argsort(prede)[::-1]
+        polyse = [self.vb.grid[i] for i in sort_idx]
+        self.assertEqual(len(polys), len(self.vb.grid))
+        for (p, pe) in zip(polys, polyse):
+            self.assertTupleEqual(p.coords, pe.coords)
+
+        prede = prede[sort_idx]
+        for (p, pe) in zip(pred, prede):
+            self.assertAlmostEqual(p, pe)
+
+        # check carea
+        ae = np.array([p.area for p in polyse])
+        self.assertAlmostEqual(self.vb.A, sum(ae))
+        careae = np.cumsum(ae) / sum(ae)
+        for (p, pe) in zip(carea, careae):
+            self.assertAlmostEqual(p, pe)
+
+        # check cfrac
+        true = self.vb.true_values(dt_plus=0.2, dt_minus=0)
+        cfrace = np.cumsum(true[sort_idx]) / np.sum(true)
+        for (p, pe) in zip(cfrac, cfrace):
+            self.assertAlmostEqual(p, pe)
+
+        # check pai
+        paie = cfrace * sum(ae) / np.cumsum(ae)
+        for (p, pe) in zip(pai, paie):
+            self.assertAlmostEqual(p, pe)
+
+    def test_run(self):
+        with mock.patch.object(validation.ValidationBase, 'predict_assess',
+                               return_value=tuple([0 for i in range(5)])) as m:
+            stk = hotspot.SKernelHistoric(1, bdwidth=0.3)
+            vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
+            t0 = vb.cutoff_t
+            polys, carea, cfrac, pai = vb.run(dt=0.1)
+            expct_call_count = math.ceil((1 - vb.cutoff_t) / 0.1)
+            self.assertEqual(m.call_count, expct_call_count)
+            for c in m.call_args_list:
+                self.assertEqual(c, mock.call(dt_plus=0.1, dt_minus=0))
+            # check that cutoff time is reset correctly
+            self.assertEqual(vb.cutoff_t, t0)
+
+        self.vb.set_grid(0.1)
+        polys, carea, cfrac, pai = self.vb.run(dt=0.1)
+        self.assertEqual(len(polys[0]), len(self.vb.grid))
+        self.assertEqual(len(carea), expct_call_count)
+        self.assertEqual(len(cfrac), expct_call_count)
+        self.assertEqual(len(pai), expct_call_count)

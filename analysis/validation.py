@@ -38,9 +38,9 @@ class ValidationBase(object):
         if grid_length:
             self.set_grid(grid_length)
 
-    def set_t_cutoff(self, cutoff_t):
+    def set_t_cutoff(self, cutoff_t, **kwargs):
         self.cutoff_t = cutoff_t
-        self.train_model()
+        self.train_model(**kwargs)
 
     def set_grid(self, grid_length):
         if not self.spatial_domain:
@@ -107,10 +107,7 @@ class ValidationBase(object):
     def predict(self, t, **kwargs):
         # estimate total propensity in each grid poly
         res = np.array([self.predict_on_poly(t, p, **kwargs) for p in self.grid])
-        # sort by intensity
-        res = np.array(res)
-        sort_idx = np.argsort(res)[::-1]
-        return res[sort_idx], sort_idx
+        return res
 
     def true_values(self, dt_plus, dt_minus):
         # count actual crimes in testing dataset on grid
@@ -120,26 +117,26 @@ class ValidationBase(object):
             n[i] += sum([t[1].intersects(self.grid[i]) for t in testing])
         return n
 
-    def assess_pai(self, n):
-        N = sum(n)
-        a = np.array([t.area for t in self.grid])
-        cfrac = np.cumsum(n) / N
-        carea = np.cumsum(a) / self.A
-        pai = cfrac * (self.A / np.cumsum(a))
-        return carea, cfrac, pai
-
-    def _predict_assess(self, dt_plus, dt_minus=0., *args, **kwargs):
+    def predict_assess(self, dt_plus, dt_minus=0., *args, **kwargs):
         """
-        Assess the trained model on a grid of supplied size.  Return the PAI metric for varying hit rate
+        Assess the trained model on the polygonal grid.  Return the PAI metric for varying hit rate
         """
-        pred, sort_idx = self.predict(self.cutoff_t + dt_plus, **kwargs)
-        polys = [self.grid[i] for i in sort_idx]
+        pred = self.predict(self.cutoff_t + dt_plus, **kwargs)
 
         # count actual crimes in testing dataset on same grid
-        n = self.true_values(dt_plus, dt_minus)
+        true = self.true_values(dt_plus, dt_minus)
 
-        # assessment scores
-        carea, cfrac, pai = self.assess_pai(n)
+        # sort by descending predicted values
+        sort_idx = np.argsort(pred)[::-1]
+        true = true[sort_idx]
+        pred = pred[sort_idx]
+        polys = [self.grid[i] for i in sort_idx]
+
+        N = sum(true)
+        a = np.array([t.area for t in polys])
+        cfrac = np.cumsum(true) / N
+        carea = np.cumsum(a) / self.A
+        pai = cfrac * (self.A / np.cumsum(a))
 
         return polys, pred, carea, cfrac, pai
 
@@ -157,12 +154,17 @@ class ValidationBase(object):
         pai = []
         polys = []
 
+        # initial training
+        self.train_model(**kwargs)
+
         try:
             while self.cutoff_t < t_upper:
                 # predict and assess
-                polys, _, carea, this_cfrac, this_pai = self._predict_assess(dt_plus=dt, dt_minus=0, **kwargs)
+                this_polys, _, this_carea, this_cfrac, this_pai = self.predict_assess(dt_plus=dt, dt_minus=0, **kwargs)
+                carea.append(this_carea)
                 cfrac.append(this_cfrac)
                 pai.append(this_pai)
+                polys.append(this_polys)
                 self.set_t_cutoff(self.cutoff_t + dt)
 
         finally:
@@ -218,9 +220,10 @@ if __name__ == "__main__":
     vb.train_model(niter=20)
 
 
-    polys, res, carea, cfrac, pai = vb._predict_assess(dt_plus=1, dt_minus=0) # predict one day ahead
-    x = [a.centroid.coords[0] for a in polys]
-    y = [a.centroid.coords[1] for a in polys]
+    polys, res, carea, cfrac, pai = vb.predict_assess(dt_plus=1, dt_minus=0) # predict one day ahead
+    n = vb.true_values(dt_plus=1, dt_minus=0)
+    # x = [a.centroid.coords[0] for a in polys]
+    # y = [a.centroid.coords[1] for a in polys]
 
     norm = mpl.colors.Normalize(min(res), max(res))
     cmap = mpl.cm.jet
@@ -230,7 +233,17 @@ if __name__ == "__main__":
     ax = fig.add_subplot(111)
     for (p, r) in zip(polys, res):
         plotting.plot_geodjango_shapes(shapes=(p,), ax=ax, facecolor=sm.to_rgba(r), set_axes=False)
-    plotting.plot_geodjango_shapes((camden.mpoly,), ax=ax, facecolor='none')
+    plotting.plot_geodjango_shapes((vb.spatial_domain,), ax=ax, facecolor='none')
+
+    norm = mpl.colors.Normalize(min(n), max(n))
+    sm = mpl.cm.ScalarMappable(norm, cmap)
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    for (p, r) in zip(vb.grid, n):
+        plotting.plot_geodjango_shapes(shapes=(p,), ax=ax, facecolor=sm.to_rgba(r), set_axes=False)
+    plotting.plot_geodjango_shapes((vb.spatial_domain,), ax=ax, facecolor='none')
+
 
     # plotting.plot_surface_on_polygon(camden.mpoly, lambda x,y: vb.predict(1.0, x, y), n=250)
 
