@@ -1,5 +1,7 @@
 __author__ = 'gabriel'
 import unittest
+import csv
+import pickle
 import numpy as np
 import mock
 import math
@@ -7,6 +9,9 @@ from django.contrib.gis import geos
 import spatial
 import hotspot
 import validation
+import cad
+from database.models import Division, DivisionType
+from database.populate import setup_cad250_grid
 
 
 class TestSpatial(unittest.TestCase):
@@ -50,6 +55,63 @@ class TestSpatial(unittest.TestCase):
         self.assertAlmostEqual(sum([g.area for g in grid]), np.pi, places=3) # should approximate PI
 
     ## TODO: test case where a grid square is split into a multipolygon?  seems to work
+
+
+class TestCadAnalysis(unittest.TestCase):
+
+    def setUp(self):
+        # load spatial points data
+        with open('analysis/test_data/spatial_points.csv', 'r') as f:
+            c = csv.reader(f)
+            self.xy = np.array([[float(a) for a in b] for b in c])
+        # setup grid
+        with open('analysis/test_data/camden.pickle', 'r') as f:
+            d = pickle.load(f)
+            dt = DivisionType(name='borough', description='foo')
+            dt.save()
+            # repair FK link
+            d['type'] = dt
+        d = Division(**d)
+        d.save()
+        DivisionType(name='cad_250m_grid', description='foo').save()
+        setup_cad250_grid(verbose=False, test=True)
+
+
+    def test_jiggle_all_on_grid(self):
+        data = np.array([
+            [ 526875.0, 185625.0],
+            [ 526875.1, 185625.1],
+            [ 526874.9, 185625.0],
+            [ 0., 0.],
+            ])
+        extent1 = np.array([ 526750.0, 185500.0, 527000.0, 185750.0])
+        extent2 = extent1 - [250, 0, 250, 0]
+        new_xy = cad.jiggle_all_points_on_grid(data[:, 0], data[:, 1])
+        self.assertTupleEqual(data.shape, new_xy.shape)
+        ingrid1 = lambda t: (t[0] >= extent1[0]) & (t[0] < extent1[2]) & (t[1] >= extent1[1]) & (t[1] < extent1[3])
+        ingrid2 = lambda t: (t[0] >= extent2[0]) & (t[0] < extent2[2]) & (t[1] >= extent2[1]) & (t[1] < extent2[3])
+        # import ipdb; ipdb.set_trace()
+        self.assertTrue(ingrid1(new_xy[0]))
+        self.assertTrue(ingrid1(new_xy[1]))
+        self.assertFalse(ingrid2(new_xy[2]))
+        self.assertListEqual(list(data[-1, :]), list(new_xy[-1, :]))
+
+    def test_jiggle_on_and_off(self):
+        new_xy = cad.jiggle_on_and_off_grid_points(self.xy[:, 0], self.xy[:, 1], scale=5)
+        self.assertEqual(new_xy.shape[0], self.xy.shape[0])
+        # all now unique:
+        num_unique = sum([np.sum(np.sum(new_xy == t, axis=1) == 2)==1 for t in new_xy])
+        self.assertEqual(num_unique, new_xy.shape[0])
+        # no on-grid results remaining:
+        divs = Division.objects.filter(type='cad_250m_grid')
+        centroids = np.array([t.centroid.coords for t in divs.centroid()])
+        num_on_grid = sum([np.sum(np.sum(new_xy == t, axis=1) == 2)==1 for t in centroids])
+        self.assertEqual(num_on_grid, 0)
+
+    def tearDown(self):
+        Division.objects.all().delete()
+        DivisionType.objects.all().delete()
+
 
 
 class TestHotspot(unittest.TestCase):

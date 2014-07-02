@@ -79,7 +79,7 @@ class PpValidation(validation.ValidationBase):
         return new_p
 
 if __name__ == "__main__":
-    from database import logic, models
+    from database import logic, models as d_models
     from scipy.stats import multivariate_normal
     from point_process import models as pp_models
     from point_process import simulate

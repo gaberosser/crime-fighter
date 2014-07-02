@@ -250,8 +250,7 @@ def setup_ward_boundaries(verbose=True):
         pre_save.disconnect(pre_save_callback, sender=models.Division)
 
 
-def setup_cad250_grid(verbose=True):
-    import pdb
+def setup_cad250_grid(verbose=True, test=False):
     dt = models.DivisionType.objects.get(name='cad_250m_grid')
     camden_borough = models.Division.objects.get(type='borough', name='Camden')
     x_coords = np.arange(523750, 532000, 250)
@@ -277,14 +276,22 @@ def setup_cad250_grid(verbose=True):
         d = models.Division(name=str(i), code=str(i), type=dt, mpoly=MultiPolygon([p]))
         divs.append(d)
 
-    try:
-        models.Division.objects.bulk_create(divs)
-    except Exception as exc:
-        print repr(exc)
-        raise exc
+    if test:
+        try:
+            [x.save() for x in divs]
+        except Exception as exc:
+            ## FIXME: I have NO idea why this needs to be called twice in test mode
+            [x.save() for x in divs]
+
     else:
-        if verbose:
-            print "Created %u grid areas" % len(polys)
+        try:
+            models.Division.objects.bulk_create(divs)
+        except Exception as exc:
+            print repr(exc)
+            raise exc
+
+    if verbose:
+        print "Created %u grid areas" % len(polys)
 
 
 def setup_divisiontypes(**kwargs):

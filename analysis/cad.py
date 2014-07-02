@@ -1,4 +1,5 @@
 __author__ = 'gabriel'
+import warnings
 import matplotlib as mpl
 from matplotlib import pyplot as plt
 import cartopy.crs as ccrs
@@ -14,7 +15,7 @@ import numpy as np
 import datetime
 import pytz
 from database import logic, models
-from point_process import runner, estimation
+from point_process import estimation, models as pp_models
 
 UK_TZ = pytz.timezone('Europe/London')
 
@@ -180,6 +181,55 @@ def jiggle_on_grid_points(x, y):
     return np.array(res)
 
 
+def jiggle_on_and_off_grid_points(x, y, scale=5):
+    """ randomly jiggle points that are
+        a) off-grid but non-unique, in order to avoid exact overlaps
+        b) on-grid, in which case move them randomly around inside the grid square
+        scale parameter is the symmetric bivariate normal bandwidth for the off-grid jiggle. """
+    divs = models.Division.objects.filter(type='cad_250m_grid')
+    centroids = np.array([t.centroid.coords for t in divs.centroid()])
+    xy = np.vstack((x, y)).transpose()
+    res = []
+    for t in zip(x, y):
+        nt = t
+        if np.any(np.sum(centroids == t, axis=1) == 2):
+            nt = (np.random.random(2) * 250 - 125) + t
+        elif np.sum((np.sum(xy == t, axis=1) == 2)) > 1:
+            nt = np.random.normal(loc=0., scale=scale, size=(2,)) + t
+        else:
+            nt = np.array(t)
+        res.append(nt)
+    return np.array(res)
+
+
+def jiggle_all_points_on_grid(x, y):
+    """ randomly distribute points located at the centroid of the grid squares in order to avoid the issues arising from
+        spurious exact repeats. """
+    divs = models.Division.objects.filter(type='cad_250m_grid')
+    extents = np.array([t.mpoly.extent for t in divs])
+    ingrid = lambda t: np.where(
+        (t[0] >= extents[:, 0]) &
+        (t[0] < extents[:, 2]) &
+        (t[1] >= extents[:, 1]) &
+        (t[1] < extents[:, 3])
+    )[0][0]
+    res = []
+    for t in zip(x, y):
+        # find grid square
+        try:
+            idx = ingrid(t)
+        except IndexError:
+            # not on grid - leave as-is
+            warnings.warn("Point found that is not on the CAD grid.  Leaving as-is.")
+            nt = t
+        else:
+            e = extents[idx]
+            # jiggle
+            nt = np.random.random(2) * 250 + e[:2]
+        res.append(nt)
+    return np.array(res)
+
+
 def apply_point_process_to_cad(nicl_type=3):
     max_trigger_t = 30 # units days
     max_trigger_d = 500 # units metres
@@ -187,7 +237,8 @@ def apply_point_process_to_cad(nicl_type=3):
     min_bandwidth = None
     qset = logic.clean_dedupe_cad(nicl_type=nicl_type, only_new=False)
     xy = np.array([x.att_map.coords for x in qset])
-    new_xy = jiggle_on_grid_points(xy[:, 0], xy[:, 1])
+    new_xy = jiggle_on_and_off_grid_points(xy[:, 0], xy[:, 1], scale=15)
+    # new_xy = jiggle_all_points_on_grid(xy[:, 0], xy[:, 1])
     rel_dt = np.min([x.inc_datetime for x in qset])
     t = np.array([[(x.inc_datetime - rel_dt).total_seconds() / float(24 * 60 * 60)] for x in qset])
     res = np.hstack((t, new_xy))
@@ -195,10 +246,10 @@ def apply_point_process_to_cad(nicl_type=3):
     res = res[np.argsort(res[:, 0])]
     # manually estimate p initially
     p = estimation.initial_guess_educated(res, ct=1, cd=0.02)
-    r = runner.PointProcess(res, p=p, max_trigger_t=max_trigger_t, max_trigger_d=max_trigger_d,
+    r = pp_models.PointProcess(p=p, max_trigger_t=max_trigger_t, max_trigger_d=max_trigger_d,
                             min_bandwidth=min_bandwidth)
-    r.train(niter=50)
-    return r
+    ps = r.train(data=res, niter=30, tol_p=1e-9)
+    return r, ps
 
 
 def diggle_st_clustering(nicl_type=3):

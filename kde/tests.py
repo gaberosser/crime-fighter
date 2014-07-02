@@ -160,3 +160,14 @@ class TestVariableBandwidthKde(unittest.TestCase):
             for dim in range(2):
                 x = kde.marginal_icdf(y, dim=dim)
                 self.assertAlmostEqual(kde.marginal_cdf(x, dim=dim), y)
+
+
+class TestVariableBandwidthKdeNn(unittest.TestCase):
+
+    pass
+
+
+class TestWeightedVariableBandwidthKdeNn(unittest.TestCase):
+
+    pass
+
