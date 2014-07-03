@@ -6,6 +6,73 @@ from analysis import validation
 import models
 
 
+def confusion_matrix(p_inferred, linkage_col, t=0.5):
+
+    if p_inferred.shape[0] != p_inferred.shape[1]:
+        raise AttributeError("Supplied matrix is not square")
+
+    bg_idx = np.where(np.isnan(linkage_col))[0]
+
+    tp = 0  # True Positive -> correctly infer trigger and lineage
+    tn = 0  # True Negative -> correctly infer background
+    fp = 0  # False Positive -> infer trigger when actually background
+    fn = 0  # False Negative -> infer background when actually trigger
+    ptp = 0  # Partially True Positive -> infer trigger but with incorrect lineage, including when parent is before sample
+    ptn = 0  # Partially True Negative -> infer background when actually trigger with parent occurring before sample
+    # to reduce to simple confusion matrix, take TP = TP + PTP, TN = TN + PTN
+
+    ## BG
+    bg_inferred = np.diag(p_inferred)
+    tn += sum(bg_inferred[bg_idx])
+    # deal with false positives below
+
+    ## TRIGGER
+    for i in range(p_inferred.shape[0]):
+        # upper tri portion
+        pi = p_inferred[:i, i]
+        pid = p_inferred[i, i]
+
+        # Stop here if event is BG -> FP
+        if i in bg_idx:
+            fp += sum(pi)
+            continue
+
+        # beyond here, event is triggered...
+
+        # Stop here if event is triggered with parent out of sample
+        if linkage_col[i] == -1.:
+            ptn += pid
+            ptp += sum(pi)
+            continue
+
+        # inferred as BG -> FN
+        fn += pid
+
+        # (fully) true positives
+        tp += pi[int(linkage_col[i])]
+
+        # partially true positives
+        ptp += sum(pi[:int(linkage_col[i])])
+        ptp += sum(pi[int(linkage_col[i])+1:])
+
+    return {
+        'tp': tp,
+        'fp': fp,
+        'tn': tn,
+        'fn': fn,
+        'ptp': ptp,
+        'ptn': ptn,
+    }
+
+
+# def compute_lineage_matrix(linkage_col):
+#     """ Compute the Boolean p matrix for annotated data, as returned by the simulator """
+#     bg_idx = np.where(np.isnan(linkage_col))[0]
+#     trigger_idx = np.where(~np.isnan(linkage_col))[0]
+#     trigger_pairs
+#     pass
+
+
 class PpValidation(validation.ValidationBase):
 
     pp_class = models.PointProcess # model class

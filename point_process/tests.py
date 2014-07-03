@@ -2,11 +2,16 @@ __author__ = 'gabriel'
 import unittest
 import simulate
 import estimation
+import models
 import validate
 import numpy as np
 from mock import patch
 from scipy.spatial import KDTree
+import os
+import pickle
 
+cd = os.path.dirname(os.path.realpath(__file__))
+DATA_DIR = os.path.join(cd, 'test_data')
 
 class TestSimulation(unittest.TestCase):
 
@@ -28,6 +33,74 @@ class TestSimulation(unittest.TestCase):
         self.assertTrue(np.all(c.data[~np.isnan(c.data[:, -1]), -1] < max(c.data[:, 0])))
 
 
+class TestPointProcessStochastic(unittest.TestCase):
+
+    def setUp(self):
+        self.c = simulate.MohlerSimulation()
+        self.c.number_to_prune = 3500
+        self.c.seed(42)
+        self.c.run()
+        self.data = self.c.data[:, :3]
+
+    def test_point_process(self):
+        """
+        Tests the output of the PP stochastic method based on a given random seed.
+        The tests are all based on KNOWN results, NOT on the ideal results.  Failing some of these tests may still
+        indicate an improvement.
+        """
+        r = models.PointProcess(max_trigger_d=0.75, max_trigger_t=80)
+        estimation.set_seed(42)
+        ps = r.train(self.data, niter=15, verbose=False, tol_p=1e-8)
+        self.assertEqual(r.ndata, self.data.shape[0])
+        self.assertEqual(len(r.num_bg), 15)
+        self.assertEqual(r.niter, 15)
+        self.assertAlmostEqual(r.l2_differences[0], 7.6531563e-06, places=3)
+        self.assertAlmostEqual(r.l2_differences[-1], 5.3778352e-07, places=3)
+        num_bge = [
+            1284,
+            1850,
+            1780,
+            1716,
+            1691,
+            1645,
+            1617,
+            1605,
+            1624,
+            1629,
+            1601,
+            1594,
+            1588,
+            1593,
+            1594,
+            ]
+        self.assertListEqual(r.num_bg, num_bge)
+        self.assertListEqual(r.num_trig, [r.ndata - x for x in r.num_bg])
+        self.assertEqual(len(r.linkage[0]), 6927)
+        t = np.linspace(0, max(self.data[:, 0]), 10000)
+        zt = r.bg_t_kde.pdf(t, normed=False)
+        # mean BG_t
+        mt = np.mean(zt)
+        self.assertAlmostEqual(mt, 5.370218625, places=3)  # should be 5.71
+        # stdev BG_t
+        stdevt = np.std(zt)
+        # should be as low as possible (no time variation in simulation):
+        self.assertAlmostEqual(stdevt, 0.867680028, places=3)
+        # mean BG_x, BG_y
+        x, y = np.meshgrid(np.linspace(-15, 15, 200), np.linspace(-15, 15, 200))
+        zxy = r.bg_xy_kde.pdf(x,y,normed=False)
+        mx = np.sum(x * zxy) / x.size
+        my = np.sum(y * zxy) / y.size
+        self.assertAlmostEqual(mx, -0.13921210, places=3)  # should be 0
+        self.assertAlmostEqual(my, -0.14031403, places=3)  # should be 0
+        # stdev BG_x, BG_y
+        stdevx = np.sqrt((np.sum(x**2 * zxy)/(x.size - 1)) - mx**2)
+        stdevy = np.sqrt((np.sum(y**2 * zxy)/(y.size - 1)) - my**2)
+        self.assertAlmostEqual(stdevx, 6.116309602)  # should be 4.5
+        self.assertAlmostEqual(stdevy, 6.132948083)  # should be 4.5
+        self.assertTrue(2 * np.abs(stdevx - stdevy)/(stdevx + stdevy) < 0.003) # should be 0
+        # TODO: trigger
+
+
 class TestSampling(unittest.TestCase):
 
     def test_roulette_selection(self):
@@ -38,10 +111,11 @@ class TestSampling(unittest.TestCase):
         rvs = prng.rand(num_iter)
         num1 = sum(rvs > 0.8)
         # force random seed of 42
-        with patch('numpy.random.RandomState', return_value=np.random.RandomState(42)) as mock:
-            idx = np.array([estimation.weighted_choice_np(weights) for i in range(num_iter)])
-            self.assertEqual(sum(idx == 0), num_iter - num1)
-            self.assertEqual(sum(idx == 1), num1)
+        estimation.set_seed(42)
+        # with patch('numpy.random.RandomState', return_value=np.random.RandomState(42)) as mock:
+        idx = np.array([estimation.weighted_choice_np(weights) for i in range(num_iter)])
+        self.assertEqual(sum(idx == 0), num_iter - num1)
+        self.assertEqual(sum(idx == 1), num1)
 
     def test_weighted_sampling(self):
         # all BG
@@ -71,9 +145,10 @@ class TestSampling(unittest.TestCase):
                 [0.4, 0.8]
             ]
         )
-        with patch('numpy.random.RandomState', return_value=np.random.RandomState(42)) as mock:
-            res = estimation.sample_events(P)
-            idx = np.array([estimation.weighted_choice_np(w) for w in P.transpose()])
+        # with patch('numpy.random.RandomState', return_value=np.random.RandomState(42)) as mock:
+        estimation.set_seed(42)
+        res = estimation.sample_events(P)
+        idx = np.array([estimation.weighted_choice_np(w) for w in P.transpose()])
         prng = np.random.RandomState(42)
         rvs = prng.rand(2)
         self.assertListEqual(list(res[0]), [0, 0 if rvs[0] <= 0.6 else 1])
@@ -137,13 +212,15 @@ class TestSampling(unittest.TestCase):
             [100., 0., 0.],
         ])
         P = estimation.initial_guess(data)
-        with patch('numpy.random.RandomState', return_value=np.random.RandomState(42)) as mock:
-            res = estimation.sample_events(P)
+        # with patch('numpy.random.RandomState', return_value=np.random.RandomState(42)) as mock:
+        estimation.set_seed(42)
+        res = estimation.sample_events(P)
         for x0, x1 in res:
             self.assertTrue(x0 >= x1)
 
-        with patch('numpy.random.RandomState', return_value=np.random.RandomState(42)) as mock:
-            bg, interpoint, cause_effect = estimation.sample_bg_and_interpoint(data, P)
+        # with patch('numpy.random.RandomState', return_value=np.random.RandomState(42)) as mock:
+        estimation.set_seed(42)
+        bg, interpoint, cause_effect = estimation.sample_bg_and_interpoint(data, P)
 
         self.assertEqual(interpoint.shape[0], cause_effect.shape[0])
         self.assertEqual(bg.shape[0] + interpoint.shape[0], data.shape[0])
@@ -200,6 +277,8 @@ class TestKDNearestNeighbours(unittest.TestCase):
 
 class TestValidate(unittest.TestCase):
 
-    pass
+    def test_confusion_matrix(self):
+        pass
     # upon running, size of each successive dataset grows
+
 

@@ -5,10 +5,16 @@ import time
 import multiprocessing
 PI = np.pi
 
+## FIXME: global prng probably isn't the best idea
+prng = np.random.RandomState()
+
+
+def set_seed(seed=None):
+    prng.seed(seed)
+
 
 def weighted_choice_np(weights):
     totals = np.cumsum(weights)
-    prng = np.random.RandomState()
     throw = prng.rand()
     return np.searchsorted(totals, throw)
 

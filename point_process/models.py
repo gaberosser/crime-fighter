@@ -199,6 +199,9 @@ class PointProcess(object):
 
 class PointProcessDeterministic(PointProcess):
 
+    # allow specifying this in __init__
+    min_prob_factor = 2
+
     @property
     def min_weight(self):
         return 1 / (10. * self.ndata)
@@ -215,19 +218,20 @@ class PointProcessDeterministic(PointProcess):
         self.num_bg.append(effective_num_bg)
         self.num_trig.append(self.ndata - effective_num_bg)
 
-""" FIX FROM HERE
+        # form valid interpoint distances
 
-        # compute approximate interpoint data and weights, eliminating very low weightings
-        self.interpoint_distance_data
 
         # compute KDEs
         try:
             self.bg_t_kde = pp_kde.WeightedVariableBandwidthNnKde(self.data[:, 0], weights=p_bg)
-            self.bg_xy_kde = pp_kde.VariableBandwidthNnKde(self.data[:, 1:], weights=1-p_bg)
-            self.trigger_kde = pp_kde.VariableBandwidthNnKde(interpoint, min_bandwidth=self.min_bandwidth)
+            self.bg_xy_kde = pp_kde.WeightedVariableBandwidthNnKde(self.data[:, 1:], weights=1-p_bg)
+            self.trigger_kde = pp_kde.WeightedVariableBandwidthNnKde(self.interpoint_distance_data,
+                                                                     weights=self.p[self.linkage],
+                                                                     min_bandwidth=self.min_bandwidth)
         except AttributeError as exc:
-            print "Error.  Num BG: %d, num trigger %d" % (bg.shape[0], interpoint.shape[0])
+            print repr(exc)
             raise exc
+
 
         # evaluate BG at data points
         m = self.background_density(self.data[:, 0], self.data[:, 1], self.data[:, 2])
@@ -235,7 +239,9 @@ class PointProcessDeterministic(PointProcess):
         # evaluate trigger KDE at all interpoint distances
 
         g = np.zeros((self.ndata, self.ndata))
-        g[self.linkage] = self.trigger_density(diff_data[:, 0], diff_data[:, 1], diff_data[:, 2])
+        g[self.linkage] = self.trigger_density(self.interpoint_distance_data[:, 0],
+                                               self.interpoint_distance_data[:, 1],
+                                               self.interpoint_distance_data[:, 2])
 
         # sanity check
         if np.any(np.diagonal(g) != 0):
@@ -252,4 +258,3 @@ class PointProcessDeterministic(PointProcess):
 
         # update p
         self.p = new_p
-"""

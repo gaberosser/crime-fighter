@@ -1,17 +1,18 @@
 __author__ = 'gabriel'
 import numpy as np
 import math
-import random
 import datetime
 import pandas
 PI = np.pi
 
-def nonstationary_poisson(inv_func, t_max):
+def nonstationary_poisson(inv_func, t_max, prng=None):
+    if not prng:
+        prng = np.random.RandomState()
     tn = 0.
     ta = 0.
     res = []
     while True:
-        tn -= math.log(random.random())
+        tn -= math.log(prng.rand())
         try:
             ta = inv_func(tn)
             if ta <= t_max:
@@ -48,6 +49,7 @@ class MohlerSimulation():
         K = 1/float(2 * PI * self.off_sigma_x * self.off_sigma_y)
 
         self.data = np.zeros((1, 4))
+        self.prng = np.random.RandomState()
 
     def data_iter(self):
         i = 0
@@ -55,6 +57,8 @@ class MohlerSimulation():
             yield self.data[i, :]
             i += 1
 
+    def seed(self, seed=None):
+        self.prng.seed(seed)
 
     @property
     def off_cov(self):
@@ -73,11 +77,11 @@ class MohlerSimulation():
     def initialise_background(self):
         """ Simulate background events
             NB this destroys all existing data. """
-        number_bg = np.random.poisson(self.bg_mu_bar * self.t_total)
+        number_bg = self.prng.poisson(self.bg_mu_bar * self.t_total)
         # background event times uniform on interval
-        bg_times = np.random.random(number_bg) * self.t_total
+        bg_times = self.prng.rand(number_bg) * self.t_total
         # background locations distributed normally
-        bg_locations = np.random.multivariate_normal(np.zeros(2), np.array([[self.bg_var, 0.], [0., self.bg_var]]), number_bg)
+        bg_locations = self.prng.multivariate_normal(np.zeros(2), np.array([[self.bg_var, 0.], [0., self.bg_var]]), number_bg)
         self.data = np.array([[i, t, x, y, np.nan] for (i, t), (x, y) in zip(enumerate(bg_times), bg_locations)])
         return bg_times, bg_locations
 
@@ -86,9 +90,9 @@ class MohlerSimulation():
             Shocks are appended to list """
         # generate further points
         t_max = self.t_total
-        new_t = nonstationary_poisson(self.non_stationary_poisson_inverse, self.t_total - t)
+        new_t = nonstationary_poisson(self.non_stationary_poisson_inverse, self.t_total - t, prng=self.prng)
         shocks = []
-        loc = np.random.multivariate_normal(self.off_mean, self.off_cov, size=len(new_t))
+        loc = self.prng.multivariate_normal(self.off_mean, self.off_cov, size=len(new_t))
         for tn, ln in zip(new_t, loc):
             shocks.append([tn, ln[0], ln[1]])
             self.data = np.vstack((self.data, [len(self.data), t + tn, x + ln[0], y + ln[1], idx]))
