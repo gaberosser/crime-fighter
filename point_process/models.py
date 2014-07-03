@@ -223,8 +223,10 @@ class PointProcessDeterministic(PointProcess):
 
         # compute KDEs
         try:
+            ## FIXME: no need to recompute NN distances each time when running the determininistic algorithm
+            ## simply update after weights first iteration for speed improvement?
             self.bg_t_kde = pp_kde.WeightedVariableBandwidthNnKde(self.data[:, 0], weights=p_bg)
-            self.bg_xy_kde = pp_kde.WeightedVariableBandwidthNnKde(self.data[:, 1:], weights=1-p_bg)
+            self.bg_xy_kde = pp_kde.WeightedVariableBandwidthNnKde(self.data[:, 1:], weights=p_bg)
             self.trigger_kde = pp_kde.WeightedVariableBandwidthNnKde(self.interpoint_distance_data,
                                                                      weights=self.p[self.linkage],
                                                                      min_bandwidth=self.min_bandwidth)
