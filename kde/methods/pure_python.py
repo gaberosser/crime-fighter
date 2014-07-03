@@ -188,7 +188,7 @@ class VariableBandwidthNnKde(VariableBandwidthKde):
             self.nn = min(100, self.ndata) if self.ndim == 1 else min(15, self.ndata)
 
         if self.nn <= 1:
-            raise Exception("The number of nearest neighbours for variable KDE must be >1")
+            raise AttributeError("The number of nearest neighbours for variable KDE must be >1")
         # compute nn distances on normed data
         nd = self.normed_data
         std = self.raw_std_devs
@@ -220,6 +220,28 @@ class VariableBandwidthNnKde(VariableBandwidthKde):
             fix_idx = np.where(self.bandwidths < min_bandwidth)
             rep_min = np.tile(min_bandwidth, (self.ndata, 1))
             self.bandwidths[fix_idx] = rep_min[fix_idx]
+
+
+class WeightedVariableBandwidthNnKde(VariableBandwidthNnKde):
+    def __init__(self, data, weights, *args, **kwargs):
+        self.weights = np.array(weights)
+        super(WeightedVariableBandwidthNnKde, self).__init__(data, *args, **kwargs)
+
+    def _additive_operation(self, funcstr, *args, **kwargs):
+        """ Generic interface to call function named in funcstr on the data, handling normalisation and reshaping """
+        # store data shape, flatten to N x ndim array then restore
+        normed = kwargs.pop('normed', True)
+        try:
+            shp = args[0].shape
+        except AttributeError:
+            # inputs not arrays
+            shp = np.array(args[0], dtype=np.float64).shape
+        flat_data = np.vstack([np.array(x, dtype=np.float64).flatten() for x in args]).transpose()
+        # better to use a generator here to reduce memory usage:
+        z = reduce(operator.add, (w * getattr(x, funcstr)(flat_data, **kwargs) for w, x in zip(self.weights, self.mvns)))
+        if normed:
+            z /= float(self.ndata)
+        return np.reshape(z, shp)
 
 
 class FixedBandwidthXValidationKde(FixedBandwidthKde):
