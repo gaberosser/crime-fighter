@@ -40,9 +40,9 @@ if __name__ == '__main__':
     ax = fig.add_subplot(111)
     h = []
     h.append(ax.plot(range(r.niter), r.num_bg, 'k-'))
-    h.append(ax.plot(range(r.niter), number_bg * np.ones(r.niter), 'k--'))
+    h.append(ax.plot(range(r.niter), c.number_bg * np.ones(r.niter), 'k--'))
     h.append(ax.plot(range(r.niter), r.num_trig, 'r-'))
-    h.append(ax.plot(range(r.niter), number_aftershocks * np.ones(r.niter), 'r--'))
+    h.append(ax.plot(range(r.niter), c.number_aftershocks * np.ones(r.niter), 'r--'))
     ax.set_xlabel('Number iterations')
     ax.set_ylabel('Number events')
     ax.legend([t[0] for t in h], ('B/g, inferred', 'B/g, true', 'Trig, inferred', 'Trig, true'), 'right')

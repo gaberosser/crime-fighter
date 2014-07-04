@@ -8,10 +8,16 @@ from time import time
 import warnings
 
 class PointProcess(object):
-    def __init__(self, p=None, max_trigger_d=None, max_trigger_t=None, min_bandwidth=None, dtype=np.float64, estimator=None):
+    def __init__(self, p=None, max_trigger_d=None, max_trigger_t=None, min_bandwidth=None, dtype=np.float64,
+                 estimator=None, num_nn=None):
         self.dtype = dtype
         self.data = np.array([], dtype=dtype)
         self.min_bandwidth = min_bandwidth
+        self.num_nn = num_nn or [None] * 3
+        if not hasattr(self.num_nn, '__iter__'):
+            self.num_nn = [self.num_nn] * 3
+            warnings.warn("Received single fixed number of NNs to use for KDE (%d).  Using this for all dimensions.",
+                          self.num_nn)
         self.max_trigger_d = max_trigger_d
         self.max_trigger_t = max_trigger_t
 
@@ -126,9 +132,11 @@ class PointProcess(object):
 
             # compute KDEs
             try:
-                self.bg_t_kde = pp_kde.VariableBandwidthNnKde(bg[:, 0])
-                self.bg_xy_kde = pp_kde.VariableBandwidthNnKde(bg[:, 1:])
-                self.trigger_kde = pp_kde.VariableBandwidthNnKde(interpoint, min_bandwidth=self.min_bandwidth)
+                self.bg_t_kde = pp_kde.VariableBandwidthNnKde(bg[:, 0], nn=self.num_nn[0])
+                self.bg_xy_kde = pp_kde.VariableBandwidthNnKde(bg[:, 1:], nn=self.num_nn[1])
+                self.trigger_kde = pp_kde.VariableBandwidthNnKde(interpoint,
+                                                                 min_bandwidth=self.min_bandwidth,
+                                                                 nn=self.num_nn[2])
             except AttributeError as exc:
                 print "Error.  Num BG: %d, num trigger %d" % (bg.shape[0], interpoint.shape[0])
                 raise exc
@@ -175,6 +183,7 @@ class PointProcess(object):
         ps = []
 
         for i in range(niter):
+            # ipdb.set_trace()
             ps.append(self.p)
             tic = time()
             try:
@@ -199,12 +208,18 @@ class PointProcess(object):
 
 class PointProcessDeterministic(PointProcess):
 
-    # allow specifying this in __init__
-    min_prob_factor = 2
-
-    @property
-    def min_weight(self):
-        return 1 / (10. * self.ndata)
+    def set_kdes(self):
+        p_bg = np.diag(self.p)
+        self.bg_t_kde = pp_kde.WeightedVariableBandwidthNnKde(self.data[:, 0],
+                                                              weights=p_bg,
+                                                              nn=self.num_nn[0])
+        self.bg_xy_kde = pp_kde.WeightedVariableBandwidthNnKde(self.data[:, 1:],
+                                                               weights=p_bg,
+                                                               nn=self.num_nn[1])
+        self.trigger_kde = pp_kde.WeightedVariableBandwidthNnKde(self.interpoint_distance_data,
+                                                                 weights=self.p[self.linkage],
+                                                                 min_bandwidth=self.min_bandwidth,
+                                                                 nn=self.num_nn[2])
 
     def _iterate(self):
         colsum = np.sum(self.p, axis=0)
@@ -218,22 +233,10 @@ class PointProcessDeterministic(PointProcess):
         self.num_bg.append(effective_num_bg)
         self.num_trig.append(self.ndata - effective_num_bg)
 
-        # form valid interpoint distances
-
-
-        # compute KDEs
-        try:
-            ## FIXME: no need to recompute NN distances each time when running the determininistic algorithm
-            ## simply update after weights first iteration for speed improvement?
-            self.bg_t_kde = pp_kde.WeightedVariableBandwidthNnKde(self.data[:, 0], weights=p_bg)
-            self.bg_xy_kde = pp_kde.WeightedVariableBandwidthNnKde(self.data[:, 1:], weights=p_bg)
-            self.trigger_kde = pp_kde.WeightedVariableBandwidthNnKde(self.interpoint_distance_data,
-                                                                     weights=self.p[self.linkage],
-                                                                     min_bandwidth=self.min_bandwidth)
-        except AttributeError as exc:
-            print repr(exc)
-            raise exc
-
+        # reset KDE weights
+        self.bg_t_kde.weights = p_bg
+        self.bg_xy_kde.weights = p_bg
+        self.trigger_kde.weights = self.p[self.linkage]
 
         # evaluate BG at data points
         m = self.background_density(self.data[:, 0], self.data[:, 1], self.data[:, 2])
@@ -260,3 +263,65 @@ class PointProcessDeterministic(PointProcess):
 
         # update p
         self.p = new_p
+
+    def train(self, data, niter=30, verbose=True, tol_p=1e-7):
+
+        self.set_data(data)
+        # compute linkage indices
+        self.set_linkages()
+
+        # reset all other storage containers
+        self.reset()
+
+        # initial estimate for p if required
+        if not self.pset:
+            self.p = self.estimator(self.data)
+
+        # set KDEs once now - weights will change but not bandwidths
+
+        try:
+            self.set_kdes()
+        except AttributeError as exc:
+            print repr(exc)
+            raise exc
+
+        ps = []
+
+        for i in range(niter):
+            # ipdb.set_trace()
+            ps.append(self.p)
+            tic = time()
+            try:
+                self._iterate()
+            except Exception as exc:
+                print repr(exc)
+                warnings.warn("Stopping training algorithm prematurely due to error on iteration %d." % i+1)
+                break
+
+            # record time taken
+            self.run_times.append(time() - tic)
+
+            if verbose:
+                print "Completed %d / %d iterations in %f s.  L2 norm = %e" % (i+1, niter, self.run_times[-1], self.l2_differences[-1])
+
+            if tol_p != 0. and self.l2_differences[-1] < tol_p:
+                if verbose:
+                    print "Training terminated in %d iterations as tolerance has been met." % (i+1)
+                break
+        return ps
+
+
+class PointProcessDeterministicFixedBandwidth(PointProcessDeterministic):
+
+    def set_kdes(self):
+        ## FIXME: using the min_bandwidth argument for now - not cool.
+        p_bg = np.diag(self.p)
+        self.bg_t_kde = pp_kde.WeightedFixedBandwidthKde(self.data[:, 0],
+                                                         weights=p_bg,
+                                                         bandwidths=self.min_bandwidth[0])
+        self.bg_xy_kde = pp_kde.WeightedFixedBandwidthKde(self.data[:, 1:],
+                                                          weights=p_bg,
+                                                          bandwidths=self.min_bandwidth[1:])
+        self.trigger_kde = pp_kde.WeightedFixedBandwidthKde(self.interpoint_distance_data,
+                                                            weights=self.p[self.linkage],
+                                                            bandwidths=self.min_bandwidth)

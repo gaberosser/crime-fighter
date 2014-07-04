@@ -171,7 +171,7 @@ class VariableBandwidthKde(FixedBandwidthKde):
 class VariableBandwidthNnKde(VariableBandwidthKde):
 
     def __init__(self, data, *args, **kwargs):
-        self.nn = None
+        self.nn = kwargs.pop('nn', None)
         self.nn_distances = []
         super(VariableBandwidthNnKde, self).__init__(data, *args, **kwargs)
         self.set_mvns()
@@ -181,9 +181,7 @@ class VariableBandwidthNnKde(VariableBandwidthKde):
         from scipy.spatial import KDTree
         default_distance = kwargs.pop('nn_default_distance', None)
         min_bandwidth = kwargs.pop('min_bandwidth', None)
-        if 'nn' in kwargs:
-            self.nn = kwargs.pop('nn')
-        else:
+        if not self.nn:
             # default nn values
             self.nn = min(100, self.ndata) if self.ndim == 1 else min(15, self.ndata)
 
@@ -192,6 +190,7 @@ class VariableBandwidthNnKde(VariableBandwidthKde):
         # compute nn distances on normed data
         nd = self.normed_data
         std = self.raw_std_devs
+
         kd = KDTree(nd)
 
         self.nn_distances = np.zeros(self.ndata)
@@ -222,6 +221,28 @@ class VariableBandwidthNnKde(VariableBandwidthKde):
             self.bandwidths[fix_idx] = rep_min[fix_idx]
 
 
+class WeightedFixedBandwidthKde(FixedBandwidthKde):
+    def __init__(self, data, weights, *args, **kwargs):
+        self.weights = np.array(weights)
+        super(WeightedFixedBandwidthKde, self).__init__(data, *args, **kwargs)
+
+    def _additive_operation(self, funcstr, *args, **kwargs):
+        """ Generic interface to call function named in funcstr on the data, handling normalisation and reshaping """
+        # store data shape, flatten to N x ndim array then restore
+        normed = kwargs.pop('normed', True)
+        try:
+            shp = args[0].shape
+        except AttributeError:
+            # inputs not arrays
+            shp = np.array(args[0], dtype=np.float64).shape
+        flat_data = np.vstack([np.array(x, dtype=np.float64).flatten() for x in args]).transpose()
+        # better to use a generator here to reduce memory usage:
+        z = reduce(operator.add, (w * getattr(x, funcstr)(flat_data, **kwargs) for w, x in zip(self.weights, self.mvns)))
+        if normed:
+            z /= sum(self.weights)
+        return np.reshape(z, shp)
+
+
 class WeightedVariableBandwidthNnKde(VariableBandwidthNnKde):
     def __init__(self, data, weights, *args, **kwargs):
         self.weights = np.array(weights)
@@ -240,7 +261,7 @@ class WeightedVariableBandwidthNnKde(VariableBandwidthNnKde):
         # better to use a generator here to reduce memory usage:
         z = reduce(operator.add, (w * getattr(x, funcstr)(flat_data, **kwargs) for w, x in zip(self.weights, self.mvns)))
         if normed:
-            z /= float(self.ndata)
+            z /= sum(self.weights)
         return np.reshape(z, shp)
 
 

@@ -1,7 +1,7 @@
 __author__ = 'gabriel'
 import unittest
 import kernels
-from methods.pure_python import VariableBandwidthKde, FixedBandwidthKde
+from methods.pure_python import VariableBandwidthKde, VariableBandwidthNnKde, FixedBandwidthKde, WeightedVariableBandwidthNnKde
 import numpy as np
 from scipy.stats import norm, multivariate_normal
 from scipy.integrate import quad, tplquad
@@ -164,10 +164,29 @@ class TestVariableBandwidthKde(unittest.TestCase):
 
 class TestVariableBandwidthKdeNn(unittest.TestCase):
 
-    pass
+    def test_kde_1d(self):
+        data = np.linspace(0, 1, 11)
+        kde = VariableBandwidthNnKde(data, nn=2)
+        nndiste = data[1] / np.std(data)
+        for n in kde.nn_distances:
+            self.assertAlmostEqual(n, nndiste)
 
 
 class TestWeightedVariableBandwidthKdeNn(unittest.TestCase):
+
+    def test_kde_1d(self):
+        data = np.linspace(0, 1, 11)
+        kde = WeightedVariableBandwidthNnKde(data, weights=np.ones_like(data), nn=2)
+
+        self.assertTrue(np.all(kde.weights == 1.))
+
+        # nn distances and bandwidths calculated as before
+        kdeu = VariableBandwidthNnKde(data, nn=2)
+        self.assertListEqual(list(kde.nn_distances), list(kdeu.nn_distances))
+        self.assertListEqual(list(kde.bandwidths), list(kdeu.bandwidths))
+
+        # pdf unchanged when weights are all 1
+        self.assertAlmostEqual(kde.pdf(0.134), kdeu.pdf(0.134))
 
     pass
 
