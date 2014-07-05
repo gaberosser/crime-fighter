@@ -318,7 +318,7 @@ class PointProcessDeterministicFixedBandwidth(PointProcessDeterministic):
         p_bg = np.diag(self.p)
         self.bg_t_kde = pp_kde.WeightedFixedBandwidthKde(self.data[:, 0],
                                                          weights=p_bg,
-                                                         bandwidths=self.min_bandwidth[0])
+                                                         bandwidths=[self.min_bandwidth[0]])
         self.bg_xy_kde = pp_kde.WeightedFixedBandwidthKde(self.data[:, 1:],
                                                           weights=p_bg,
                                                           bandwidths=self.min_bandwidth[1:])

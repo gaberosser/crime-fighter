@@ -35,6 +35,16 @@ def marginal_icdf_optimise(k, y, dim=0, tol=1e-8):
     return x0
 
 
+def weighted_stdev(data, weights):
+    ndata = data.shape[0]
+    ndim = data.shape[1]
+    tiled_weights = np.tile(weights.reshape(ndata, 1), (1, ndim))
+    sum_weights = np.sum(weights)
+    M = weights.nonzero()[0].size
+    wm = np.sum(tiled_weights * data, axis=0) / sum_weights
+    return np.sqrt(np.sum((tiled_weights * (data - wm)) ** 2, axis=0) / sum_weights * M / (M - 1.))
+
+
 class FixedBandwidthKde(object):
     def __init__(self, data, *args, **kwargs):
         self.data = data
@@ -226,6 +236,11 @@ class WeightedFixedBandwidthKde(FixedBandwidthKde):
         self.weights = np.array(weights)
         super(WeightedFixedBandwidthKde, self).__init__(data, *args, **kwargs)
 
+    @property
+    def raw_std_devs(self):
+        # weighted standard deviation calculation
+        return weighted_stdev(self.data, self.weights)
+
     def _additive_operation(self, funcstr, *args, **kwargs):
         """ Generic interface to call function named in funcstr on the data, handling normalisation and reshaping """
         # store data shape, flatten to N x ndim array then restore
@@ -247,6 +262,11 @@ class WeightedVariableBandwidthNnKde(VariableBandwidthNnKde):
     def __init__(self, data, weights, *args, **kwargs):
         self.weights = np.array(weights)
         super(WeightedVariableBandwidthNnKde, self).__init__(data, *args, **kwargs)
+
+    @property
+    def raw_std_devs(self):
+        # weighted standard deviation calculation
+        return weighted_stdev(self.data, self.weights)
 
     def _additive_operation(self, funcstr, *args, **kwargs):
         """ Generic interface to call function named in funcstr on the data, handling normalisation and reshaping """
