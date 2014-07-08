@@ -65,12 +65,18 @@ def confusion_matrix(p_inferred, linkage_col, t=0.5):
     }
 
 
-# def compute_lineage_matrix(linkage_col):
-#     """ Compute the Boolean p matrix for annotated data, as returned by the simulator """
-#     bg_idx = np.where(np.isnan(linkage_col))[0]
-#     trigger_idx = np.where(~np.isnan(linkage_col))[0]
-#     trigger_pairs
-#     pass
+def compute_lineage_matrix(linkage_col):
+    """ Compute the Boolean p matrix for annotated data, as returned by the simulator """
+    n = linkage_col.size
+    bg_idx = np.where((np.isnan(linkage_col)) | (linkage_col < 0))[0]
+    trigger_idx_j = np.where((~np.isnan(linkage_col)) & (linkage_col >= 0))[0]
+    trigger_idx_i = linkage_col[trigger_idx_j].astype(int)
+    p = np.zeros((n, n))
+    p[bg_idx, bg_idx] = 1.
+    p[trigger_idx_i, trigger_idx_j] = 1.
+    if not np.all(np.sum(p, axis=0) == 1.):
+        raise AttributeError("Column sum is not equal to one in all cases")
+    return p
 
 
 class PpValidation(validation.ValidationBase):

@@ -12,12 +12,13 @@ class PointProcess(object):
                  estimator=None, num_nn=None):
         self.dtype = dtype
         self.data = np.array([], dtype=dtype)
+        self.T = 0.
         self.min_bandwidth = min_bandwidth
         self.num_nn = num_nn or [None] * 3
         if not hasattr(self.num_nn, '__iter__'):
             self.num_nn = [self.num_nn] * 3
-            warnings.warn("Received single fixed number of NNs to use for KDE (%d).  Using this for all dimensions.",
-                          self.num_nn)
+            warnings.warn("Received single fixed number of NNs to use for KDE (%d).  Using this for all dimensions." %
+                          self.num_nn[0])
         self.max_trigger_d = max_trigger_d
         self.max_trigger_t = max_trigger_t
 
@@ -56,6 +57,7 @@ class PointProcess(object):
         self.data = np.array(data, dtype=self.dtype)
         # sort data by time
         self.data = self.data[self.data[:, 0].argsort()]
+        self.T = np.ptp(self.data[:, 0]) # time window
         # set threshold distance and time if not provided
         self.max_trigger_t = self.max_trigger_t or np.ptp(self.data[:, 0]) / 10.
         self.max_trigger_d = self.max_trigger_d or np.sqrt(np.ptp(self.data[:, 1])**2 + np.ptp(self.data[:, 2])**2) / 20.
@@ -84,6 +86,7 @@ class PointProcess(object):
         """
         Return the (unnormalised) trigger density
         """
+        # return self.trigger_kde.pdf(t, x, y, normed=False) / self.num_bg[-1]
         return self.trigger_kde.pdf(t, x, y, normed=False) / self.ndata
 
     def evaluate_conditional_intensity(self, t, x, y, data=None):
@@ -263,6 +266,19 @@ class PointProcessDeterministic(PointProcess):
 
         # update p
         self.p = new_p
+
+    def background_density(self, t, x, y):
+        """
+        Return the (unnormalised) density due to background events
+        """
+        return self.bg_t_kde.pdf(t, normed=False) * self.bg_xy_kde.pdf(x, y, normed=False) / self.ndata
+
+    def trigger_density(self, t, x, y):
+        """
+        Return the (unnormalised) trigger density
+        """
+        # return self.trigger_kde.pdf(t, x, y, normed=False) / self.num_bg[-1]
+        return self.trigger_kde.pdf(t, x, y, normed=False) / self.ndata
 
     def train(self, data, niter=30, verbose=True, tol_p=1e-7):
 
