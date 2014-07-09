@@ -10,12 +10,14 @@ import models
 import numpy as np
 from django.contrib.gis.geos import Point, Polygon, MultiPolygon
 from django.contrib.gis.utils import LayerMapping
+from django.contrib.gis.gdal import DataSource
 from django.db import transaction
 from django.db.models.signals import pre_save
 
 UK_TZ = pytz.timezone('Europe/London')
 CAD_DATA_DIR = os.path.join(settings.DATA_DIR, 'cad')
 CRIS_DATA_DIR = os.path.join(settings.DATA_DIR, 'cris')
+CHICAGO_DATA_DIR = os.path.join(settings.DATA_DIR, 'chicago')
 
 
 def setup_ocu(**kwargs):
@@ -294,27 +296,96 @@ def setup_cad250_grid(verbose=True, test=False):
         print "Created %u grid areas" % len(polys)
 
 
+
+def setup_chicago(**kwargs):
+    dt = models.DivisionType.objects.get(name='city')
+    ds = DataSource(os.path.join(CHICAGO_DATA_DIR, 'geo_aerh-rz74-1.shp'))
+    beats = [x.geos for x in ds[0].get_geoms()]
+    mpoly = reduce(lambda x, y: x.union(y), beats)
+    if isinstance(mpoly, Polygon):
+        mpoly = MultiPolygon([mpoly])
+    chicago = models.Division(name='Chicago', code='Chicago', type=dt, mpoly=mpoly)
+    try:
+        chicago.save()
+    except Exception as exc:
+        print repr(exc)
+        raise exc
+
+    if kwargs.pop('verbose', False):
+        print "Created Chicago city region"
+
+
 def setup_divisiontypes(**kwargs):
+    res = []
     # manually insert known division types
     dt, created = models.DivisionType.objects.get_or_create(name='borough')
     dt.description = 'London boroughs (also known as local authority)'
     dt.save()
+    res.append(dt.name)
 
     dt, created = models.DivisionType.objects.get_or_create(name='lsoa')
     dt.description = 'Lower super output area, combination of OAs'
     dt.save()
+    res.append(dt.name)
 
     dt, created = models.DivisionType.objects.get_or_create(name='msoa')
     dt.description = 'Middle super output area, combination of LSOAs'
     dt.save()
+    res.append(dt.name)
 
     dt, created = models.DivisionType.objects.get_or_create(name='ward')
     dt.description = 'Administrative unit for MPS, attached to a borough'
     dt.save()
+    res.append(dt.name)
 
     dt, created = models.DivisionType.objects.get_or_create(name='cad_250m_grid')
     dt.description = 'CAD 250m square grid'
     dt.save()
+    res.append(dt.name)
+
+    dt, created = models.DivisionType.objects.get_or_create(name='city')
+    dt.description = 'City region'
+    dt.save()
+    res.append(dt.name)
+
+    if kwargs.pop('verbose', False):
+        print "Saved %d records: %s" % (len(res), ",".join(res))
+
+
+def setup_datasets(verbose=True):
+    # manually create known dataset entries
+    res = []
+
+    # CAD 2011-12 dataset
+    dt, created = models.Dataset.objects.get_or_create(name='cad01')
+    dt.description = 'MPS CAD dataset'
+    dt.time_from = datetime.datetime(2011, 3, 1, 0, 0, tzinfo=UK_TZ)
+    dt.time_to = datetime.datetime(2012, 4, 1, 0, 0, tzinfo=UK_TZ)
+    try:
+        camden = models.Division.objects.get(name='Camden')
+        dt.region = camden.mpoly
+    except Exception:
+        pass
+    dt.save()
+    res.append(dt.name)
+
+    # Chicago 2001-2011 data
+    dt, created = models.Dataset.objects.get_or_create(name='chicago1')
+    dt.description = 'Chicago crime dataset'
+    dt.time_from = datetime.datetime(2001, 1, 1, 0, 0, tzinfo=pytz.utc)
+    dt.time_to = datetime.datetime(2014, 5, 25, 0, 0, tzinfo=pytz.utc)
+    try:
+        chicago = models.Division.objects.get(name='Chicago')
+        dt.region = chicago.mpoly
+    except Exception:
+        pass
+    dt.save()
+    res.append(dt.name)
+
+    if verbose:
+        print "Saved %d records: %s" % (len(res), ",".join(res))
+
+
 
 
 def setup_all(verbose=False):

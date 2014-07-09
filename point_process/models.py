@@ -24,7 +24,7 @@ class PointProcess(object):
 
         # initialise matrix p or use one provided
         if p is not None:
-            self.p = p
+            self.p = np.array(p)
             self.pset = True
         else:
             self.p = np.zeros((self.ndata, self.ndata))
@@ -75,6 +75,16 @@ class PointProcess(object):
         distances = np.sqrt(pdiff[:, :, 1] ** 2 + pdiff[:, :, 2] ** 2)
         self.linkage = np.where((distances < self.max_trigger_d) & (pdiff[:, :, 0] > 0) & (pdiff[:, :, 0] < self.max_trigger_t))
         self.interpoint_distance_data = self.data[self.linkage[1], :] - self.data[self.linkage[0], :]
+
+    # def delete_overlaps(self):
+    #     """ Prevent lineage links with exactly overlapping entries """
+    #     n = np.arange(self.ndata)
+    #     for i in n:
+    #         rpt_idx = np.where(np.all(self.data[:, 1:] == self.data[i, 1:], axis=1) & (n != i))[0]
+    #         self.p[i, rpt_idx] = 0.
+    #     # renorm
+    #     col_sums = np.sum(self.p, axis=0)
+    #     self.p /= col_sums
 
     def background_density(self, t, x, y):
         """
@@ -128,6 +138,9 @@ class PointProcess(object):
                 raise AttributeError("Matrix P failed requirement that columns sum to 1 within tolerance.")
             if np.any(np.tril(self.p, k=-1) != 0.):
                 raise AttributeError("Matrix P failed requirement that lower diagonal is zero.")
+
+            # strip spatially overlapping points from p
+            # self.delete_overlaps()
 
             bg, interpoint, cause_effect = estimation.sample_bg_and_interpoint(self.data, self.p)
             self.num_bg.append(bg.shape[0])
@@ -193,7 +206,7 @@ class PointProcess(object):
                 self._iterate()
             except Exception as exc:
                 print repr(exc)
-                warnings.warn("Stopping training algorithm prematurely due to error on iteration %d." % i+1)
+                warnings.warn("Stopping training algorithm prematurely due to error on iteration %d." % (i+1))
                 break
 
             # record time taken
@@ -237,9 +250,9 @@ class PointProcessDeterministic(PointProcess):
         self.num_trig.append(self.ndata - effective_num_bg)
 
         # reset KDE weights
-        self.bg_t_kde.weights = p_bg
-        self.bg_xy_kde.weights = p_bg
-        self.trigger_kde.weights = self.p[self.linkage]
+        self.bg_t_kde.set_weights(p_bg)
+        self.bg_xy_kde.set_weights(p_bg)
+        self.trigger_kde.set_weights(self.p[self.linkage])
 
         # evaluate BG at data points
         m = self.background_density(self.data[:, 0], self.data[:, 1], self.data[:, 2])
@@ -304,14 +317,13 @@ class PointProcessDeterministic(PointProcess):
         ps = []
 
         for i in range(niter):
-            # ipdb.set_trace()
             ps.append(self.p)
             tic = time()
             try:
                 self._iterate()
             except Exception as exc:
                 print repr(exc)
-                warnings.warn("Stopping training algorithm prematurely due to error on iteration %d." % i+1)
+                warnings.warn("Stopping training algorithm prematurely due to error on iteration %d." % (i+1))
                 break
 
             # record time taken

@@ -82,6 +82,39 @@ class Cad(models.Model):
         app_label = 'database'
 
 
+class PointData(models.Model):
+    location = models.PointField(help_text='Spatial location', srid=27700, null=True, blank=True, default=None)
+    time = models.DateTimeField(help_text='Date and timestamp', null=False, blank=False)
+    spatial_uncertainty = models.FloatField(help_text='Uncertainty associated with spatial location', null=True,
+                                            blank=True, default=None)
+    temporal_uncertainty = models.FloatField(help_text='Uncertainty associated with time', null=True,
+                                             blank=True, default=None)
+    dataset = models.ForeignKey('Dataset', help_text='Dataset owning this entry', to_field='name', null=False,
+                                blank=False, related_name='dataset')
+
+    objects = models.GeoManager()
+
+    def __str__(self):
+        return "%s - %s (%s)" % (
+            str(self.time),
+            str(self.location.coords) if self.location else 'No location',
+            self.dataset
+        )
+
+
+class Dataset(models.Model):
+    name = models.CharField(help_text='Name (PK)', max_length=32, primary_key=True)
+    description = models.CharField(help_text='Description', max_length=256, null=True, blank=True)
+    region = models.MultiPolygonField(help_text='Spatial extent of dataset', srid=27700, null=True, blank=True)
+    time_from = models.DateTimeField(help_text='Start time of dataset', null=True, blank=True)
+    time_to = models.DateTimeField(help_text='End time of dataset', null=True, blank=True)
+
+    objects = models.GeoManager()
+
+    def __str__(self):
+        return self.name
+
+
 class DivisionType(models.Model):
     name = models.CharField(help_text='Name for this division set', max_length=128, primary_key=True)
     description = models.TextField(help_text='Text description of this division set')

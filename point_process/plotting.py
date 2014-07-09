@@ -193,11 +193,17 @@ def data_scatter_movie(data, outdir=None, **kwargs):
         t += dt
 
 
-def multiplots(ppobj, simobj=None):
+def multiplots(ppobj, simobj=None, maxes=None):
     """
     Convenience function.  Provided with an object of type PP model, produce various useful plots.  Optionally provide
     a simulation object with 'ground truth' information.
     """
+    ci = 0.999
+
+    if maxes:
+        t_max,x_max, y_max = maxes
+    else:
+        t_max = x_max = y_max = None
 
     fig = plt.figure()
     ax = fig.add_subplot(111)
@@ -215,40 +221,44 @@ def multiplots(ppobj, simobj=None):
     ax.legend([t[0] for t in h], ('B/g, inferred', 'Trig, inferred', 'B/g, true', 'Trig, true'), 'right')
 
     # fig A2
-    t = np.linspace(0, 60, 200)
-    fig = plot_txy_t_marginals(ppobj.trigger_kde, norm=ppobj.ndata, t_max=60)
+    t_max = t_max or ppobj.trigger_kde.marginal_icdf(ci, dim=0)
+    fig = plot_txy_t_marginals(ppobj.trigger_kde, norm=ppobj.ndata, t_max=t_max)
     ax = fig.gca()
     if simobj:
+        t = np.linspace(0, t_max, 200)
         w = simobj.off_omega
         th = simobj.off_theta
         zt = th * w * np.exp(-w * t)
         plt.plot(t, zt, 'k--')
         ax.set_ylim([0, w * th * 1.02])
         ax.legend(ax.get_lines(), ('Inferred', 'True'), 'upper right')
+    ax.set_xlim([0, t_max])
 
-    x = np.linspace(-0.05, 0.05, 200)
-    fig = plot_txy_x_marginals(ppobj.trigger_kde, norm=ppobj.ndata, x_max=0.05)
+    x_max = x_max or ppobj.trigger_kde.marginal_icdf(ci, dim=1)
+    fig = plot_txy_x_marginals(ppobj.trigger_kde, norm=ppobj.ndata, x_max=x_max)
     ax = fig.gca()
     if simobj:
+        x = np.linspace(-x_max, x_max, 200)
         sx = simobj.off_sigma_x
         zx = th / (np.sqrt(2 * np.pi) * sx) * np.exp(-(x**2) / (2 * sx**2))
         plt.plot(x, zx, 'k--')
         ax.set_ylim([0, 1.05 * th / (np.sqrt(2 * np.pi) * sx)])
         ax.legend(ax.get_lines(), ('Inferred', 'True'), 'upper right')
-    ax.set_xlim([-0.05, 0.05])
+    ax.set_xlim([-x_max, x_max])
 
-    y = np.linspace(-0.5, 0.5, 200)
-    fig = plot_txy_y_marginals(ppobj.trigger_kde, norm=ppobj.ndata, y_max=0.5)
+    y_max = y_max or ppobj.trigger_kde.marginal_icdf(ci, dim=2)
+    fig = plot_txy_y_marginals(ppobj.trigger_kde, norm=ppobj.ndata, y_max=y_max)
     ax = fig.gca()
     line = ax.get_lines()[0]
-    ymax_infer = max(line.get_ydata())
+    zmax_infer = max(line.get_ydata())
     if simobj:
+        y = np.linspace(-y_max, y_max, 200)
         sy = simobj.off_sigma_y
         zy = th/(np.sqrt(2 * np.pi) * sy) * np.exp(-(y**2) / (2 * sy**2))
         plt.plot(y, zy, 'k--')
-        ymax_theor = th/(np.sqrt(2 * np.pi) * sy)
-        ax.set_ylim([0, 1.05 * max(ymax_infer, ymax_theor)])
+        zmax_theor = th/(np.sqrt(2 * np.pi) * sy)
+        ax.set_ylim([0, 1.05 * max(zmax_infer, zmax_theor)])
     else:
-        ax.set_ylim([0, 1.05 * ymax_infer])
-    ax.set_xlim([-0.5, 0.5])
+        ax.set_ylim([0, 1.05 * zmax_infer])
+    ax.set_xlim([-y_max, y_max])
     ax.legend(ax.get_lines(), ('Inferred', 'True'), 'upper right')
