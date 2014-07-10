@@ -82,38 +82,25 @@ class Cad(models.Model):
         app_label = 'database'
 
 
-class PointData(models.Model):
-    location = models.PointField(help_text='Spatial location', srid=27700, null=True, blank=True, default=None)
-    time = models.DateTimeField(help_text='Date and timestamp', null=False, blank=False)
-    spatial_uncertainty = models.FloatField(help_text='Uncertainty associated with spatial location', null=True,
-                                            blank=True, default=None)
-    temporal_uncertainty = models.FloatField(help_text='Uncertainty associated with time', null=True,
-                                             blank=True, default=None)
-    dataset = models.ForeignKey('Dataset', help_text='Dataset owning this entry', to_field='name', null=False,
-                                blank=False, related_name='dataset')
+class Chicago(models.Model):
+    number = models.IntegerField(help_text='CPD crime number', primary_key=True)
+    case_number = models.CharField(help_text='CPD case number', max_length=16)
+    datetime = models.DateTimeField(help_text='Date and time of incident')
+    block = models.CharField(help_text='Location block descriptor', max_length=64)
+    iucr = models.CharField(help_text='IUCR crime code', max_length=8)
+    primary_type = models.CharField(help_text='Primary crime type', max_length=64)
+    description = models.CharField(help_text='Description of crime', max_length=128)
+    location_type = models.CharField(help_text='Nature of crime location', max_length=64)
+    arrest = models.BooleanField(help_text='Was an arrest made?', default=False)
+    domestic = models.BooleanField(help_text='Is incident domestic?', default=False)
+    location = models.PointField(help_text='Lat/long of crime location', srid=4326)
+    x_coord = models.IntegerField(help_text='x coord, system unknown')
+    y_coord = models.IntegerField(help_text='y coord, system unknown')
 
     objects = models.GeoManager()
 
     def __str__(self):
-        return "%s - %s (%s)" % (
-            str(self.time),
-            str(self.location.coords) if self.location else 'No location',
-            self.dataset
-        )
-
-
-class Dataset(models.Model):
-    name = models.CharField(help_text='Name (PK)', max_length=32, primary_key=True)
-    description = models.CharField(help_text='Description', max_length=256, null=True, blank=True)
-    region = models.MultiPolygonField(help_text='Spatial extent of dataset', srid=27700, null=True, blank=True)
-    time_from = models.DateTimeField(help_text='Start time of dataset', null=True, blank=True)
-    time_to = models.DateTimeField(help_text='End time of dataset', null=True, blank=True)
-
-    objects = models.GeoManager()
-
-    def __str__(self):
-        return self.name
-
+        return "%d - %s - %s" % (self.number, str(self.datetime), self.primary_type)
 
 class DivisionType(models.Model):
     name = models.CharField(help_text='Name for this division set', max_length=128, primary_key=True)

@@ -15,6 +15,7 @@ from django.db import transaction
 from django.db.models.signals import pre_save
 
 UK_TZ = pytz.timezone('Europe/London')
+USCENTRAL_TZ = pytz.timezone('US/Central')
 CAD_DATA_DIR = os.path.join(settings.DATA_DIR, 'cad')
 CRIS_DATA_DIR = os.path.join(settings.DATA_DIR, 'cris')
 CHICAGO_DATA_DIR = os.path.join(settings.DATA_DIR, 'chicago')
@@ -296,15 +297,16 @@ def setup_cad250_grid(verbose=True, test=False):
         print "Created %u grid areas" % len(polys)
 
 
-
-def setup_chicago(**kwargs):
+def setup_chicago_division(**kwargs):
     dt = models.DivisionType.objects.get(name='city')
     ds = DataSource(os.path.join(CHICAGO_DATA_DIR, 'geo_aerh-rz74-1.shp'))
     beats = [x.geos for x in ds[0].get_geoms()]
+    [x.transform(27700) for x in beats]
     mpoly = reduce(lambda x, y: x.union(y), beats)
     if isinstance(mpoly, Polygon):
         mpoly = MultiPolygon([mpoly])
-    chicago = models.Division(name='Chicago', code='Chicago', type=dt, mpoly=mpoly)
+    chicago, created = models.Division.objects.get_or_create(name='Chicago', code='Chicago', type=dt)
+    chicago.mpoly = mpoly
     try:
         chicago.save()
     except Exception as exc:
@@ -352,40 +354,51 @@ def setup_divisiontypes(**kwargs):
         print "Saved %d records: %s" % (len(res), ",".join(res))
 
 
-def setup_datasets(verbose=True):
-    # manually create known dataset entries
+def setup_chicago_data(verbose=True):
+    mappings = {
+        'number': lambda x: int(x.get('ID')),
+        'case_number': lambda x: x.get('Case Number'),
+        'datetime': lambda x: datetime.datetime.strptime(x.get('Date'), '%m/%d/%Y %I:%M:%S %p').replace(
+            tzinfo=USCENTRAL_TZ),
+        'block': lambda x: x.get('Block'),
+        'iucr': lambda x: x.get('IUCR'),
+        'primary_type': lambda x: x.get('Primary Type'),
+        'description': lambda x: x.get('Description'),
+        'location_type': lambda x: x.get('Location Description'),
+        'arrest': lambda x: x.get('Arrest') == 'true',
+        'domestic': lambda x: x.get('Domestic') == 'true',
+        # 'location': lambda x: Point([float(x.get('Latitude')), float(x.get('Longitude'))]),
+        'location': lambda x: Point([float(x.get('Longitude')), float(x.get('Latitude'))]),
+        'x_coord': lambda x: float(x.get('X Coordinate')),
+        'y_coord': lambda x: float(x.get('Y Coordinate')),
+    }
+
+    count = 0
+    fail_count = 0
     res = []
 
-    # CAD 2011-12 dataset
-    dt, created = models.Dataset.objects.get_or_create(name='cad01')
-    dt.description = 'MPS CAD dataset'
-    dt.time_from = datetime.datetime(2011, 3, 1, 0, 0, tzinfo=UK_TZ)
-    dt.time_to = datetime.datetime(2012, 4, 1, 0, 0, tzinfo=UK_TZ)
-    try:
-        camden = models.Division.objects.get(name='Camden')
-        dt.region = camden.mpoly
-    except Exception:
-        pass
-    dt.save()
-    res.append(dt.name)
-
-    # Chicago 2001-2011 data
-    dt, created = models.Dataset.objects.get_or_create(name='chicago1')
-    dt.description = 'Chicago crime dataset'
-    dt.time_from = datetime.datetime(2001, 1, 1, 0, 0, tzinfo=pytz.utc)
-    dt.time_to = datetime.datetime(2014, 5, 25, 0, 0, tzinfo=pytz.utc)
-    try:
-        chicago = models.Division.objects.get(name='Chicago')
-        dt.region = chicago.mpoly
-    except Exception:
-        pass
-    dt.save()
-    res.append(dt.name)
+    with open(os.path.join(CHICAGO_DATA_DIR, 'chicago_crime_data.csv'), 'r') as f:
+        c = csv.DictReader(f)
+        for row in c:
+            try:
+                t = models.Chicago(**dict([(x, y(row)) for x, y in mappings.items()]))
+                res.append(t)
+                # t.save()
+                count += 1
+                if (count % 10000) == 0 and count:
+                    models.Chicago.objects.bulk_create(res)
+                    del res
+                    res = []
+                    print count
+            except Exception as exc:
+                # import ipdb; ipdb.set_trace()
+                # print repr(exc)
+                fail_count += 1
+        # save last records
+        models.Chicago.objects.bulk_create(res)
 
     if verbose:
-        print "Saved %d records: %s" % (len(res), ",".join(res))
-
-
+        print "Saved %d Chicago crime records, %d failed" % (count, fail_count)
 
 
 def setup_all(verbose=False):

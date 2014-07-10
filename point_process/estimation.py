@@ -94,7 +94,9 @@ def initial_guess_educated(data, ct=None, cd=None):
     cd = cd or 10
     dt = 1 / (1 + ct * pdiff[:, :, 0])
     dd = 1 / (1 + cd * np.sqrt(pdiff[:, :, 1] ** 2 + pdiff[:, :, 2] ** 2))
-    P = np.triu(dt * dd, 0)
+    idx = np.tril_indices_from(dt, k=-1)
+    P = dt * dd
+    P[idx] = 0.
     col_sums = np.sum(P, axis=0)
     P /= col_sums
     return P

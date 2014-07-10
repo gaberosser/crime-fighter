@@ -14,12 +14,13 @@ def plot_t_kde(k, max_t=50):
     ax.plot(t, y)
     ax.set_xlabel('Time (days)')
     ax.set_ylabel('Density')
+    ax.set_xlim([0., max_t])
     ax.set_ylim([0., max(y) * 1.02])
     return fig
 
 
-def plot_xy_kde(k, max_x, max_y, npt_1d=50, **kwargs):
-    x, y = np.meshgrid(np.linspace(-max_x, max_x, npt_1d), np.linspace(-max_y, max_y, npt_1d))
+def plot_xy_kde(k, x_range, y_range, npt_1d=50, **kwargs):
+    x, y = np.meshgrid(np.linspace(x_range[0], x_range[1], npt_1d), np.linspace(y_range[0], y_range[1], npt_1d))
     z = k.pdf(x, y, normed=False)
     fig = plt.figure()
     ax = fig.add_subplot(111)
