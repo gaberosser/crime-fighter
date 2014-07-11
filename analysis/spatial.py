@@ -35,3 +35,12 @@ def create_spatial_grid(spatial_domain, grid_length, offset_coords=None):
                 polys.append(spatial_domain.intersection(p))
 
     return polys
+
+
+def is_clockwise(poly):
+    c = np.array(poly.coords[0])
+    dx = np.diff(c[:, 0])
+    ay = c[:-1, 1] + c[1:, 1]
+    t = dx * ay
+    t[ay == 0] = 0.
+    return np.sum(t) > 0

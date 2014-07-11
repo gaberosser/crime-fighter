@@ -7,6 +7,7 @@ from matplotlib import pyplot as plt
 from matplotlib import cm
 from descartes import PolygonPatch
 import json
+from analysis.spatial import is_clockwise
 
 
 def geodjango_to_shapely(x, c=ccrs.OSGB()):
@@ -64,7 +65,7 @@ def plot_geodjango_shapes(shapes, ax=None, set_axes=True, **kwargs):
 
 
 def plot_surface_on_polygon(poly, func, n=50, cmap=cm.jet):
-    ## FIXME: found a MUCh better way to do this using clip paths
+    ## FIXME: found a MUCH better way to do this using clip paths
     ## Implement this - main challenge is ensuring that line path is defined COUNTER-CLOCKWISE - may need to reverse
     ## Use mask_outside_polygon function
     """
@@ -78,16 +79,19 @@ def plot_surface_on_polygon(poly, func, n=50, cmap=cm.jet):
     x = np.linspace(x_min, x_max, n)
     y = np.linspace(y_min, y_max, n)
     xx, yy = np.meshgrid(x, y, copy=False)
-    it = np.nditer((xx, yy, None))
-    for x in it:
-        it[-1] = not geos.Point([x[0], x[1]]).intersects(poly)
-    mask = it.operands[-1]
-    zz = np.ma.array(func(xx, yy), mask=mask)
+    zz = func(xx, yy)
 
     fig = plt.figure()
     ax = fig.add_subplot(111)
+    h = plt.contourf(xx, yy, zz)
+
+    poly_verts = list(poly.coords[0])
+    # check handedness of poly
+    if is_clockwise(poly):
+        poly_verts = poly_verts[::-1]
+
+    mask_outside_polygon(poly_verts, ax=ax)
     plot_geodjango_shapes((poly,), ax=ax, facecolor='none')
-    plt.contourf(xx, yy, zz)
 
 
 def mask_outside_polygon(poly_verts, ax=None):

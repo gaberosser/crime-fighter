@@ -34,6 +34,7 @@ class ValidationBase(object):
 
         # set grid for evaluation
         self._grid = []
+        self.centroids = np.array([], dtype=float)
         self.a = []
         if grid_length:
             self.set_grid(grid_length)
@@ -55,6 +56,7 @@ class ValidationBase(object):
                 (xmin, ymin),
             ])
         self._grid = create_spatial_grid(self.spatial_domain, grid_length)
+        self.centroids = np.array([t.centroid.coords for t in self._grid])
         self.a = np.array([t.area for t in self._grid])
 
     @property
@@ -95,6 +97,7 @@ class ValidationBase(object):
         self.model.train(self.training, *args, **kwargs)
 
     def predict_on_poly(self, t, poly, *args, **kwargs):
+        # FIXME: disabled as too slow
         method = kwargs.pop('method', 'centroid')
         if method == 'int':
             res, err = mcint.integrate(lambda x: self.model.predict(t, x[0], x[1]), mc_sampler(poly), n=100)
@@ -106,8 +109,9 @@ class ValidationBase(object):
 
     def predict(self, t, **kwargs):
         # estimate total propensity in each grid poly
-        res = np.array([self.predict_on_poly(t, p, **kwargs) for p in self.grid])
-        return res
+        # use centroid method for speed
+        ts = np.ones(len(self.grid)) * t
+        return self.model.predict(ts, self.centroids[:, 0], self.centroids[:, 1])
 
     def true_values(self, dt_plus, dt_minus):
         # count actual crimes in testing dataset on grid
@@ -121,6 +125,7 @@ class ValidationBase(object):
         """
         Assess the trained model on the polygonal grid.  Return the PAI metric for varying hit rate
         """
+
         pred = self.predict(self.cutoff_t + dt_plus, **kwargs)
 
         # count actual crimes in testing dataset on same grid

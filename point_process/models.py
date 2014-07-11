@@ -106,7 +106,6 @@ class PointProcess(object):
         """
         data = data or self.data
         bg = self.background_density(t, x, y)
-        # bg = self.bg_t_kde.pdf(t) * self.bg_xy_kde.pdf(x, y)
 
         if not isinstance(t, np.ndarray):
             t = np.array(t)
@@ -118,7 +117,19 @@ class PointProcess(object):
         ttarget, tdata = np.meshgrid(t, data[:, 0])
         xtarget, xdata = np.meshgrid(x, data[:, 1])
         ytarget, ydata = np.meshgrid(y, data[:, 2])
-        trigger = np.sum(self.trigger_density(ttarget - tdata, xtarget - xdata, ytarget - ydata), axis=0)
+
+        dt = ttarget - tdata
+        dx = xtarget - xdata
+        dy = ytarget - ydata
+
+        # find region within max_trigger t and max_trigger_d
+        idx_t = dt <= self.max_trigger_t
+        idx_d = np.sqrt(dx**2 + dy**2) <= self.max_trigger_d
+        idx = idx_t & idx_d
+
+        trigger = np.zeros_like(dt)
+        trigger[idx] = self.trigger_density(dt[idx], dx[idx], dy[idx])
+        trigger = np.sum(trigger, axis=0)
 
         # may need to reshape if t, x, y had shape before
         shp = t.shape
