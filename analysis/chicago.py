@@ -71,17 +71,22 @@ def apply_point_process():
     ps = r.train(data=res, niter=30, tol_p=1e-9)
     return r, ps
 
-def validate_point_process(start_date=datetime.datetime(2001, 1, 1, 0),
-                           end_date=datetime.datetime(2003, 1, 1),
-                           first_training_size=50):
 
-    if start_date + datetime.timedelta(days=first_training_size) > end_date:
-        raise AttributeError("Insufficient data range")
+def validate_point_process(start_date=datetime.datetime(2001, 3, 1, 0),
+                           training_size=50,
+                           num_validation=20,
+                           num_pp_iter=20,
+                           grid_size=500):
+
+    # compute number of days in date range
+    pre_start_date = start_date - datetime.timedelta(days=training_size)
+    ndays = training_size + num_validation
+    end_date = pre_start_date + datetime.timedelta(days=ndays)
 
     poly = compute_chicago_region()
     res, t0 = get_crimes_by_type(
         crime_type='burglary',
-        datetime__gt=start_date,
+        datetime__gt=pre_start_date,
         datetime__lte=end_date
     )
     vb = validate.PpValidation(res, spatial_domain=poly, model_kwargs={
@@ -89,10 +94,98 @@ def validate_point_process(start_date=datetime.datetime(2001, 1, 1, 0),
         'max_trigger_d': 200,
         'estimator': lambda x: estimation.initial_guess_educated(x, ct=1, cd=0.02),
     })
-    vb.set_grid(250)
-    vb.set_t_cutoff(first_training_size)
-    polys, ps, carea, cfrac, pai = vb.run(dt=1, t_upper=70, niter=20)
-    return polys, ps, carea, cfrac, pai
+    vb.set_grid(grid_size)
+    vb.set_t_cutoff(training_size)
+    ranks, sparse_ps, carea, cfrac, pai = vb.run(dt=1, t_upper=training_size + ndays, niter=num_pp_iter)
+    return ranks, sparse_ps, carea, cfrac, pai
+
+
+def validate_point_process_multi(start_date=datetime.datetime(2001, 3, 1, 0),
+                                   training_size=50,
+                                   num_validation=20,
+                                   num_pp_iter=20,
+                                   grid_size=500,
+                                   dt=180):
+    # validate the SEPP method over the whole dataset, running 20 iterations at a time and
+    # applying to different temporal slices
+    pre_start_date = start_date - datetime.timedelta(days=training_size)
+
+    poly = compute_chicago_region()
+    res, t0 = get_crimes_by_type(
+        crime_type='burglary',
+        datetime__gte=pre_start_date
+    )
+    nslices = int(max(res[:, 0]) / dt)
+    res = []
+
+    for n in range(nslices):
+        t0 = dt * n
+        this_res = res[res[:, 0] >= t0]
+        vb = validate.PpValidation(res, spatial_domain=poly, model_kwargs={
+            'max_trigger_t': 30,
+            'max_trigger_d': 200,
+            'estimator': lambda x: estimation.initial_guess_educated(x, ct=1, cd=0.02),
+        })
+        vb.set_grid(grid_size)
+        vb.set_t_cutoff(training_size + t0)
+        res.append(vb.run(dt=1, t_upper=training_size + num_validation + t0, niter=num_pp_iter))
+
+    return res
+
+
+def validate_historic_kernel(start_date=datetime.datetime(2001, 3, 1, 0),
+                           grid_size=250,
+                           previous_n_days=7,
+                           n_iter=20):
+
+    pre_start_date = start_date - datetime.timedelta(days=previous_n_days)
+    end_date = start_date + datetime.timedelta(days=n_iter)
+
+    poly = compute_chicago_region()
+    res, t0 = get_crimes_by_type(
+        crime_type='burglary',
+        datetime__gte=pre_start_date,
+        datetime__lt=end_date
+    )
+
+    # use basic historic data spatial hotspot
+    sk = hotspot.SKernelHistoric(previous_n_days)
+    vb = validation.ValidationBase(res, hotspot.Hotspot, poly, model_args=(sk,))
+    vb.set_grid(grid_length=grid_size)
+    vb.set_t_cutoff(previous_n_days)
+    ranks, carea, cfrac, pai = vb.run(dt=1, t_upper=previous_n_days + n_iter)
+
+    return vb.grid, ranks, carea, cfrac, pai
+
+
+def validate_historic_kernel_multi(start_date=datetime.datetime(2001, 3, 1, 0),
+                                   grid_size=500,
+                                   previous_n_days=7,
+                                   n_iter=20,
+                                   dt=180):
+    # validate the historic kernel method over the whole dataset, running 20 iterations at a time and
+    # applying to different temporal slices
+    pre_start_date = start_date - datetime.timedelta(days=previous_n_days)
+
+    poly = compute_chicago_region()
+    res, t0 = get_crimes_by_type(
+        crime_type='burglary',
+        datetime__gte=pre_start_date
+    )
+    nslices = int(max(res[:, 0]) / dt)
+    sk = hotspot.SKernelHistoric(previous_n_days)
+    vb = validation.ValidationBase(res, hotspot.Hotspot, poly, model_args=(sk,))
+    vb.set_grid(grid_length=grid_size)
+    vb.set_t_cutoff(previous_n_days)
+
+    res = []
+
+    for n in range(nslices):
+        res.append(vb.run(dt=1, t_upper=previous_n_days + n_iter + n * dt))
+        vb.set_t_cutoff(previous_n_days + (n + 1) * dt)
+
+    return res
+
 
 if __name__ == '__main__':
 
@@ -113,11 +206,11 @@ if __name__ == '__main__':
     })
     vb.set_grid(250)
     vb.set_t_cutoff(first_training_size)
-    polys, ps, carea, cfrac, pai = vb.run(dt=1, niter=20, t_upper=first_training_size + 20)
+    ranks, sparse_ps, carea, cfrac, pai = vb.run(dt=1, niter=20, t_upper=first_training_size + 20)
 
     # use basic historic data spatial hotspot
     sk7 = hotspot.SKernelHistoric(2) # use heatmap from final 7 days data
     vb_sk7 = validation.ValidationBase(res, hotspot.Hotspot, poly, model_args=(sk7,))
     vb_sk7.set_grid(grid_length=250)
     vb_sk7.set_t_cutoff(first_training_size)
-    polys_sk7, ps_sk7, carea_sk7, cfrac_sk7, pai_sk7 = vb_sk7.run(dt=1, niter=20, t_upper=first_training_size + 20)
+    polys_sk7, ranks_sk7, carea_sk7, cfrac_sk7, pai_sk7 = vb_sk7.run(dt=1, t_upper=first_training_size + 20)

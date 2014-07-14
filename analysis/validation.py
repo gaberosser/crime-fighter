@@ -132,50 +132,60 @@ class ValidationBase(object):
         true = self.true_values(dt_plus, dt_minus)
 
         # sort by descending predicted values
-        sort_idx = np.argsort(pred)[::-1]
-        true = true[sort_idx]
-        pred = pred[sort_idx]
-        polys = [self.grid[i] for i in sort_idx]
+        rank = np.argsort(pred)[::-1]
+        true = true[rank]
+        pred = pred[rank]
 
         N = sum(true)
-        a = np.array([t.area for t in polys])
+        a = [self.a[i] for i in rank]
         cfrac = np.cumsum(true) / N
         carea = np.cumsum(a) / self.A
         pai = cfrac * (self.A / np.cumsum(a))
 
-        return polys, pred, carea, cfrac, pai
+        return rank, pred, carea, cfrac, pai
 
     def run(self, dt, t_upper=None, **kwargs):
         """
         Run the required train / predict / assess sequence
         Take the mean of the metrics returned
         """
+        verbose = kwargs.pop('verbose', True)
+
         t0 = self.cutoff_t
-        t = dt
         t_upper = min(t_upper or np.inf, self.testing()[-1, 0])
+
+        # precompute number of iterations
+        n_iter = math.ceil((t_upper - t0) / dt)
 
         cfrac = []
         carea = []
         pai = []
-        polys = []
+        ranks = []
+
+        if verbose:
+            print "Running %d validation iterations..." % n_iter
 
         # initial training
         self.train_model(**kwargs)
+        count = 1
 
         try:
             while self.cutoff_t < t_upper:
+                if verbose:
+                    print "Running validation with cutoff date %s (iteration %d / %d)" % (str(self.cutoff_t), count, n_iter)
                 # predict and assess
-                this_polys, _, this_carea, this_cfrac, this_pai = self.predict_assess(dt_plus=dt, dt_minus=0, **kwargs)
+                this_rank, _, this_carea, this_cfrac, this_pai = self.predict_assess(dt_plus=dt, dt_minus=0, **kwargs)
                 carea.append(this_carea)
                 cfrac.append(this_cfrac)
                 pai.append(this_pai)
-                polys.append(this_polys)
+                ranks.append(this_rank)
                 self.set_t_cutoff(self.cutoff_t + dt)
+                count += 1
 
         finally:
             self.set_t_cutoff(t0)
 
-        return polys, carea, cfrac, pai
+        return ranks, carea, cfrac, pai
 
 
 if __name__ == "__main__":
@@ -225,7 +235,8 @@ if __name__ == "__main__":
     vb.train_model(niter=20)
 
 
-    polys, res, carea, cfrac, pai = vb.predict_assess(dt_plus=1, dt_minus=0) # predict one day ahead
+    rank, res, carea, cfrac, pai = vb.predict_assess(dt_plus=1, dt_minus=0) # predict one day ahead
+    polys = [vb.grid[i] for i in rank]
     n = vb.true_values(dt_plus=1, dt_minus=0)
     # x = [a.centroid.coords[0] for a in polys]
     # y = [a.centroid.coords[1] for a in polys]

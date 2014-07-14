@@ -4,6 +4,7 @@ import math
 import runner
 from analysis import validation
 import models
+from scipy import sparse
 
 
 def confusion_matrix(p_inferred, linkage_col, t=0.5):
@@ -103,36 +104,32 @@ class PpValidation(validation.ValidationBase):
         cfrac = []
         carea = []
         pai = []
-        polys = []
+        ranks = []
         ps = []
 
         if t0 >= t_upper:
-            return polys, ps, carea, cfrac, pai
-
-        # initial training
-        self.train_model(niter=niter, **kwargs)
+            return ranks, ps, carea, cfrac, pai
 
         try:
             while self.cutoff_t < t_upper:
+                self.train_model(niter=niter, **kwargs)
                 # store P matrix for later analysis
-                ps.append(self.model.p)
+                ps.append(sparse.csc_matrix(self.model.p))
                 # predict and assess
-                this_polys, _, this_carea, this_cfrac, this_pai = self.predict_assess(dt_plus=dt, dt_minus=0, **kwargs)
+                this_rank, _, this_carea, this_cfrac, this_pai = self.predict_assess(dt_plus=dt, dt_minus=0, **kwargs)
                 carea.append(this_carea)
                 cfrac.append(this_cfrac)
                 pai.append(this_pai)
-                polys.append(this_polys)
+                ranks.append(this_rank)
                 pre_training = self.training
                 self.set_t_cutoff(self.cutoff_t + dt)
                 # update p based on previous
                 self.model.p = self.compute_new_p(pre_training)
 
-                self.train_model(niter=niter, **kwargs)
-
         finally:
             self.set_t_cutoff(t0)
 
-        return polys, ps, carea, cfrac, pai
+        return ranks, ps, carea, cfrac, pai
 
     def compute_new_p(self, pre_training):
         """ Compute the new initial estimate of p based on the previous value.
@@ -196,7 +193,7 @@ if __name__ == "__main__":
     # use Point process learning method
     vb = PpValidation(data, model_kwargs={'max_trigger_t': 80, 'max_trigger_d': 0.75})
     vb.set_grid(grid_length=3)
-    polys, ps, carea, cfrac, pai = vb.run(dt=5, t_upper=450, niter=15)
+    ranks, sparse_ps, carea, cfrac, pai = vb.run(dt=5, t_upper=450, niter=15)
 
     mc = np.mean(np.array(carea), axis=0)
     mf = np.mean(np.array(cfrac), axis=0)
