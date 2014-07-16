@@ -3,6 +3,9 @@ import numpy as np
 import operator
 import time
 import multiprocessing
+import math
+import gc
+from scipy import sparse
 PI = np.pi
 
 ## FIXME: global prng probably isn't the best idea
@@ -55,7 +58,6 @@ def sample_bg_and_interpoint(data, P):
 def pairwise_differences(data, b_iter=False, dtype=None):
     """ Compute pairwise (t, x, y) difference vector.
         Setting b_iter=True calls an alternative iteration-based calculation to save memory. """
-
     dtype = dtype or np.float64
 
     if b_iter:
@@ -73,6 +75,68 @@ def pairwise_differences(data, b_iter=False, dtype=None):
     return np.dstack((td, xd, yd)).astype(dtype)
 
 
+def pairwise_differences_indices(n):
+
+    dtypes = [
+        np.uint8,
+        np.uint16,
+        np.uint32,
+        np.uint64,
+    ]
+
+    dtype = None
+    # find appropriate datatype
+    for d in dtypes:
+        if np.iinfo(d).max >= (n - 1):
+            dtype = d
+            break
+
+    if not dtype:
+        raise MemoryError("Unable to index an array this large.")
+
+    idx_i = np.zeros(n* (n - 1) / 2, dtype=dtype)
+    idx_j = np.zeros_like(idx_i)
+
+    tally = 0
+    for i in range(n):
+        idx_i[tally:(tally + n - i - 1)] = np.ones(n - i - 1, dtype=dtype) * i
+        idx_j[tally:(tally + n - i - 1)] = np.arange(i + 1, n, dtype=dtype)
+        tally += n - i - 1
+
+    return idx_i, idx_j
+
+def estimator_bowers(data, linkage, ct=1, cd=10):
+
+    n = data.shape[0]
+    P = sparse.lil_matrix((n, n))
+
+    # off-diagonal
+
+    tt = 1 / (1 + ct * (data[linkage[1], 0] - data[linkage[0], 0]))
+    dd = 1 / (1 + cd * np.sqrt((data[linkage[1], 1] - data[linkage[0], 1]) ** 2
+                               + (data[linkage[1], 2] - data[linkage[0], 2]) ** 2))
+
+    P[linkage[0], linkage[1]] = tt * dd
+    # diagonal
+    P[range(n), range(n)] = 1.
+
+    colsums = np.array(P.sum(axis=0)).flatten()
+    P[linkage[0], linkage[1]] = P[linkage[0], linkage[1]] / colsums[linkage[1]]
+    P[range(n), range(n)] = P[range(n), range(n)] / colsums[range(n)]
+
+    return P
+
+
+
+
+def pairwise_differences_v0(data, dtype=None):
+    dtype = dtype or np.float64
+    n = data.shape[0]
+    i, j = pairwise_differences_indices(n)
+    diff = data[j, :] - data[i, :]
+    return diff
+
+
 def initial_guess(data):
 
     N = data.shape[0]
@@ -88,12 +152,23 @@ def initial_guess(data):
 
 def initial_guess_educated(data, ct=None, cd=None):
 
-    N = data.shape[0]
-    pdiff = pairwise_differences(data)
     ct = ct or 1
     cd = cd or 10
-    dt = 1 / (1 + ct * pdiff[:, :, 0])
-    dd = 1 / (1 + cd * np.sqrt(pdiff[:, :, 1] ** 2 + pdiff[:, :, 2] ** 2))
+
+    # pdiff = pairwise_differences(data)
+
+    td = reduce(operator.sub, np.meshgrid(data[:, 0], data[:, 0], copy=False))
+    xd = reduce(operator.sub, np.meshgrid(data[:, 1], data[:, 1], copy=False))
+    yd = reduce(operator.sub, np.meshgrid(data[:, 2], data[:, 2], copy=False))
+
+    dt = 1 / (1 + ct * td)
+    del td
+    dd = 1 / (1 + cd * np.sqrt(xd ** 2 + yd ** 2))
+    del xd, yd
+    gc.collect()
+
+    # dt = 1 / (1 + ct * pdiff[:, :, 0])
+    # dd = 1 / (1 + cd * np.sqrt(pdiff[:, :, 1] ** 2 + pdiff[:, :, 2] ** 2))
     idx = np.tril_indices_from(dt, k=-1)
     P = dt * dd
     P[idx] = 0.

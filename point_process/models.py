@@ -6,6 +6,9 @@ from kde.methods import pure_python as pp_kde
 import numpy as np
 from time import time
 import warnings
+from scipy import sparse
+import operator
+import psutil
 
 class PointProcess(object):
     def __init__(self, p=None, max_trigger_d=None, max_trigger_t=None, min_bandwidth=None, dtype=np.float64,
@@ -24,13 +27,13 @@ class PointProcess(object):
 
         # initialise matrix p or use one provided
         if p is not None:
-            self.p = np.array(p)
+            self.p = p
             self.pset = True
         else:
-            self.p = np.zeros((self.ndata, self.ndata))
+            self.p = sparse.lil_matrix((self.ndata, self.ndata))
             self.pset = False
             # look for an estimator function
-            self.estimator = estimator or estimation.initial_guess_educated
+            self.estimator = estimator or estimation.estimator_bowers
 
         # init storage containers
         self.linkage = []
@@ -70,10 +73,50 @@ class PointProcess(object):
     def niter(self):
         return len(self.l2_differences)
 
+
+    def _set_linkages_meshed(self):
+        """ Lightweight implementation for setting parent-offspring couplings, but consumes too much memory
+            on larger datasets """
+
+        td = reduce(operator.sub, np.meshgrid(self.data[:, 0], self.data[:, 0], copy=False))
+        xd = reduce(operator.sub, np.meshgrid(self.data[:, 1], self.data[:, 1], copy=False))
+        yd = reduce(operator.sub, np.meshgrid(self.data[:, 2], self.data[:, 2], copy=False))
+        distances = np.sqrt(xd ** 2 + yd ** 2)
+
+        self.linkage = np.where((distances < self.max_trigger_d) & (td > 0) & (td < self.max_trigger_t))
+
+    def _set_linkages_iterated(self, chunksize=2**16):
+        """ Iteration-based approach to computing parent-offspring couplings, required when memory is limited """
+
+        chunksize = min(chunksize, self.ndata * (self.ndata - 1) / 2)
+        idx_i, idx_j = estimation.pairwise_differences_indices(self.ndata)
+        link_i = []
+        link_j = []
+
+        for k in range(0, len(idx_i), chunksize):
+            i = idx_i[k:(k + chunksize)]
+            j = idx_j[k:(k + chunksize)]
+            t = self.data[j, 0] - self.data[i, 0]
+            d = np.sqrt((self.data[j, 1] - self.data[i, 1])**2 + (self.data[j, 2] - self.data[i, 2])**2)
+            mask = (t <= self.max_trigger_t) & (d <= self.max_trigger_d)
+            link_i.extend(i[mask])
+            link_j.extend(j[mask])
+
+        self.linkage = (np.array(link_i), np.array(link_j))
+
+
     def set_linkages(self):
-        pdiff = estimation.pairwise_differences(self.data, dtype=self.dtype)
-        distances = np.sqrt(pdiff[:, :, 1] ** 2 + pdiff[:, :, 2] ** 2)
-        self.linkage = np.where((distances < self.max_trigger_d) & (pdiff[:, :, 0] > 0) & (pdiff[:, :, 0] < self.max_trigger_t))
+        """
+        Set the allowed parent-offspring couplings, based on the maximum permitted time and distance values.
+        Meshgrid is a convenient but memory-heavy approach that fails on larger datasets
+        """
+        sysmem = psutil.virtual_memory().total
+        N = self.ndata ** 2 * 8  # estimated nbytes for a square matrix
+        if N / float(sysmem) > 0.05:
+            self._set_linkages_iterated()
+        else:
+            self._set_linkages_meshed()
+
         self.interpoint_distance_data = self.data[self.linkage[1], :] - self.data[self.linkage[0], :]
 
     # def delete_overlaps(self):
@@ -144,54 +187,54 @@ class PointProcess(object):
         return self.evaluate_conditional_intensity(t, x, y)
 
     def _iterate(self):
-            colsum = np.sum(self.p, axis=0)
-            if np.any((colsum < (1 - 1e-12)) | (colsum > (1 + 1e-12))):
-                raise AttributeError("Matrix P failed requirement that columns sum to 1 within tolerance.")
-            if np.any(np.tril(self.p, k=-1) != 0.):
-                raise AttributeError("Matrix P failed requirement that lower diagonal is zero.")
+        colsum = self.p.sum(0)
+        if np.any((colsum < (1 - 1e-12)) | (colsum > (1 + 1e-12))):
+            raise AttributeError("Matrix P failed requirement that columns sum to 1 within tolerance.")
+        if sparse.tril(self.p, k=-1).nnz != 0:
+            raise AttributeError("Matrix P failed requirement that lower diagonal is zero.")
 
-            # strip spatially overlapping points from p
-            # self.delete_overlaps()
+        # strip spatially overlapping points from p
+        # self.delete_overlaps()
 
-            bg, interpoint, cause_effect = estimation.sample_bg_and_interpoint(self.data, self.p)
-            self.num_bg.append(bg.shape[0])
-            self.num_trig.append(interpoint.shape[0])
+        bg, interpoint, cause_effect = estimation.sample_bg_and_interpoint(self.data, self.p)
+        self.num_bg.append(bg.shape[0])
+        self.num_trig.append(interpoint.shape[0])
 
-            # compute KDEs
-            try:
-                self.bg_t_kde = pp_kde.VariableBandwidthNnKde(bg[:, 0], nn=self.num_nn[0])
-                self.bg_xy_kde = pp_kde.VariableBandwidthNnKde(bg[:, 1:], nn=self.num_nn[1])
-                self.trigger_kde = pp_kde.VariableBandwidthNnKde(interpoint,
-                                                                 min_bandwidth=self.min_bandwidth,
-                                                                 nn=self.num_nn[2])
-            except AttributeError as exc:
-                print "Error.  Num BG: %d, num trigger %d" % (bg.shape[0], interpoint.shape[0])
-                raise exc
+        # compute KDEs
+        try:
+            self.bg_t_kde = pp_kde.VariableBandwidthNnKde(bg[:, 0], nn=self.num_nn[0])
+            self.bg_xy_kde = pp_kde.VariableBandwidthNnKde(bg[:, 1:], nn=self.num_nn[1])
+            self.trigger_kde = pp_kde.VariableBandwidthNnKde(interpoint,
+                                                             min_bandwidth=self.min_bandwidth,
+                                                             nn=self.num_nn[2])
+        except AttributeError as exc:
+            print "Error.  Num BG: %d, num trigger %d" % (bg.shape[0], interpoint.shape[0])
+            raise exc
 
-            # evaluate BG at data points
-            m = self.background_density(self.data[:, 0], self.data[:, 1], self.data[:, 2])
+        # evaluate BG at data points
+        m = self.background_density(self.data[:, 0], self.data[:, 1], self.data[:, 2])
 
-            # evaluate trigger KDE at all interpoint distances
-            g = np.zeros((self.ndata, self.ndata))
-            g[self.linkage] = self.trigger_density(self.interpoint_distance_data[:, 0],
-                                                   self.interpoint_distance_data[:, 1],
-                                                   self.interpoint_distance_data[:, 2])
+        # evaluate trigger KDE at all interpoint distances
+        g = np.zeros((self.ndata, self.ndata))
+        g[self.linkage] = self.trigger_density(self.interpoint_distance_data[:, 0],
+                                               self.interpoint_distance_data[:, 1],
+                                               self.interpoint_distance_data[:, 2])
 
-            # sanity check
-            if np.any(np.diagonal(g) != 0):
-                raise AttributeError("Non-zero diagonal values found in g.")
+        # sanity check
+        if np.any(np.diagonal(g) != 0):
+            raise AttributeError("Non-zero diagonal values found in g.")
 
-            # recompute P
-            l = np.sum(g, axis=0) + m
-            new_p = (m / l) * np.eye(self.ndata) + (g / l)
+        # recompute P
+        l = np.sum(g, axis=0) + m
+        new_p = (m / l) * np.eye(self.ndata) + (g / l)
 
-            # compute difference
-            q = new_p - self.p
-            err_denom = float(self.ndata * (self.ndata + 1)) / 2.
-            self.l2_differences.append(np.sqrt(np.sum(q**2)) / err_denom)
+        # compute difference
+        q = new_p - self.p
+        err_denom = float(self.ndata * (self.ndata + 1)) / 2.
+        self.l2_differences.append(np.sqrt(np.sum(q**2)) / err_denom)
 
-            # update p
-            self.p = new_p
+        # update p
+        self.p = new_p
 
 
     def train(self, data, niter=30, verbose=True, tol_p=1e-7):
@@ -205,12 +248,11 @@ class PointProcess(object):
 
         # initial estimate for p if required
         if not self.pset:
-            self.p = self.estimator(self.data)
+            self.p = self.estimator(self.data, self.linkage)
 
         ps = []
 
         for i in range(niter):
-            # ipdb.set_trace()
             ps.append(self.p)
             tic = time()
             try:

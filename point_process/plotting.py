@@ -199,7 +199,7 @@ def multiplots(ppobj, simobj=None, maxes=None):
     Convenience function.  Provided with an object of type PP model, produce various useful plots.  Optionally provide
     a simulation object with 'ground truth' information.
     """
-    ci = 0.999
+    ci = 0.99
 
     if maxes:
         t_max,x_max, y_max = maxes

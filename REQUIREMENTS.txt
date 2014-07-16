@@ -25,3 +25,4 @@ six==1.6.1
 statsmodels==0.6.0
 tornado==3.2
 wsgiref==0.1.2
+psutil==2.1.1

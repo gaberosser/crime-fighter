@@ -355,6 +355,11 @@ def setup_divisiontypes(**kwargs):
 
 
 def setup_chicago_data(verbose=True):
+    def point_2028(lat, long):
+        p = Point(long, lat, srid=4326)
+        p.transform(2028)
+        return p
+
     mappings = {
         'number': lambda x: int(x.get('ID')),
         'case_number': lambda x: x.get('Case Number'),
@@ -368,7 +373,7 @@ def setup_chicago_data(verbose=True):
         'arrest': lambda x: x.get('Arrest') == 'true',
         'domestic': lambda x: x.get('Domestic') == 'true',
         # 'location': lambda x: Point([float(x.get('Latitude')), float(x.get('Longitude'))]),
-        'location': lambda x: Point([float(x.get('Longitude')), float(x.get('Latitude'))]),
+        'location': lambda x: point_2028(float(x.get('Latitude')), float(x.get('Longitude'))),
         'x_coord': lambda x: float(x.get('X Coordinate')),
         'y_coord': lambda x: float(x.get('Y Coordinate')),
     }

@@ -42,6 +42,16 @@ class TestPointProcessStochastic(unittest.TestCase):
         self.c.run()
         self.data = self.c.data[:, :3]
 
+    def test_linkage(self):
+        r = models.PointProcess(max_trigger_d=0.75, max_trigger_t=80)
+        r.set_data(self.data)
+        r._set_linkages_meshed()
+        link_mesh = r.linkage
+        r._set_linkages_iterated()
+        link_iter = r.linkage
+        self.assertListEqual(list(link_iter[0]), list(link_mesh[0]))
+        self.assertListEqual(list(link_iter[1]), list(link_mesh[1]))
+
     def test_point_process(self):
         """
         Tests the output of the PP stochastic method based on a given random seed.
@@ -102,6 +112,18 @@ class TestPointProcessStochastic(unittest.TestCase):
 
 
 class TestSampling(unittest.TestCase):
+
+    def test_pairwise_difference_indices(self):
+        n = 256
+        idx_i, idx_j = estimation.pairwise_differences_indices(n)
+        self.assertEqual(idx_i.dtype.name, 'uint8')
+        self.assertEqual(len(idx_i), n*(n-1)/2)
+        idx_np = np.triu_indices(n, k=1)
+        self.assertListEqual(list(idx_i), list(idx_np[0]))
+        self.assertListEqual(list(idx_j), list(idx_np[1]))
+        n = 257
+        idx_i, idx_j = estimation.pairwise_differences_indices(n)
+        self.assertEqual(idx_i.dtype.name, 'uint16')
 
     def test_roulette_selection(self):
         num_iter = 100

@@ -83,6 +83,8 @@ class Cad(models.Model):
 
 
 class Chicago(models.Model):
+    # TODO: x_coord and y_coord are in projection 102671 (NAD 1983 StatePlane Illinois East FIPS 1201 Feet)
+    # convert location to that srid or 2028 (UTM zone 16N) instead for faster retrieval
     number = models.IntegerField(help_text='CPD crime number', primary_key=True)
     case_number = models.CharField(help_text='CPD case number', max_length=16)
     datetime = models.DateTimeField(help_text='Date and time of incident')
@@ -93,8 +95,8 @@ class Chicago(models.Model):
     location_type = models.CharField(help_text='Nature of crime location', max_length=64)
     arrest = models.BooleanField(help_text='Was an arrest made?', default=False)
     domestic = models.BooleanField(help_text='Is incident domestic?', default=False)
-    location = models.PointField(help_text='Lat/long of crime location', srid=4326)
-    x_coord = models.IntegerField(help_text='x coord, system unknown')
+    location = models.PointField(help_text='Lat/long of crime location', srid=4326)  ## TODO: switch to 2028, repopulate
+    x_coord = models.IntegerField(help_text='x coord, system unknown') ## TODO: remove
     y_coord = models.IntegerField(help_text='y coord, system unknown')
 
     objects = models.GeoManager()

@@ -5,6 +5,7 @@ import runner
 from analysis import validation
 import models
 from scipy import sparse
+import copy
 
 
 def confusion_matrix(p_inferred, linkage_col, t=0.5):
@@ -106,6 +107,7 @@ class PpValidation(validation.ValidationBase):
         pai = []
         ranks = []
         ps = []
+        pps = []
 
         if t0 >= t_upper:
             return ranks, ps, carea, cfrac, pai
@@ -121,6 +123,7 @@ class PpValidation(validation.ValidationBase):
                 cfrac.append(this_cfrac)
                 pai.append(this_pai)
                 ranks.append(this_rank)
+                pps.append(copy.deepcopy(self.model))
                 pre_training = self.training
                 self.set_t_cutoff(self.cutoff_t + dt)
                 # update p based on previous
@@ -129,7 +132,7 @@ class PpValidation(validation.ValidationBase):
         finally:
             self.set_t_cutoff(t0)
 
-        return ranks, ps, carea, cfrac, pai
+        return ranks, ps, pps, carea, cfrac, pai
 
     def compute_new_p(self, pre_training):
         """ Compute the new initial estimate of p based on the previous value.

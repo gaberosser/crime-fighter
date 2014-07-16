@@ -20,9 +20,11 @@ from analysis import validation, hotspot
 import settings
 import os
 from django.contrib.gis.gdal import DataSource
+import copy
 
 CHICAGO_DATA_DIR = os.path.join(settings.DATA_DIR, 'chicago')
 SRID = 2028
+T0 = datetime.datetime(2001, 1, 1, 0)
 
 def compute_chicago_region(fill_in=True):
     """ Get (multi) polygon representing Chicago city boundary.
@@ -72,16 +74,27 @@ def apply_point_process():
     return r, ps
 
 
-def validate_point_process(start_date=datetime.datetime(2001, 3, 1, 0),
-                           training_size=50,
-                           num_validation=20,
-                           num_pp_iter=20,
-                           grid_size=500):
+def validate_point_process(
+        start_date=datetime.datetime(2001, 3, 1, 0),
+        training_size=None,
+        num_validation=20,
+        num_pp_iter=20,
+        grid_size=500,
+        prediction_dt=1):
+
+    if not training_size:
+        # use all possible days before start_date as training
+        training_size = (start_date - T0).days
+    else:
+        if (start_date - T0).days < training_size:
+            new_training_size = (start_date - T0).days
+            warnings.warn("Requested %d training days, but only have data for %d days." % (training_size, new_training_size))
+            training_size = new_training_size
 
     # compute number of days in date range
     pre_start_date = start_date - datetime.timedelta(days=training_size)
     ndays = training_size + num_validation
-    end_date = pre_start_date + datetime.timedelta(days=ndays)
+    end_date = start_date + datetime.timedelta(days=num_validation)
 
     poly = compute_chicago_region()
     res, t0 = get_crimes_by_type(
@@ -96,41 +109,57 @@ def validate_point_process(start_date=datetime.datetime(2001, 3, 1, 0),
     })
     vb.set_grid(grid_size)
     vb.set_t_cutoff(training_size)
-    ranks, sparse_ps, carea, cfrac, pai = vb.run(dt=1, t_upper=training_size + ndays, niter=num_pp_iter)
-    return ranks, sparse_ps, carea, cfrac, pai
+    ranks, sparse_ps, pps, carea, cfrac, pai = vb.run(dt=prediction_dt, t_upper=training_size + ndays,
+                                                      niter=num_pp_iter, tol_p=2e-7)
+    return ranks, sparse_ps, pps, carea, cfrac, pai
 
 
-def validate_point_process_multi(start_date=datetime.datetime(2001, 3, 1, 0),
-                                   training_size=50,
-                                   num_validation=20,
-                                   num_pp_iter=20,
-                                   grid_size=500,
-                                   dt=180):
+def validate_point_process_multi(
+        start_date=datetime.datetime(2001, 3, 1, 0),
+        training_size=50,
+        num_validation=20,
+        num_pp_iter=20,
+        grid_size=500,
+        dt=180):
+
+    """ Validate point process model over the Chicago dataset.
+:param start_date: Initial date from which data are used, *must include training data too*
+:param training_size: Number of days to use for model training each time.  Prevents blow-up in memory requirements.
+:param num_validation: Number of steps in time to use for each time slice considered
+:param num_pp_iter: Number of iterations of SEPP per training run
+:param grid_size: Length of grid square
+:param dt: Step in time - we slice the entire dataset with this stride length
+:return: res is a list of the output from validation.run() calls, pps is a list of the resulting trained SEPP model,
+            taken from the final run of each time slice.
+"""
+
     # validate the SEPP method over the whole dataset, running 20 iterations at a time and
     # applying to different temporal slices
     pre_start_date = start_date - datetime.timedelta(days=training_size)
 
     poly = compute_chicago_region()
-    res, t0 = get_crimes_by_type(
+    data, t0 = get_crimes_by_type(
         crime_type='burglary',
         datetime__gte=pre_start_date
     )
-    nslices = int(max(res[:, 0]) / dt)
+    nslices = int(max(data[:, 0]) / dt)
     res = []
+    pps = []
 
     for n in range(nslices):
-        t0 = dt * n
-        this_res = res[res[:, 0] >= t0]
-        vb = validate.PpValidation(res, spatial_domain=poly, model_kwargs={
+        tn = dt * n
+        this_data = data[data[:, 0] >= tn]
+        vb = validate.PpValidation(this_data, spatial_domain=poly, model_kwargs={
             'max_trigger_t': 30,
             'max_trigger_d': 200,
             'estimator': lambda x: estimation.initial_guess_educated(x, ct=1, cd=0.02),
         })
         vb.set_grid(grid_size)
-        vb.set_t_cutoff(training_size + t0)
-        res.append(vb.run(dt=1, t_upper=training_size + num_validation + t0, niter=num_pp_iter))
+        vb.set_t_cutoff(training_size + tn)
+        res.append(vb.run(dt=1, t_upper=training_size + num_validation + tn, niter=num_pp_iter))
+        pps.append(vb.model)
 
-    return res
+    return res, pps
 
 
 def validate_historic_kernel(start_date=datetime.datetime(2001, 3, 1, 0),
