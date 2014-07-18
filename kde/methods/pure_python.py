@@ -241,6 +241,11 @@ class WeightedFixedBandwidthKde(FixedBandwidthKde):
         # weighted standard deviation calculation
         return weighted_stdev(self.data, self.weights)
 
+    def set_weights(self, weights):
+        """ Required so that bandwidths are recomputed upon switching weights """
+        self.weights = weights
+        self.set_bandwidths()
+
     def _additive_operation(self, funcstr, *args, **kwargs):
         """ Generic interface to call function named in funcstr on the data, handling normalisation and reshaping """
         # store data shape, flatten to N x ndim array then restore

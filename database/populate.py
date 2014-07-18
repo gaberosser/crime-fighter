@@ -13,6 +13,7 @@ from django.contrib.gis.utils import LayerMapping
 from django.contrib.gis.gdal import DataSource
 from django.db import transaction
 from django.db.models.signals import pre_save
+import gc
 
 UK_TZ = pytz.timezone('Europe/London')
 USCENTRAL_TZ = pytz.timezone('US/Central')
@@ -297,15 +298,17 @@ def setup_cad250_grid(verbose=True, test=False):
         print "Created %u grid areas" % len(polys)
 
 
+# not required - single mpoly is easy to load straight from file
 def setup_chicago_division(**kwargs):
     dt = models.DivisionType.objects.get(name='city')
-    ds = DataSource(os.path.join(CHICAGO_DATA_DIR, 'geo_aerh-rz74-1.shp'))
-    beats = [x.geos for x in ds[0].get_geoms()]
-    [x.transform(27700) for x in beats]
-    mpoly = reduce(lambda x, y: x.union(y), beats)
-    if isinstance(mpoly, Polygon):
-        mpoly = MultiPolygon([mpoly])
-    chicago, created = models.Division.objects.get_or_create(name='Chicago', code='Chicago', type=dt)
+    ds = DataSource(os.path.join(CHICAGO_DATA_DIR, 'city_boundary', 'City_Boundary.shp'))
+    mpoly = ds[0].get_geoms()[0].geos
+    mpoly.srid = 102671
+    mpoly.transform(27700)
+    try:
+        chicago = models.Division.objects.get(name='Chicago')
+    except Exception as exc:
+        chicago = models.Division(name='Chicago', code='Chicago', type=dt)
     chicago.mpoly = mpoly
     try:
         chicago.save()
@@ -354,7 +357,9 @@ def setup_divisiontypes(**kwargs):
         print "Saved %d records: %s" % (len(res), ",".join(res))
 
 
+@transaction.commit_manually
 def setup_chicago_data(verbose=True):
+    CHUNKSIZE = 50000
     def point_2028(lat, long):
         p = Point(long, lat, srid=4326)
         p.transform(2028)
@@ -372,38 +377,34 @@ def setup_chicago_data(verbose=True):
         'location_type': lambda x: x.get('Location Description'),
         'arrest': lambda x: x.get('Arrest') == 'true',
         'domestic': lambda x: x.get('Domestic') == 'true',
-        # 'location': lambda x: Point([float(x.get('Latitude')), float(x.get('Longitude'))]),
         'location': lambda x: point_2028(float(x.get('Latitude')), float(x.get('Longitude'))),
-        'x_coord': lambda x: float(x.get('X Coordinate')),
-        'y_coord': lambda x: float(x.get('Y Coordinate')),
     }
 
     count = 0
     fail_count = 0
-    res = []
 
     with open(os.path.join(CHICAGO_DATA_DIR, 'chicago_crime_data.csv'), 'r') as f:
         c = csv.DictReader(f)
-        for row in c:
-            try:
-                t = models.Chicago(**dict([(x, y(row)) for x, y in mappings.items()]))
-                res.append(t)
-                # t.save()
+        try:
+            for row in c:
+                try:
+                    t = models.Chicago(**dict([(x, y(row)) for x, y in mappings.items()]))
+                except Exception:
+                    fail_count += 1
+                    continue
+                t.save()
                 count += 1
-                if (count % 10000) == 0 and count:
-                    models.Chicago.objects.bulk_create(res)
-                    del res
-                    res = []
+                if (count % CHUNKSIZE) == 0 and count:
+                    transaction.commit()
                     print count
-            except Exception as exc:
-                # import ipdb; ipdb.set_trace()
-                # print repr(exc)
-                fail_count += 1
-        # save last records
-        models.Chicago.objects.bulk_create(res)
+        except Exception as exc:
+            transaction.rollback()
+            raise exc
+        else:
+            transaction.commit()
 
     if verbose:
-        print "Saved %d Chicago crime records, %d failed" % (count, fail_count)
+        print "Saved %d Chicago crime records.  %d failed." % (count, fail_count)
 
 
 def setup_all(verbose=False):

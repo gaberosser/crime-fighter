@@ -13,6 +13,7 @@ if __name__ == '__main__':
     print "Starting simulation..."
     # simulate data
     c = simulate.MohlerSimulation()
+    c.seed(42)
     # c.bg_mu_bar = 1.0
     # c.number_to_prune = 4000
     c.run()
@@ -27,9 +28,6 @@ if __name__ == '__main__':
         r.train(data, niter=num_iter)
     except Exception:
         num_iter = len(r.num_bg)
-
-    ## TODO: analyse the labelling of events: has the trained algorithm correctly identified background events?
-    ## has it correctly identified lineage?  Consider simple confusion matrix approach.
 
     # plots
 

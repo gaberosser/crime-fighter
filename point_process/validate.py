@@ -13,6 +13,14 @@ def confusion_matrix(p_inferred, linkage_col, t=0.5):
     if p_inferred.shape[0] != p_inferred.shape[1]:
         raise AttributeError("Supplied matrix is not square")
 
+    if sparse.issparse(p_inferred):
+        p_inferred = p_inferred.tocsr()
+        sum_fn = lambda x: x.sum()
+        diag_fun = lambda x: x.diagonal()
+    else:
+        sum_fn = lambda x: np.sum(x)
+        diag_fun = lambda x: np.diag(x)
+
     bg_idx = np.where(np.isnan(linkage_col))[0]
 
     tp = 0  # True Positive -> correctly infer trigger and lineage
@@ -24,8 +32,8 @@ def confusion_matrix(p_inferred, linkage_col, t=0.5):
     # to reduce to simple confusion matrix, take TP = TP + PTP, TN = TN + PTN
 
     ## BG
-    bg_inferred = np.diag(p_inferred)
-    tn += sum(bg_inferred[bg_idx])
+    bg_inferred = diag_fun(p_inferred)
+    tn += sum_fn(bg_inferred[bg_idx])
     # deal with false positives below
 
     ## TRIGGER
@@ -36,7 +44,7 @@ def confusion_matrix(p_inferred, linkage_col, t=0.5):
 
         # Stop here if event is BG -> FP
         if i in bg_idx:
-            fp += sum(pi)
+            fp += sum_fn(pi)
             continue
 
         # beyond here, event is triggered...
@@ -44,18 +52,19 @@ def confusion_matrix(p_inferred, linkage_col, t=0.5):
         # Stop here if event is triggered with parent out of sample
         if linkage_col[i] == -1.:
             ptn += pid
-            ptp += sum(pi)
+            ptp += sum_fn(pi)
             continue
 
         # inferred as BG -> FN
         fn += pid
 
         # (fully) true positives
-        tp += pi[int(linkage_col[i])]
+        # sum fun required in case of sparse matrix
+        tp += sum_fn(pi[int(linkage_col[i])])
 
         # partially true positives
-        ptp += sum(pi[:int(linkage_col[i])])
-        ptp += sum(pi[int(linkage_col[i])+1:])
+        ptp += sum_fn(pi[:int(linkage_col[i])])
+        ptp += sum_fn(pi[int(linkage_col[i])+1:])
 
     return {
         'tp': tp,

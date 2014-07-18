@@ -1,16 +1,7 @@
 __author__ = 'gabriel'
 import warnings
-import matplotlib as mpl
-from matplotlib import pyplot as plt
-import cartopy.crs as ccrs
-from scipy.spatial.distance import pdist, squareform
 import collections
-from django.db.models import Q, Count, Sum, Min, Max
-from django.contrib.gis.measure import D
 from django.contrib.gis.geos import Polygon, MultiPolygon, LinearRing, Point
-from plotting import geodjango_to_shapely, plot_geodjango_shapes
-from database.views import month_iterator, week_iterator
-import pandas
 import numpy as np
 import datetime
 import pytz
@@ -20,11 +11,12 @@ from analysis import validation, hotspot
 import settings
 import os
 from django.contrib.gis.gdal import DataSource
-import copy
+from django.db import connection
 
 CHICAGO_DATA_DIR = os.path.join(settings.DATA_DIR, 'chicago')
 SRID = 2028
 T0 = datetime.datetime(2001, 1, 1, 0)
+
 
 def compute_chicago_region(fill_in=True):
     """ Get (multi) polygon representing Chicago city boundary.
@@ -41,15 +33,23 @@ def compute_chicago_region(fill_in=True):
     return mpoly.geos
 
 
-def get_crimes_by_type(crime_type='burglary', **filter_dict):
+def get_crimes_by_type(crime_type='burglary', start_date=None, end_date=None, **where_strs):
+    cursor = connection.cursor()
+    sql = """ SELECT datetime, ST_X(location), ST_Y(location) FROM database_chicago
+              WHERE LOWER(primary_type) LIKE '%{0}%' """.format(crime_type)
+    if start_date:
+        sql += """AND datetime >= '{0}' """.format(start_date.strftime('%Y-%m-%d'))
+    if end_date:
+        sql += """AND datetime <= '{0}' """.format(end_date.strftime('%Y-%m-%d'))
+    for x in where_strs.values():
+        sql += """AND {0}""".format(x)
 
-    res = models.Chicago.objects.filter(primary_type__icontains=crime_type, **filter_dict).transform(SRID)
-    t = [x.datetime for x in res]
+    cursor.execute(sql)
+    res = cursor.fetchall()
+    t = [x[0] for x in res]
     t0 = min(t)
-    t = np.array([(x - t0).total_seconds() / float(60 * 60 * 24) for x in t]).reshape((len(t), 1))
-    xy = np.array([x.location.coords for x in res])
-    res = np.hstack((t, xy))
-    res = res[np.argsort(res[:, 0])]
+    t = [(x - t0).total_seconds() / float(60 * 60 * 24) for x in t]
+    res = np.array([(t[i], res[i][1], res[i][2]) for i in range(len(res))])
     return res, t0
 
 

@@ -105,29 +105,6 @@ def pairwise_differences_indices(n):
 
     return idx_i, idx_j
 
-def estimator_bowers(data, linkage, ct=1, cd=10):
-
-    n = data.shape[0]
-    P = sparse.lil_matrix((n, n))
-
-    # off-diagonal
-
-    tt = 1 / (1 + ct * (data[linkage[1], 0] - data[linkage[0], 0]))
-    dd = 1 / (1 + cd * np.sqrt((data[linkage[1], 1] - data[linkage[0], 1]) ** 2
-                               + (data[linkage[1], 2] - data[linkage[0], 2]) ** 2))
-
-    P[linkage[0], linkage[1]] = tt * dd
-    # diagonal
-    P[range(n), range(n)] = 1.
-
-    colsums = np.array(P.sum(axis=0)).flatten()
-    P[linkage[0], linkage[1]] = P[linkage[0], linkage[1]] / colsums[linkage[1]]
-    P[range(n), range(n)] = P[range(n), range(n)] / colsums[range(n)]
-
-    return P
-
-
-
 
 def pairwise_differences_v0(data, dtype=None):
     dtype = dtype or np.float64
@@ -147,6 +124,31 @@ def initial_guess(data):
     for i in range(1, N):
         P[i, i] = (col_sums[i] - 1.)
         P[:, i] /= (2 * (col_sums[i] - 1))
+    return P
+
+
+def estimator_bowers(data, linkage, ct=1, cd=10, matrix_init=sparse.csr_matrix):
+
+    n = data.shape[0]
+    P = matrix_init((n, n))
+
+    # off-diagonal
+
+    tt = 1 / (1 + ct * (data[linkage[1], 0] - data[linkage[0], 0]))
+    dd = 1 / (1 + cd * np.sqrt(
+        (data[linkage[1], 1] - data[linkage[0], 1]) ** 2 +
+        (data[linkage[1], 2] - data[linkage[0], 2]) ** 2
+    ))
+
+
+    P[linkage[0], linkage[1]] = tt * dd
+    # diagonal
+    P[range(n), range(n)] = 1.
+
+    colsums = P.sum(axis=0).flat
+    P[linkage[0], linkage[1]] = P[linkage[0], linkage[1]] / colsums[linkage[1]]
+    P[range(n), range(n)] = P[range(n), range(n)] / colsums[range(n)]
+
     return P
 
 

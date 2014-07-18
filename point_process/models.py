@@ -7,8 +7,10 @@ import numpy as np
 from time import time
 import warnings
 from scipy import sparse
+import math
 import operator
 import psutil
+
 
 class PointProcess(object):
     def __init__(self, p=None, max_trigger_d=None, max_trigger_t=None, min_bandwidth=None, dtype=np.float64,
@@ -30,7 +32,7 @@ class PointProcess(object):
             self.p = p
             self.pset = True
         else:
-            self.p = sparse.lil_matrix((self.ndata, self.ndata))
+            self.p = sparse.csr_matrix((self.ndata, self.ndata))
             self.pset = False
             # look for an estimator function
             self.estimator = estimator or estimation.estimator_bowers
@@ -73,7 +75,6 @@ class PointProcess(object):
     def niter(self):
         return len(self.l2_differences)
 
-
     def _set_linkages_meshed(self):
         """ Lightweight implementation for setting parent-offspring couplings, but consumes too much memory
             on larger datasets """
@@ -104,7 +105,6 @@ class PointProcess(object):
 
         self.linkage = (np.array(link_i), np.array(link_j))
 
-
     def set_linkages(self):
         """
         Set the allowed parent-offspring couplings, based on the maximum permitted time and distance values.
@@ -118,6 +118,32 @@ class PointProcess(object):
             self._set_linkages_meshed()
 
         self.interpoint_distance_data = self.data[self.linkage[1], :] - self.data[self.linkage[0], :]
+        self.linkage_cols = dict(
+            [(i, np.concatenate((self.linkage[0][self.linkage[1] == i], [i,]))) for i in range(self.ndata)]
+        )
+
+    def sample_data(self):
+        bg_idx = []
+        cause_idx = []
+        effect_idx = []
+
+        for i in range(self.ndata):
+            effect = i
+            row_indices = self.linkage_cols[i]
+            p_nz = self.p[row_indices, i].toarray().flat
+            idx = np.argsort(p_nz)[::-1]
+            sorted_p_nz = p_nz[idx]
+            sampled_idx = estimation.weighted_choice_np(sorted_p_nz)
+            cause = row_indices[idx[sampled_idx]]
+            if cause == effect:
+                # bg
+                bg_idx.append(cause)
+            else:
+                # offspring
+                cause_idx.append(cause)
+                effect_idx.append(effect)
+
+        return bg_idx, cause_idx, effect_idx
 
     # def delete_overlaps(self):
     #     """ Prevent lineage links with exactly overlapping entries """
@@ -196,42 +222,52 @@ class PointProcess(object):
         # strip spatially overlapping points from p
         # self.delete_overlaps()
 
-        bg, interpoint, cause_effect = estimation.sample_bg_and_interpoint(self.data, self.p)
-        self.num_bg.append(bg.shape[0])
-        self.num_trig.append(interpoint.shape[0])
+        # TODO: return or store these values for easier confusion matrix generation later?
+        bg_idx, cause_idx, effect_idx = self.sample_data()
+        interpoint = self.data[effect_idx] - self.data[cause_idx]
+
+        self.num_bg.append(len(bg_idx))
+        self.num_trig.append(len(cause_idx))
 
         # compute KDEs
         try:
-            self.bg_t_kde = pp_kde.VariableBandwidthNnKde(bg[:, 0], nn=self.num_nn[0])
-            self.bg_xy_kde = pp_kde.VariableBandwidthNnKde(bg[:, 1:], nn=self.num_nn[1])
+            self.bg_t_kde = pp_kde.VariableBandwidthNnKde(self.data[bg_idx, 0], nn=self.num_nn[0])
+            self.bg_xy_kde = pp_kde.VariableBandwidthNnKde(self.data[bg_idx, 1:], nn=self.num_nn[1])
             self.trigger_kde = pp_kde.VariableBandwidthNnKde(interpoint,
                                                              min_bandwidth=self.min_bandwidth,
                                                              nn=self.num_nn[2])
         except AttributeError as exc:
-            print "Error.  Num BG: %d, num trigger %d" % (bg.shape[0], interpoint.shape[0])
+            print "Error.  Num BG: %d, num trigger %d" % (self.num_bg[-1], self.num_trig[-1])
             raise exc
 
         # evaluate BG at data points
         m = self.background_density(self.data[:, 0], self.data[:, 1], self.data[:, 2])
 
         # evaluate trigger KDE at all interpoint distances
-        g = np.zeros((self.ndata, self.ndata))
-        g[self.linkage] = self.trigger_density(self.interpoint_distance_data[:, 0],
-                                               self.interpoint_distance_data[:, 1],
-                                               self.interpoint_distance_data[:, 2])
+        g = sparse.csr_matrix((self.ndata, self.ndata))
+        trigger = self.trigger_density(
+            self.interpoint_distance_data[:, 0],
+            self.interpoint_distance_data[:, 1],
+            self.interpoint_distance_data[:, 2],
+            )
+        g[self.linkage] = trigger
 
         # sanity check
-        if np.any(np.diagonal(g) != 0):
-            raise AttributeError("Non-zero diagonal values found in g.")
+        # if np.any(g.diagonal()):
+        #     raise AttributeError("Non-zero diagonal values found in g.")
 
         # recompute P
-        l = np.sum(g, axis=0) + m
-        new_p = (m / l) * np.eye(self.ndata) + (g / l)
+        l = g.sum(axis=0) + m
+        new_p = sparse.csr_matrix((self.ndata, self.ndata))
+        new_p[range(self.ndata), range(self.ndata)] = m / l
+        new_p[self.linkage] = trigger / l.flat[self.linkage[1]]
+
+        # new_p = (m / l) * np.eye(self.ndata) + (g / l)
 
         # compute difference
         q = new_p - self.p
         err_denom = float(self.ndata * (self.ndata + 1)) / 2.
-        self.l2_differences.append(np.sqrt(np.sum(q**2)) / err_denom)
+        self.l2_differences.append(math.sqrt(q.multiply(q).sum()) / err_denom)
 
         # update p
         self.p = new_p
