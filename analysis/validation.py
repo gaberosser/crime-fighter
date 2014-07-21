@@ -4,6 +4,7 @@ import numpy as np
 import mcint
 import math
 from spatial import create_spatial_grid
+import collections
 
 
 def mc_sampler(poly):
@@ -39,9 +40,16 @@ class ValidationBase(object):
         if grid_length:
             self.set_grid(grid_length)
 
-    def set_t_cutoff(self, cutoff_t, **kwargs):
+    def set_t_cutoff(self, cutoff_t, b_train=True, **kwargs):
+        """
+        Set cutoff time that divides dataset into training and testing portions.
+        :param cutoff_t: New value for cutoff time.
+        :param b_train: Boolean indicating whether the model should be (re)trained after setting the new cutoff
+        :param kwargs: kwargs to pass to training function.
+        """
         self.cutoff_t = cutoff_t
-        self.train_model(**kwargs)
+        if b_train:
+            self.train_model(**kwargs)
 
     def set_grid(self, grid_length):
         if not self.spatial_domain:
@@ -82,6 +90,12 @@ class ValidationBase(object):
         return self.data[self.t <= self.cutoff_t]
 
     def testing(self, dt_plus=None, dt_minus=0., as_point=False):
+        """
+        :param dt_plus: Number of time units ahead of cutoff_t to take as maximum testing data.  If None, take ALL data.
+        :param dt_minus: Number of time units ahead of cutoff_t to take as minimum testing data.  Defaults to 0.
+        :param as_point: If True, return N length list of (time, geos.Point) tuples, else return N x 3 matrix
+        :return: Testing data for comparison with predictions, based on value of cutoff_t.
+        """
         bottom = self.cutoff_t + dt_minus
         if dt_plus:
             d = self.data[(self.t > bottom) & (self.t <= (self.cutoff_t + dt_plus))]
@@ -121,15 +135,19 @@ class ValidationBase(object):
             n[i] += sum([t[1].intersects(self.grid[i]) for t in testing])
         return n
 
-    def predict_assess(self, dt_plus, dt_minus=0., *args, **kwargs):
+    def predict_assess(self, pred_dt_plus, true_dt_plus=None, true_dt_minus=0, *args, **kwargs):
         """
-        Assess the trained model on the polygonal grid.  Return the PAI metric for varying hit rate
+        Assess the trained model on the polygonal grid.  Return the PAI metric for varying hit rate.
+        :param pred_dt_plus: Time units ahead of cutoff_t to use when computing the prediction
+        :param true_dt_plus: Time units ahead of cutoff_t to take as the maximum test data, defaults to same value as
+        pred_dt_plus
+        :param true_dt_minus: Time units ahead of cutoff_t to take as the minimum test data, defaults to 0
         """
-
-        pred = self.predict(self.cutoff_t + dt_plus, **kwargs)
+        true_dt_plus = true_dt_plus or pred_dt_plus
+        pred = self.predict(self.cutoff_t + pred_dt_plus, **kwargs)
 
         # count actual crimes in testing dataset on same grid
-        true = self.true_values(dt_plus, dt_minus)
+        true = self.true_values(true_dt_plus, true_dt_minus)
 
         # sort by descending predicted values
         rank = np.argsort(pred)[::-1]
@@ -144,48 +162,94 @@ class ValidationBase(object):
 
         return rank, pred, carea, cfrac, pai
 
-    def run(self, dt, t_upper=None, **kwargs):
+    def _iterate_run(self, pred_dt_plus, true_dt_plus, true_dt_minus, **kwargs):
+        rank, _, carea, cfrac, pai = self.predict_assess(pred_dt_plus=pred_dt_plus,
+                                                         true_dt_plus=true_dt_plus,
+                                                         true_dt_minus=true_dt_minus,
+                                                         **kwargs)
+        return {
+            'rank': rank,
+            'carea': carea,
+            'cfrac': cfrac,
+            'pai': pai
+        }
+
+    def run(self, time_step, pred_dt_plus=None, true_dt_plus=None, true_dt_minus=0, t_upper=None, pred_kwargs=None,
+            train_kwargs=None, **kwargs):
         """
         Run the required train / predict / assess sequence
         Take the mean of the metrics returned
+        :param time_step: Time step to use in each successive train-predict-assess cycle
+        :param pred_dt_plus: Time units ahead of cutoff_t to use when computing the prediction
+        :param true_dt_plus: Time units ahead of cutoff_t to take as the maximum test data, defaults to same value as
+        pred_dt_plus
+        :param true_dt_minus: Time units ahead of cutoff_t to take as the minimum test data, defaults to 0
+        :param t_upper: Maximum time to use in data.  Upon reaching this, the run ceases.
+        :param pred_kwargs: kwargs passed to prediction function
+        :param train_kwargs: kwargs passed to train function
+        :param kwargs: kwargs for the run function itself
+        :return: results dictionary.
         """
         verbose = kwargs.pop('verbose', True)
-
-        t0 = self.cutoff_t
+        pred_kwargs = pred_kwargs or {}
+        train_kwargs = train_kwargs or {}
+        pred_dt_plus = pred_dt_plus or time_step
+        true_dt_plus = true_dt_plus or pred_dt_plus
         t_upper = min(t_upper or np.inf, self.testing()[-1, 0])
 
-        # precompute number of iterations
-        n_iter = math.ceil((t_upper - t0) / dt)
+        # store current cutoff so it can be restored after this run
+        t0 = self.cutoff_t
 
-        cfrac = []
-        carea = []
-        pai = []
-        ranks = []
+        # precompute number of iterations
+        n_iter = math.ceil((t_upper - t0) / time_step)
+
+        res = collections.defaultdict(list)
 
         if verbose:
             print "Running %d validation iterations..." % n_iter
 
-        # initial training
-        self.train_model(**kwargs)
-        count = 1
+        count = 0
 
         try:
             while self.cutoff_t < t_upper:
                 if verbose:
-                    print "Running validation with cutoff date %s (iteration %d / %d)" % (str(self.cutoff_t), count, n_iter)
-                # predict and assess
-                this_rank, _, this_carea, this_cfrac, this_pai = self.predict_assess(dt_plus=dt, dt_minus=0, **kwargs)
-                carea.append(this_carea)
-                cfrac.append(this_cfrac)
-                pai.append(this_pai)
-                ranks.append(this_rank)
-                self.set_t_cutoff(self.cutoff_t + dt)
+                    print "Running validation with cutoff time %s (iteration %d / %d)" % (str(self.cutoff_t),
+                                                                                          count + 1,
+                                                                                          n_iter)
+
+                # initial training
+                if count == 0:
+                    self._initial_setup(**train_kwargs)
+
+                # predict and assess iteration
+                this_res = self._iterate_run(pred_dt_plus, true_dt_plus, true_dt_minus, **pred_kwargs)
+                for k, v in this_res.items():
+                    res[k].append(v)
+
+                # update model as required and update the cutoff time
+                self._update(time_step, **train_kwargs)
+
                 count += 1
 
+        except KeyboardInterrupt:
+            # this breaks the loop, now return res as it stands
+            pass
         finally:
-            self.set_t_cutoff(t0)
+            self.set_t_cutoff(t0, b_train=False)
 
-        return ranks, carea, cfrac, pai
+        return res
+
+    def _update(self, time_step, **train_kwargs):
+        """
+        This function gets called after a successful train-predict-assess cycle.
+        It is used to setup and TRAIN the model for the next cycle.
+        It should ALWAYS update the cutoff time
+        """
+        # training is implied here
+        self.set_t_cutoff(self.cutoff_t + time_step, **train_kwargs)
+
+    def _initial_setup(self, **train_kwargs):
+        self._update(time_step=0, **train_kwargs)
 
 
 if __name__ == "__main__":
@@ -235,11 +299,9 @@ if __name__ == "__main__":
     vb.train_model(niter=20)
 
 
-    rank, res, carea, cfrac, pai = vb.predict_assess(dt_plus=1, dt_minus=0) # predict one day ahead
+    rank, res, carea, cfrac, pai = vb.predict_assess(pred_dt_plus=1) # predict one day ahead
     polys = [vb.grid[i] for i in rank]
     n = vb.true_values(dt_plus=1, dt_minus=0)
-    # x = [a.centroid.coords[0] for a in polys]
-    # y = [a.centroid.coords[1] for a in polys]
 
     norm = mpl.colors.Normalize(min(res), max(res))
     cmap = mpl.cm.jet
@@ -260,11 +322,3 @@ if __name__ == "__main__":
         plotting.plot_geodjango_shapes(shapes=(p,), ax=ax, facecolor=sm.to_rgba(r), set_axes=False)
     plotting.plot_geodjango_shapes((vb.spatial_domain,), ax=ax, facecolor='none')
 
-
-    # plotting.plot_surface_on_polygon(camden.mpoly, lambda x,y: vb.predict(1.0, x, y), n=250)
-
-    # _, carea, cfrac, pai = vb.run(dt=1, method='centroid')
-    #
-    # fig = plt.figure()
-    # ax = fig.add_subplot(111)
-    # h = [ax.plot(carea, x) for x in cfrac]

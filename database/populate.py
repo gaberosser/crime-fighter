@@ -358,8 +358,7 @@ def setup_divisiontypes(**kwargs):
 
 
 @transaction.commit_manually
-def setup_chicago_data(verbose=True):
-    CHUNKSIZE = 50000
+def setup_chicago_data(verbose=True, chunksize=50000):
     def point_2028(lat, long):
         p = Point(long, lat, srid=4326)
         p.transform(2028)
@@ -394,7 +393,7 @@ def setup_chicago_data(verbose=True):
                     continue
                 t.save()
                 count += 1
-                if (count % CHUNKSIZE) == 0 and count:
+                if (count % chunksize) == 0 and count:
                     transaction.commit()
                     print count
         except Exception as exc:

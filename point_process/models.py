@@ -75,35 +75,40 @@ class PointProcess(object):
     def niter(self):
         return len(self.l2_differences)
 
-    def _set_linkages_meshed(self):
+    def _set_linkages_meshed(self, data=None):
         """ Lightweight implementation for setting parent-offspring couplings, but consumes too much memory
             on larger datasets """
 
-        td = reduce(operator.sub, np.meshgrid(self.data[:, 0], self.data[:, 0], copy=False))
-        xd = reduce(operator.sub, np.meshgrid(self.data[:, 1], self.data[:, 1], copy=False))
-        yd = reduce(operator.sub, np.meshgrid(self.data[:, 2], self.data[:, 2], copy=False))
+        data = data if data is not None else self.data
+
+        td = reduce(operator.sub, np.meshgrid(data[:, 0], data[:, 0], copy=False))
+        xd = reduce(operator.sub, np.meshgrid(data[:, 1], data[:, 1], copy=False))
+        yd = reduce(operator.sub, np.meshgrid(data[:, 2], data[:, 2], copy=False))
         distances = np.sqrt(xd ** 2 + yd ** 2)
 
-        self.linkage = np.where((distances < self.max_trigger_d) & (td > 0) & (td < self.max_trigger_t))
+        return np.where((distances < self.max_trigger_d) & (td > 0) & (td < self.max_trigger_t))
 
-    def _set_linkages_iterated(self, chunksize=2**16):
+    def _set_linkages_iterated(self, data=None, chunksize=2**16):
         """ Iteration-based approach to computing parent-offspring couplings, required when memory is limited """
 
-        chunksize = min(chunksize, self.ndata * (self.ndata - 1) / 2)
-        idx_i, idx_j = estimation.pairwise_differences_indices(self.ndata)
+        data = data if data is not None else self.data
+        ndata = data.shape[0]
+
+        chunksize = min(chunksize, ndata * (ndata - 1) / 2)
+        idx_i, idx_j = estimation.pairwise_differences_indices(ndata)
         link_i = []
         link_j = []
 
         for k in range(0, len(idx_i), chunksize):
             i = idx_i[k:(k + chunksize)]
             j = idx_j[k:(k + chunksize)]
-            t = self.data[j, 0] - self.data[i, 0]
-            d = np.sqrt((self.data[j, 1] - self.data[i, 1])**2 + (self.data[j, 2] - self.data[i, 2])**2)
+            t = data[j, 0] - data[i, 0]
+            d = np.sqrt((data[j, 1] - data[i, 1])**2 + (data[j, 2] - data[i, 2])**2)
             mask = (t <= self.max_trigger_t) & (d <= self.max_trigger_d)
             link_i.extend(i[mask])
             link_j.extend(j[mask])
 
-        self.linkage = (np.array(link_i), np.array(link_j))
+        return (np.array(link_i), np.array(link_j))
 
     def set_linkages(self):
         """
@@ -113,9 +118,13 @@ class PointProcess(object):
         sysmem = psutil.virtual_memory().total
         N = self.ndata ** 2 * 8  # estimated nbytes for a square matrix
         if N / float(sysmem) > 0.05:
-            self._set_linkages_iterated()
+            self.linkage = self._set_linkages_iterated()
         else:
-            self._set_linkages_meshed()
+            self.linkage = self._set_linkages_meshed()
+
+        # sanity check: no diagonals in linkage indices
+        if not np.all(np.diff(np.vstack(self.linkage), axis=0)):
+            raise AttributeError("Diagonal entries found in linkage indices")
 
         self.interpoint_distance_data = self.data[self.linkage[1], :] - self.data[self.linkage[0], :]
         self.linkage_cols = dict(
@@ -252,10 +261,6 @@ class PointProcess(object):
             )
         g[self.linkage] = trigger
 
-        # sanity check
-        # if np.any(g.diagonal()):
-        #     raise AttributeError("Non-zero diagonal values found in g.")
-
         # recompute P
         l = g.sum(axis=0) + m
         new_p = sparse.csr_matrix((self.ndata, self.ndata))
@@ -266,18 +271,21 @@ class PointProcess(object):
 
         # compute difference
         q = new_p - self.p
-        err_denom = float(self.ndata * (self.ndata + 1)) / 2.
+        err_denom = float(self.p.nnz)
         self.l2_differences.append(math.sqrt(q.multiply(q).sum()) / err_denom)
 
         # update p
         self.p = new_p
 
 
-    def train(self, data, niter=30, verbose=True, tol_p=1e-7):
+    def train(self, data, niter=30, verbose=True, tol_p=None):
 
         self.set_data(data)
         # compute linkage indices
         self.set_linkages()
+
+        # set tolerance if not specified
+        tol_p = tol_p or 1 / float(self.ndata)
 
         # reset all other storage containers
         self.reset()

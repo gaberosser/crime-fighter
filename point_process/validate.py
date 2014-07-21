@@ -99,49 +99,30 @@ class PpValidation(validation.ValidationBase):
         super(PpValidation, self).__init__(data, self.pp_class, spatial_domain=spatial_domain, grid_length=grid_length,
                                            tmax_initial=tmax_initial, model_args=model_args, model_kwargs=model_kwargs)
 
-    def set_t_cutoff(self, cutoff_t, **kwargs):
-        """ Disable training the model by default to allow greater control of the initial estimate for p """
-        self.cutoff_t = cutoff_t
+    def _update(self, time_step, **train_kwargs):
+        pre_training = self.training
+        self.set_t_cutoff(self.cutoff_t + time_step, b_train=False)
+        # update p based on previous
+        self.model.p = self.compute_new_p(pre_training)
+        # update time and train
+        self.train_model(**train_kwargs)
 
-    def run(self, dt, t_upper=None, niter=20, **kwargs):
+    def _initial_setup(self, **train_kwargs):
         """
-        Run the required train / predict / assess sequence
+        Initial setup for SEPP model.  NB, p matrix has not yet been computed.
         """
-        t0 = self.cutoff_t
-        t = dt
-        t_upper = min(t_upper or np.inf, self.testing()[-1, 0])
+        self.train_model(**train_kwargs)
 
-        cfrac = []
-        carea = []
-        pai = []
-        ranks = []
-        ps = []
-        pps = []
+    def _iterate_run(self, pred_dt_plus, true_dt_plus, true_dt_minus, **kwargs):
+        # conventional assessment
+        res = super(PpValidation, self)._iterate_run(pred_dt_plus, true_dt_plus, true_dt_minus, **kwargs)
+        # also store p matrix and KDEs
+        res['p'] = self.model.p
+        res['trigger_kde'] = copy.deepcopy(self.model.trigger_kde)
+        res['bg_t_kde'] = copy.deepcopy(self.model.bg_t_kde)
+        res['bg_xy_kde'] = copy.deepcopy(self.model.bg_xy_kde)
 
-        if t0 >= t_upper:
-            return ranks, ps, carea, cfrac, pai
-
-        try:
-            while self.cutoff_t < t_upper:
-                self.train_model(niter=niter, **kwargs)
-                # store P matrix for later analysis
-                ps.append(sparse.csc_matrix(self.model.p))
-                # predict and assess
-                this_rank, _, this_carea, this_cfrac, this_pai = self.predict_assess(dt_plus=dt, dt_minus=0, **kwargs)
-                carea.append(this_carea)
-                cfrac.append(this_cfrac)
-                pai.append(this_pai)
-                ranks.append(this_rank)
-                pps.append(copy.deepcopy(self.model))
-                pre_training = self.training
-                self.set_t_cutoff(self.cutoff_t + dt)
-                # update p based on previous
-                self.model.p = self.compute_new_p(pre_training)
-
-        finally:
-            self.set_t_cutoff(t0)
-
-        return ranks, ps, pps, carea, cfrac, pai
+        return res
 
     def compute_new_p(self, pre_training):
         """ Compute the new initial estimate of p based on the previous value.
@@ -155,21 +136,23 @@ class PpValidation(validation.ValidationBase):
         if pre_p.shape[0] != len(pre_training):
             raise AttributeError("Model p matrix has incorrect shape")
         # recompute new P using initial estimator
-        new_p = self.model.estimator(self.training)
+        new_linkage = self.model._set_linkages_iterated(data=self.training)
+        new_p = self.model.estimator(self.training, new_linkage)
         # restore former probs
         new_p[:num_old, :num_old] = pre_p
         return new_p
+
 
 if __name__ == "__main__":
     from database import logic, models as d_models
     from scipy.stats import multivariate_normal
     from point_process import models as pp_models
-    from point_process import simulate
+    from point_process import simulate, estimation
     from analysis import hotspot
     from analysis import plotting
     import matplotlib as mpl
     from matplotlib import pyplot as plt
-    camden = models.Division.objects.get(name='Camden')
+    camden = d_models.Division.objects.get(name='Camden')
     xm = 526500
     ym = 186000
     nd = 1000
@@ -203,20 +186,25 @@ if __name__ == "__main__":
     # vb.set_t_cutoff(4.0)
 
     # use Point process learning method
-    vb = PpValidation(data, model_kwargs={'max_trigger_t': 80, 'max_trigger_d': 0.75})
+    vb = PpValidation(data, model_kwargs={
+        'max_trigger_t': 80,
+        'max_trigger_d': 0.75,
+        'estimator': lambda x, y: estimation.estimator_bowers(x, y, ct=1, cd=10),
+        })
     vb.set_grid(grid_length=3)
-    ranks, sparse_ps, carea, cfrac, pai = vb.run(dt=5, t_upper=450, niter=15)
+    vb.set_t_cutoff(400, b_train=False)
+    res = vb.run(time_step=5, t_upper=450, train_kwargs={'niter': 15}, verbose=True)
 
-    mc = np.mean(np.array(carea), axis=0)
-    mf = np.mean(np.array(cfrac), axis=0)
-    mp = np.mean(np.array(pai), axis=0)
+    mc = np.mean(np.array(res['carea']), axis=0)
+    mf = np.mean(np.array(res['cfrac']), axis=0)
+    mp = np.mean(np.array(res['pai']), axis=0)
 
     fig = plt.figure()
     ax = fig.add_subplot(111)
-    ax.plot(np.array(carea).transpose(), np.array(cfrac).transpose(), color='k', alpha=0.2)
+    ax.plot(np.array(res['carea']).transpose(), np.array(res['cfrac']).transpose(), color='k', alpha=0.2)
     ax.plot(mc, mf, 'r-')
 
     fig = plt.figure()
     ax = fig.add_subplot(111)
-    ax.plot(np.array(carea).transpose(), np.array(pai).transpose(), color='k', alpha=0.2)
+    ax.plot(np.array(res['carea']).transpose(), np.array(res['pai']).transpose(), color='k', alpha=0.2)
     ax.plot(mc, mp, 'r-')
