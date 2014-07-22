@@ -112,7 +112,7 @@ def validate_point_process(
     vb.set_t_cutoff(training_size, b_train=False)
 
     res = vb.run(time_step=prediction_dt, t_upper=training_size + ndays,
-                 train_kwargs={'niter': num_pp_iter, 'tol_p': 2e-4},
+                 train_kwargs={'niter': num_pp_iter, 'tol_p': 1e-5},
                  verbose=True)
 
     return res
