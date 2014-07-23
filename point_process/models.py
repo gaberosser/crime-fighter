@@ -182,38 +182,54 @@ class PointProcess(object):
         Evaluate the conditional intensity, lambda, at point (t, x, y) or at points specified in 1D arrays t, x, y.
         Optionally provide data matrix to incorporate new history, otherwise run with training data.
         """
+        shp = t.shape
+        if (shp != x.shape) or (shp != y.shape):
+            raise AttributeError("Dimensions of supplied t, x, y do not match")
+
         data = data or self.data
+        ndata = data.shape[0]
         bg = self.background_density(t, x, y)
 
-        if not isinstance(t, np.ndarray):
-            t = np.array(t)
-        if not isinstance(x, np.ndarray):
-            x = np.array(x)
-        if not isinstance(y, np.ndarray):
-            y = np.array(y)
+        link_source, link_target = self._target_source_linkages(t, x, y, data=data)
 
-        ttarget, tdata = np.meshgrid(t, data[:, 0])
-        xtarget, xdata = np.meshgrid(x, data[:, 1])
-        ytarget, ydata = np.meshgrid(y, data[:, 2])
+        dt = t.flat[link_target] - data[link_source, 0]
+        dx = x.flat[link_target] - data[link_source, 1]
+        dy = y.flat[link_target] - data[link_source, 2]
 
-        dt = ttarget - tdata
-        dx = xtarget - xdata
-        dy = ytarget - ydata
-
-        # find region within max_trigger t and max_trigger_d
-        idx_t = dt <= self.max_trigger_t
-        idx_d = np.sqrt(dx**2 + dy**2) <= self.max_trigger_d
-        idx = idx_t & idx_d
-
-        trigger = np.zeros_like(dt)
-        trigger[idx] = self.trigger_density(dt[idx], dx[idx], dy[idx])
-        trigger = np.sum(trigger, axis=0)
+        trigger = sparse.csr_matrix((ndata, t.size))
+        trigger[link_source, link_target] = self.trigger_density(dt, dx, dy)
+        trigger = np.array(trigger.sum(axis=0))
 
         # may need to reshape if t, x, y had shape before
-        shp = t.shape
         trigger = trigger.reshape(shp)
 
         return bg + trigger
+
+    def _target_source_linkages(self, t, x, y, data=None, chunksize=2**16):
+        """ Iteration-based approach to computing parent-offspring couplings for the arbitrary target locations
+            supplied in t, x, y arrays.  Optionally can supply different data, in which case this is treated as the
+            putative parent data instead of self.data.
+            :return: Tuple of two index arrays, with same interpretation as self.linkages
+            NB indices are treated as if t, x, y are flat"""
+
+        data = data if data is not None else self.data
+        ndata = data.shape[0]
+
+        chunksize = min(chunksize, ndata ** 2)
+        idx_i, idx_j = np.meshgrid(range(ndata), range(t.size), copy=False)
+        link_i = []
+        link_j = []
+
+        for k in range(0, idx_i.size, chunksize):
+            i = idx_i.flat[k:(k + chunksize)]
+            j = idx_j.flat[k:(k + chunksize)]
+            tt = t.flat[j] - data[i, 0]
+            dd = np.sqrt((x.flat[j] - data[i, 1])**2 + (y.flat[j] - data[i, 2])**2)
+            mask = (tt <= self.max_trigger_t) & (tt > 0.) & (dd <= self.max_trigger_d)
+            link_i.extend(i[mask])
+            link_j.extend(j[mask])
+
+        return (np.array(link_i), np.array(link_j))
 
     def predict(self, t, x, y):
         """

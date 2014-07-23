@@ -100,6 +100,7 @@ class PpValidation(validation.ValidationBase):
                                            tmax_initial=tmax_initial, model_args=model_args, model_kwargs=model_kwargs)
 
     def _update(self, time_step, **train_kwargs):
+        print "_update"
         pre_training = self.training
         self.set_t_cutoff(self.cutoff_t + time_step, b_train=False)
         # update p based on previous
@@ -108,12 +109,14 @@ class PpValidation(validation.ValidationBase):
         self.train_model(**train_kwargs)
 
     def _initial_setup(self, **train_kwargs):
+        print "_initial_setup"
         """
         Initial setup for SEPP model.  NB, p matrix has not yet been computed.
         """
         self.train_model(**train_kwargs)
 
     def _iterate_run(self, pred_dt_plus, true_dt_plus, true_dt_minus, **kwargs):
+        print "_iterate_run"
         # conventional assessment
         res = super(PpValidation, self)._iterate_run(pred_dt_plus, true_dt_plus, true_dt_minus, **kwargs)
         # also store p matrix and KDEs
@@ -127,6 +130,7 @@ class PpValidation(validation.ValidationBase):
     def compute_new_p(self, pre_training):
         """ Compute the new initial estimate of p based on the previous value.
         Assumes that the new training set is the old set with additional records. """
+        print "compute_new_p"
         num_old = len(pre_training)
         num_new = len(self.training)
         if (num_new - num_old) < 0:

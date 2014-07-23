@@ -122,6 +122,7 @@ class ValidationBase(object):
         return res
 
     def predict(self, t, **kwargs):
+        print "predict"
         # estimate total propensity in each grid poly
         # use centroid method for speed
         ts = np.ones(len(self.grid)) * t
@@ -143,6 +144,7 @@ class ValidationBase(object):
         pred_dt_plus
         :param true_dt_minus: Time units ahead of cutoff_t to take as the minimum test data, defaults to 0
         """
+        print "predict_assess"
         true_dt_plus = true_dt_plus or pred_dt_plus
         pred = self.predict(self.cutoff_t + pred_dt_plus, **kwargs)
 
@@ -163,6 +165,7 @@ class ValidationBase(object):
         return rank, pred, carea, cfrac, pai
 
     def _iterate_run(self, pred_dt_plus, true_dt_plus, true_dt_minus, **kwargs):
+        print "_iterate_run"
         rank, _, carea, cfrac, pai = self.predict_assess(pred_dt_plus=pred_dt_plus,
                                                          true_dt_plus=true_dt_plus,
                                                          true_dt_minus=true_dt_minus,
@@ -190,6 +193,7 @@ class ValidationBase(object):
         :param kwargs: kwargs for the run function itself
         :return: results dictionary.
         """
+        print "run"
         verbose = kwargs.pop('verbose', True)
         pred_kwargs = pred_kwargs or {}
         train_kwargs = train_kwargs or {}

@@ -124,7 +124,8 @@ def validate_point_process_multi(
         num_validation=20,
         num_pp_iter=20,
         grid_size=500,
-        dt=180):
+        dt=180,
+        callback_func=None):
 
     """ Validate point process model over the Chicago dataset.
 :param start_date: Initial date from which data are used, *must include training data too*
@@ -133,6 +134,8 @@ def validate_point_process_multi(
 :param num_pp_iter: Number of iterations of SEPP per training run
 :param grid_size: Length of grid square
 :param dt: Step in time - we slice the entire dataset with this stride length
+:param callback_func: Optional function to call with the data from each successful validation block (time slice).
+May be useful for pickling output incrementally.
 :return: res is a list of the output from validation.run() calls, pps is a list of the resulting trained SEPP model,
             taken from the final run of each time slice.
 """
@@ -158,6 +161,8 @@ def validate_point_process_multi(
         except Exception as exc:
             # TODO: something smarter
             print repr(exc)
+        if callback_func:
+            callback_func({t: res[t]})
         t += datetime.timedelta(days=dt)
 
     return res
