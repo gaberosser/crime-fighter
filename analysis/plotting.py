@@ -64,7 +64,7 @@ def plot_geodjango_shapes(shapes, ax=None, set_axes=True, **kwargs):
     return res
 
 
-def plot_surface_on_polygon(poly, func, n=50, cmap=cm.jet):
+def plot_surface_on_polygon(poly, func, n=50, cmap=cm.jet, nlevels=10):
     ## FIXME: found a MUCH better way to do this using clip paths
     ## Implement this - main challenge is ensuring that line path is defined COUNTER-CLOCKWISE - may need to reverse
     ## Use mask_outside_polygon function
@@ -83,7 +83,7 @@ def plot_surface_on_polygon(poly, func, n=50, cmap=cm.jet):
 
     fig = plt.figure()
     ax = fig.add_subplot(111)
-    h = plt.contourf(xx, yy, zz)
+    h = plt.contourf(xx, yy, zz, nlevels)
 
     poly_verts = list(poly.coords[0])
     # check handedness of poly

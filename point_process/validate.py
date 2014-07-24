@@ -120,10 +120,13 @@ class PpValidation(validation.ValidationBase):
         # conventional assessment
         res = super(PpValidation, self)._iterate_run(pred_dt_plus, true_dt_plus, true_dt_minus, **kwargs)
         # also store p matrix and KDEs
-        res['p'] = self.model.p
-        res['trigger_kde'] = copy.deepcopy(self.model.trigger_kde)
-        res['bg_t_kde'] = copy.deepcopy(self.model.bg_t_kde)
-        res['bg_xy_kde'] = copy.deepcopy(self.model.bg_xy_kde)
+        # res['p'] = self.model.p
+        # res['trigger_kde'] = copy.deepcopy(self.model.trigger_kde)
+        # res['bg_t_kde'] = copy.deepcopy(self.model.bg_t_kde)
+        # res['bg_xy_kde'] = copy.deepcopy(self.model.bg_xy_kde)
+        # store a copy full SEPP model
+        # this contains p matrix and KDEs, plus data
+        res['model'] = copy.deepcopy(self.model)
 
         return res
 

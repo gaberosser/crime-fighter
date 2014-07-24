@@ -5,6 +5,19 @@ from analysis import plotting, chicago
 import pickle
 
 
+with open('assess_by_one_month.pickle', 'w') as f:
+    callback = lambda data: pickle.dump(data, f)
+    res2 = chicago.validate_point_process_multi(
+        start_date=datetime.datetime(2002, 1, 1),
+        training_size=30,
+        num_validation=20,
+        num_pp_iter=20,
+        grid_size=500,
+        dt=30,
+        callback_func=callback
+    )
+
+
 with open('assess_by_three_months.pickle', 'w') as f:
     callback = lambda data: pickle.dump(data, f)
     res2 = chicago.validate_point_process_multi(
