@@ -71,8 +71,12 @@ def _plot_marginals(k, dim, norm=1.0, data_min=0., data_max=None, npt_1d=200, **
         data_max = k.marginal_icdf(0.95, dim=dim)
     t = np.linspace(data_min, data_max, npt_1d)
     z = k.marginal_pdf(t, dim=dim, normed=False) / float(norm)
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
+    if 'ax' in kwargs:
+        ax = kwargs.pop('ax')
+        fig = ax.figure
+    else:
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
     ax.plot(t, z, style)
     ax.set_ylim([0, max(z) * 1.02])
     return fig, ax

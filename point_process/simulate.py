@@ -1,8 +1,6 @@
 __author__ = 'gabriel'
 import numpy as np
 import math
-import datetime
-import pandas
 PI = np.pi
 
 def nonstationary_poisson(inv_func, t_max, prng=None):

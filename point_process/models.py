@@ -136,10 +136,12 @@ class PointProcess(object):
         cause_idx = []
         effect_idx = []
 
+        # iterate over columns / effects / offspring events
         for i in range(self.ndata):
             effect = i
             row_indices = self.linkage_cols[i]
-            p_nz = self.p[row_indices, i].toarray().flat
+            # p_nz = self.p[row_indices, i].toarray().flat
+            p_nz = self.p[row_indices, i].data
             idx = np.argsort(p_nz)[::-1]
             sorted_p_nz = p_nz[idx]
             sampled_idx = estimation.weighted_choice_np(sorted_p_nz)
@@ -164,23 +166,32 @@ class PointProcess(object):
     #     col_sums = np.sum(self.p, axis=0)
     #     self.p /= col_sums
 
-    def background_density(self, t, x, y):
+    def background_density(self, t, x, y, spatial_only=False):
         """
         Return the (unnormalised) density due to background events
+        NB normalise (x,y) components and keep t component unnormed
         """
         return self.bg_t_kde.pdf(t, normed=False) * self.bg_xy_kde.pdf(x, y, normed=False) / self.ndata
+        ## FIXME: why does the following not work?
+        # if spatial_only:
+        #     return self.bg_xy_kde.pdf(x, y, normed=False) / self.ndata
+        # else:
+        #     return self.bg_t_kde.pdf(t, normed=False) * self.bg_xy_kde.pdf(x, y, normed=True) / self.ndata
 
     def trigger_density(self, t, x, y):
         """
         Return the (unnormalised) trigger density
         """
-        # return self.trigger_kde.pdf(t, x, y, normed=False) / self.num_bg[-1]
         return self.trigger_kde.pdf(t, x, y, normed=False) / self.ndata
+        ## FIXME: why does the following not work?
+        # return self.trigger_kde.pdf(t, x, y, normed=True) / self.ndata
 
-    def evaluate_conditional_intensity(self, t, x, y, data=None):
+    def _evaluate_conditional_intensity(self, t, x, y, data=None, spatial_bg_only=False):
         """
         Evaluate the conditional intensity, lambda, at point (t, x, y) or at points specified in 1D arrays t, x, y.
-        Optionally provide data matrix to incorporate new history, otherwise run with training data.
+        :param data: Optionally provide data matrix to incorporate new history, affecting triggering,
+         if None then run with training data.
+        :param spatial_bg_only: Boolean.  When True, only the spatial components of the BG density are used.
         """
         shp = t.shape
         if (shp != x.shape) or (shp != y.shape):
@@ -188,18 +199,18 @@ class PointProcess(object):
 
         data = data or self.data
         ndata = data.shape[0]
-        bg = self.background_density(t, x, y)
+        bg = self.background_density(t, x, y, spatial_only=spatial_bg_only)
 
         link_source, link_target = self._target_source_linkages(t, x, y, data=data)
-
-        dt = t.flat[link_target] - data[link_source, 0]
-        dx = x.flat[link_target] - data[link_source, 1]
-        dy = y.flat[link_target] - data[link_source, 2]
-
         trigger = sparse.csr_matrix((ndata, t.size))
-        trigger[link_source, link_target] = self.trigger_density(dt, dx, dy)
-        trigger = np.array(trigger.sum(axis=0))
 
+        if link_source.size:
+            dt = t.flat[link_target] - data[link_source, 0]
+            dx = x.flat[link_target] - data[link_source, 1]
+            dy = y.flat[link_target] - data[link_source, 2]
+            trigger[link_source, link_target] = self.trigger_density(dt, dx, dy)
+
+        trigger = np.array(trigger.sum(axis=0))
         # may need to reshape if t, x, y had shape before
         trigger = trigger.reshape(shp)
 
@@ -229,13 +240,20 @@ class PointProcess(object):
             link_i.extend(i[mask])
             link_j.extend(j[mask])
 
-        return (np.array(link_i), np.array(link_j))
+        return np.array(link_i), np.array(link_j)
 
     def predict(self, t, x, y):
         """
         Required for plugin to validation code
         """
-        return self.evaluate_conditional_intensity(t, x, y)
+        return self._evaluate_conditional_intensity(t, x, y)
+
+    def predict_fixed_background(self, t, x, y):
+        """
+        When predicting in 'the future', cannot use the temporal component of the background as this vanishes.
+        Therefore use ONLY the spatial components of the background here
+        """
+        return self._evaluate_conditional_intensity(t, x, y, spatial_bg_only=True)
 
     def _iterate(self):
         colsum = self.p.sum(0)
@@ -269,19 +287,22 @@ class PointProcess(object):
         m = self.background_density(self.data[:, 0], self.data[:, 1], self.data[:, 2])
 
         # evaluate trigger KDE at all interpoint distances
-        g = sparse.csr_matrix((self.ndata, self.ndata))
         trigger = self.trigger_density(
             self.interpoint_distance_data[:, 0],
             self.interpoint_distance_data[:, 1],
             self.interpoint_distance_data[:, 2],
             )
-        g[self.linkage] = trigger
+        g = sparse.csr_matrix((trigger, self.linkage), shape=(self.ndata, self.ndata))
+
+        # ipdb.set_trace()
 
         # recompute P
+        # NB use LIL sparse matrix to avoid warnings about expensive structure changes, then convert at end.
         l = g.sum(axis=0) + m
-        new_p = sparse.csr_matrix((self.ndata, self.ndata))
+        new_p = sparse.lil_matrix((self.ndata, self.ndata))
         new_p[range(self.ndata), range(self.ndata)] = m / l
         new_p[self.linkage] = trigger / l.flat[self.linkage[1]]
+        new_p = new_p.tocsr()
 
         # new_p = (m / l) * np.eye(self.ndata) + (g / l)
 

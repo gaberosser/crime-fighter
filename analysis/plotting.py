@@ -65,9 +65,6 @@ def plot_geodjango_shapes(shapes, ax=None, set_axes=True, **kwargs):
 
 
 def plot_surface_on_polygon(poly, func, n=50, cmap=cm.jet, nlevels=10):
-    ## FIXME: found a MUCH better way to do this using clip paths
-    ## Implement this - main challenge is ensuring that line path is defined COUNTER-CLOCKWISE - may need to reverse
-    ## Use mask_outside_polygon function
     """
     :param poly: geos Polygon or Multipolygon defining region
     :param func: function accepting two vectorized input arrays returning the values to be plotted

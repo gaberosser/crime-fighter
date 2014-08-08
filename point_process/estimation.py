@@ -1,9 +1,6 @@
 __author__ = 'gabriel'
 import numpy as np
 import operator
-import time
-import multiprocessing
-import math
 import gc
 from scipy import sparse
 PI = np.pi
@@ -22,37 +19,37 @@ def weighted_choice_np(weights):
     return np.searchsorted(totals, throw)
 
 
-def sample_events(P):
-    n = P.shape[1]
-    res = []
-    for i in range(n):
-        p = P[:, i]
-        idx = np.argsort(p)
-        idx = idx[::-1]
-        res.append((i, idx[weighted_choice_np(p[idx])])) # effect, cause
-    return res
-
-
-def sample_bg_and_interpoint(data, P):
-    if data.shape[0] != P.shape[0]:
-        raise AttributeError("Dimensions of data and P do not match")
-
-    sample_idx = sample_events(P)
-    bg = []
-    interpoint = []
-    cause_effect = []
-    for effect, cause in sample_idx:
-        if cause == effect:
-            # bg
-            bg.append(data[cause, :])
-        else:
-            # offspring
-            dest = data[effect, :]
-            origin = data[cause, :]
-            interpoint.append(dest - origin)
-            cause_effect.append((cause, effect))
-
-    return np.array(bg), np.array(interpoint), np.array(cause_effect)
+# def sample_events(P):
+#     n = P.shape[1]
+#     res = []
+#     for i in range(n):
+#         p = P[:, i]
+#         idx = np.argsort(p)
+#         idx = idx[::-1]
+#         res.append((i, idx[weighted_choice_np(p[idx])])) # effect, cause
+#     return res
+#
+#
+# def sample_bg_and_interpoint(data, P):
+#     if data.shape[0] != P.shape[0]:
+#         raise AttributeError("Dimensions of data and P do not match")
+#
+#     sample_idx = sample_events(P)
+#     bg = []
+#     interpoint = []
+#     cause_effect = []
+#     for effect, cause in sample_idx:
+#         if cause == effect:
+#             # bg
+#             bg.append(data[cause, :])
+#         else:
+#             # offspring
+#             dest = data[effect, :]
+#             origin = data[cause, :]
+#             interpoint.append(dest - origin)
+#             cause_effect.append((cause, effect))
+#
+#     return np.array(bg), np.array(interpoint), np.array(cause_effect)
 
 
 def pairwise_differences(data, b_iter=False, dtype=None):
@@ -130,7 +127,7 @@ def initial_guess(data):
 def estimator_bowers(data, linkage, ct=1, cd=10, matrix_init=sparse.csr_matrix):
 
     n = data.shape[0]
-    P = matrix_init((n, n))
+    P = sparse.lil_matrix((n, n))
 
     # off-diagonal
 
@@ -149,7 +146,7 @@ def estimator_bowers(data, linkage, ct=1, cd=10, matrix_init=sparse.csr_matrix):
     P[linkage[0], linkage[1]] = P[linkage[0], linkage[1]] / colsums[linkage[1]]
     P[range(n), range(n)] = P[range(n), range(n)] / colsums[range(n)]
 
-    return P
+    return matrix_init(P)
 
 
 def initial_guess_educated(data, ct=None, cd=None):

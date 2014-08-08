@@ -1,7 +1,8 @@
 __author__ = 'gabriel'
 
-import simulate, plotting
-from models import PointProcess
+import simulate
+import plotting
+from point_process import models, estimation
 from matplotlib import pyplot as plt
 import numpy as np
 
@@ -23,7 +24,9 @@ if __name__ == '__main__':
     data = data[data[:, 0].argsort()]
     print "Complete"
 
-    r = PointProcess(max_trigger_d=0.75, max_trigger_t=80)
+    # set estimation seed for consistency
+    models.estimation.set_seed(42)
+    r = models.PointProcess(max_trigger_d=0.75, max_trigger_t=80)
     try:
         r.train(data, niter=num_iter)
     except Exception:

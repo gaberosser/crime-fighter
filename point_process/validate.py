@@ -99,6 +99,14 @@ class PpValidation(validation.ValidationBase):
         super(PpValidation, self).__init__(data, self.pp_class, spatial_domain=spatial_domain, grid_length=grid_length,
                                            tmax_initial=tmax_initial, model_args=model_args, model_kwargs=model_kwargs)
 
+    def predict(self, t, **kwargs):
+        print "PP predict"
+        # estimate total propensity in each grid poly
+        # use centroid method for speed
+        # use spatial background only to avoid background 'fade out'
+        ts = np.ones(len(self.grid)) * t
+        return self.model.predict_fixed_background(ts, self.centroids[:, 0], self.centroids[:, 1])
+
     def _update(self, time_step, **train_kwargs):
         print "_update"
         pre_training = self.training

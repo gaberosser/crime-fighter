@@ -45,12 +45,11 @@ class TestPointProcessStochastic(unittest.TestCase):
     def test_linkage(self):
         r = models.PointProcess(max_trigger_d=0.75, max_trigger_t=80)
         r.set_data(self.data)
-        r._set_linkages_meshed()
-        link_mesh = r.linkage
-        r._set_linkages_iterated()
-        link_iter = r.linkage
+        link_mesh = r._set_linkages_meshed()
+        link_iter = r._set_linkages_iterated()
         self.assertListEqual(list(link_iter[0]), list(link_mesh[0]))
         self.assertListEqual(list(link_iter[1]), list(link_mesh[1]))
+        ## TODO: (1) use a known linkage structure to test output, (2) test linkage_cols
 
     def test_point_process(self):
         """
@@ -59,30 +58,30 @@ class TestPointProcessStochastic(unittest.TestCase):
         indicate an improvement.
         """
         r = models.PointProcess(max_trigger_d=0.75, max_trigger_t=80)
-        estimation.set_seed(42)
+        models.estimation.set_seed(42)
         ps = r.train(self.data, niter=15, verbose=False, tol_p=1e-8)
         self.assertEqual(r.ndata, self.data.shape[0])
         self.assertEqual(len(r.num_bg), 15)
         self.assertEqual(r.niter, 15)
-        self.assertAlmostEqual(r.l2_differences[0], 7.6531563e-06, places=3)
-        self.assertAlmostEqual(r.l2_differences[-1], 5.3778352e-07, places=3)
+        self.assertAlmostEqual(r.l2_differences[0], 0.0011281, places=3)
+        self.assertAlmostEqual(r.l2_differences[-1], 0.0001080, places=3)
         num_bge = [
-            1284,
-            1850,
-            1780,
-            1716,
-            1691,
-            1645,
-            1617,
-            1605,
+            1949,
+            1880,
+            1758,
+            1682,
+            1655,
+            1627,
             1624,
-            1629,
-            1601,
-            1594,
-            1588,
-            1593,
-            1594,
-            ]
+            1606,
+            1616,
+            1612,
+            1597,
+            1595,
+            1598,
+            1600,
+            1597
+        ]
         self.assertListEqual(r.num_bg, num_bge)
         self.assertListEqual(r.num_trig, [r.ndata - x for x in r.num_bg])
         self.assertEqual(len(r.linkage[0]), 6927)
@@ -90,40 +89,29 @@ class TestPointProcessStochastic(unittest.TestCase):
         zt = r.bg_t_kde.pdf(t, normed=False)
         # mean BG_t
         mt = np.mean(zt)
-        self.assertAlmostEqual(mt, 5.370218625, places=3)  # should be 5.71
+        self.assertAlmostEqual(mt, 5.379642997277057, places=3)  # should be 5.71
         # stdev BG_t
-        stdevt = np.std(zt)
         # should be as low as possible (no time variation in simulation):
-        self.assertAlmostEqual(stdevt, 0.867680028, places=3)
+        stdevt = np.std(zt)
+        self.assertAlmostEqual(stdevt, 0.87447835663897755, places=3)
         # mean BG_x, BG_y
+        # should be (0, 0)
         x, y = np.meshgrid(np.linspace(-15, 15, 200), np.linspace(-15, 15, 200))
         zxy = r.bg_xy_kde.pdf(x,y,normed=False)
         mx = np.sum(x * zxy) / x.size
         my = np.sum(y * zxy) / y.size
-        self.assertAlmostEqual(mx, -0.13921210, places=3)  # should be 0
-        self.assertAlmostEqual(my, -0.14031403, places=3)  # should be 0
+        self.assertAlmostEqual(mx, -0.16809429994382197, places=3)  # should be 0
+        self.assertAlmostEqual(my, -0.13588032032996472, places=3)  # should be 0
         # stdev BG_x, BG_y
         stdevx = np.sqrt((np.sum(x**2 * zxy)/(x.size - 1)) - mx**2)
         stdevy = np.sqrt((np.sum(y**2 * zxy)/(y.size - 1)) - my**2)
-        self.assertAlmostEqual(stdevx, 6.116309602)  # should be 4.5
-        self.assertAlmostEqual(stdevy, 6.132948083)  # should be 4.5
+        self.assertAlmostEqual(stdevx, 6.1230874070314485)  # should be 4.5
+        self.assertAlmostEqual(stdevy, 6.1335341582567739)  # should be 4.5
         self.assertTrue(2 * np.abs(stdevx - stdevy)/(stdevx + stdevy) < 0.003) # should be 0
         # TODO: trigger
 
 
 class TestSampling(unittest.TestCase):
-
-    def test_pairwise_difference_indices(self):
-        n = 256
-        idx_i, idx_j = estimation.pairwise_differences_indices(n)
-        self.assertEqual(idx_i.dtype.name, 'uint8')
-        self.assertEqual(len(idx_i), n*(n-1)/2)
-        idx_np = np.triu_indices(n, k=1)
-        self.assertListEqual(list(idx_i), list(idx_np[0]))
-        self.assertListEqual(list(idx_j), list(idx_np[1]))
-        n = 257
-        idx_i, idx_j = estimation.pairwise_differences_indices(n)
-        self.assertEqual(idx_i.dtype.name, 'uint16')
 
     def test_roulette_selection(self):
         num_iter = 100
@@ -139,58 +127,44 @@ class TestSampling(unittest.TestCase):
         self.assertEqual(sum(idx == 0), num_iter - num1)
         self.assertEqual(sum(idx == 1), num1)
 
-    def test_weighted_sampling(self):
-        # all BG
-        P = np.array(
-            [
-                [1., 0.],
-                [0., 1.]
-            ]
-        )
-        res = estimation.sample_events(P)
-        self.assertListEqual(list(res[0]), [0, 0])
-        self.assertListEqual(list(res[1]), [1, 1])
-        # all trigger
-        P = np.array(
-            [
-                [0., 1.],
-                [1., 0.]
-            ]
-        )
-        res = estimation.sample_events(P)
-        self.assertListEqual(list(res[0]), [0, 1])
-        self.assertListEqual(list(res[1]), [1, 0])
-        # mix
-        P = np.array(
-            [
-                [0.6, 0.2],
-                [0.4, 0.8]
-            ]
-        )
-        # with patch('numpy.random.RandomState', return_value=np.random.RandomState(42)) as mock:
-        estimation.set_seed(42)
-        res = estimation.sample_events(P)
-        idx = np.array([estimation.weighted_choice_np(w) for w in P.transpose()])
-        prng = np.random.RandomState(42)
-        rvs = prng.rand(2)
-        self.assertListEqual(list(res[0]), [0, 0 if rvs[0] <= 0.6 else 1])
-        self.assertListEqual(list(res[1]), [1, 0 if rvs[1] > 0.8 else 1])
+    # FIXME: test this in the PointProcess class instead
+    # def test_weighted_sampling(self):
+    #     # all BG
+    #     P = np.array(
+    #         [
+    #             [1., 0.],
+    #             [0., 1.]
+    #         ]
+    #     )
+    #     res = estimation.sample_events(P)
+    #     self.assertListEqual(list(res[0]), [0, 0])
+    #     self.assertListEqual(list(res[1]), [1, 1])
+    #     # all trigger
+    #     P = np.array(
+    #         [
+    #             [0., 1.],
+    #             [1., 0.]
+    #         ]
+    #     )
+    #     res = estimation.sample_events(P)
+    #     self.assertListEqual(list(res[0]), [0, 1])
+    #     self.assertListEqual(list(res[1]), [1, 0])
+    #     # mix
+    #     P = np.array(
+    #         [
+    #             [0.6, 0.2],
+    #             [0.4, 0.8]
+    #         ]
+    #     )
+    #     estimation.set_seed(42)
+    #     res = estimation.sample_events(P)
+    #     idx = np.array([estimation.weighted_choice_np(w) for w in P.transpose()])
+    #     prng = np.random.RandomState(42)
+    #     rvs = prng.rand(2)
+    #     self.assertListEqual(list(res[0]), [0, 0 if rvs[0] <= 0.6 else 1])
+    #     self.assertListEqual(list(res[1]), [1, 0 if rvs[1] > 0.8 else 1])
 
-    def test_pairwise_differences(self):
-        data = np.array([
-            [0., 0., 1.],
-            [0., 1., 0.],
-            [1., 0., 0.],
-            [1., 1., 1.],
-        ])
-        pdiff = estimation.pairwise_differences(data)
-        self.assertTupleEqual(pdiff.shape, (4, 4, 3))
-        for i in range(4):
-            self.assertListEqual(list(pdiff[i, i, :]), [0., 0., 0.])
-        self.assertListEqual(list(pdiff[0, 1, :]), [0., 1., -1.])
-        self.assertListEqual(list(pdiff[0, 2, :]), [1., 0., -1.])
-        self.assertListEqual(list(pdiff[0, 3, :]), [1., 1., 0.])
-
+    ## FIXME: this is obsolete, replace with test for estimator_bowers
     def test_initial_guess(self):
         data = np.array([
             [0., 0., 0.],
@@ -222,48 +196,49 @@ class TestSampling(unittest.TestCase):
         self.assertTrue(P[0, 2] > P[0, 4])
         self.assertTrue(P[2, 3] > P[2, 4])
 
-    def test_sample_bg_and_interpoint(self):
-        data = np.array([
-            [0., 0., 0.],
-            [1., 0., 0.],
-            [1., 0., 1.],
-            [1., 2., 0.],
-            [1., 100., 0.],
-            [2., 0., 0.],
-            [3., 0., 0.],
-            [100., 0., 0.],
-        ])
-        P = estimation.initial_guess(data)
-        # with patch('numpy.random.RandomState', return_value=np.random.RandomState(42)) as mock:
-        estimation.set_seed(42)
-        res = estimation.sample_events(P)
-        for x0, x1 in res:
-            self.assertTrue(x0 >= x1)
-
-        # with patch('numpy.random.RandomState', return_value=np.random.RandomState(42)) as mock:
-        estimation.set_seed(42)
-        bg, interpoint, cause_effect = estimation.sample_bg_and_interpoint(data, P)
-
-        self.assertEqual(interpoint.shape[0], cause_effect.shape[0])
-        self.assertEqual(bg.shape[0] + interpoint.shape[0], data.shape[0])
-        self.assertListEqual(list(bg[0, :]), list(data[0, :]))
-
-        # no negative times
-        self.assertTrue(np.sum(interpoint[:, 0] < 0) == 0)
-
-        # no cause and effect pairs have the same index
-        self.assertFalse(np.any(cause_effect[:, 0] == cause_effect[:, 1]))
-
-        # check division was created as expected
-        bg_n = 0
-        interp_n = 0
-        for eff, cau in res:
-            if eff == cau:
-                self.assertListEqual(list(bg[bg_n, :]), list(data[eff, :]))
-                bg_n += 1
-            else:
-                self.assertListEqual(list(interpoint[interp_n, :]), list(data[eff, :] - data[cau, :]))
-                interp_n += 1
+    ## FIXME: replace with test on PointProcess object
+    # def test_sample_bg_and_interpoint(self):
+    #     data = np.array([
+    #         [0., 0., 0.],
+    #         [1., 0., 0.],
+    #         [1., 0., 1.],
+    #         [1., 2., 0.],
+    #         [1., 100., 0.],
+    #         [2., 0., 0.],
+    #         [3., 0., 0.],
+    #         [100., 0., 0.],
+    #     ])
+    #     P = estimation.initial_guess(data)
+    #     # with patch('numpy.random.RandomState', return_value=np.random.RandomState(42)) as mock:
+    #     estimation.set_seed(42)
+    #     res = estimation.sample_events(P)
+    #     for x0, x1 in res:
+    #         self.assertTrue(x0 >= x1)
+    #
+    #     # with patch('numpy.random.RandomState', return_value=np.random.RandomState(42)) as mock:
+    #     estimation.set_seed(42)
+    #     bg, interpoint, cause_effect = estimation.sample_bg_and_interpoint(data, P)
+    #
+    #     self.assertEqual(interpoint.shape[0], cause_effect.shape[0])
+    #     self.assertEqual(bg.shape[0] + interpoint.shape[0], data.shape[0])
+    #     self.assertListEqual(list(bg[0, :]), list(data[0, :]))
+    #
+    #     # no negative times
+    #     self.assertTrue(np.sum(interpoint[:, 0] < 0) == 0)
+    #
+    #     # no cause and effect pairs have the same index
+    #     self.assertFalse(np.any(cause_effect[:, 0] == cause_effect[:, 1]))
+    #
+    #     # check division was created as expected
+    #     bg_n = 0
+    #     interp_n = 0
+    #     for eff, cau in res:
+    #         if eff == cau:
+    #             self.assertListEqual(list(bg[bg_n, :]), list(data[eff, :]))
+    #             bg_n += 1
+    #         else:
+    #             self.assertListEqual(list(interpoint[interp_n, :]), list(data[eff, :] - data[cau, :]))
+    #             interp_n += 1
 
 
 
