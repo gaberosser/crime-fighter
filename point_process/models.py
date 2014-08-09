@@ -171,7 +171,10 @@ class PointProcess(object):
         Return the (unnormalised) density due to background events
         NB normalise (x,y) components and keep t component unnormed
         """
-        return self.bg_t_kde.pdf(t, normed=False) * self.bg_xy_kde.pdf(x, y, normed=False) / self.ndata
+        if spatial_only:
+            return self.bg_xy_kde.pdf(x, y, normed=False) / self.ndata
+        else:
+            return self.bg_t_kde.pdf(t, normed=False) * self.bg_xy_kde.pdf(x, y, normed=False) / self.ndata
         ## FIXME: why does the following not work?
         # if spatial_only:
         #     return self.bg_xy_kde.pdf(x, y, normed=False) / self.ndata
