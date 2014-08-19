@@ -22,7 +22,6 @@ class ValidationBase(object):
         # sort data in increasing time
         self.data = data
         self.data = np.array(data)[np.argsort(self.t)]
-        self.model = model_class
         self.spatial_domain = spatial_domain
 
         self.model_args = model_args or []

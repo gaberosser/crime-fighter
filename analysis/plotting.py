@@ -64,7 +64,8 @@ def plot_geodjango_shapes(shapes, ax=None, set_axes=True, **kwargs):
     return res
 
 
-def plot_surface_on_polygon(poly, func, n=50, cmap=cm.jet, nlevels=10):
+def plot_surface_on_polygon(poly, func, n=50, cmap=cm.jet, nlevels=10,
+                            vmax=None):
     """
     :param poly: geos Polygon or Multipolygon defining region
     :param func: function accepting two vectorized input arrays returning the values to be plotted
@@ -80,7 +81,7 @@ def plot_surface_on_polygon(poly, func, n=50, cmap=cm.jet, nlevels=10):
 
     fig = plt.figure()
     ax = fig.add_subplot(111)
-    h = plt.contourf(xx, yy, zz, nlevels)
+    h = plt.contourf(xx, yy, zz, nlevels, vmax=vmax)
 
     poly_verts = list(poly.coords[0])
     # check handedness of poly
@@ -90,13 +91,15 @@ def plot_surface_on_polygon(poly, func, n=50, cmap=cm.jet, nlevels=10):
     mask_outside_polygon(poly_verts, ax=ax)
     plot_geodjango_shapes((poly,), ax=ax, facecolor='none')
 
+    return h
+
 
 def mask_outside_polygon(poly_verts, ax=None):
     """
     Plots a mask on the specified axis ("ax", defaults to plt.gca()) such that
     all areas outside of the polygon specified by "poly_verts" are masked.
 
-    "poly_verts" must be a list of tuples of the verticies in the polygon in
+    "poly_verts" must be a list of tuples of the vertices in the polygon in
     counter-clockwise order.
 
     Returns the matplotlib.patches.PathPatch instance plotted on the figure.

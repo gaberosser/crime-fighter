@@ -1,7 +1,7 @@
 __author__ = 'gabriel'
 import numpy as np
 from scipy.stats import gaussian_kde
-
+from kde.methods.pure_python import VariableBandwidthNnKde
 
 class Hotspot(object):
 
@@ -76,3 +76,24 @@ class SKernelHistoric(STKernelBase):
             return self.kde([x, y])
         shp = x.shape
         return self.kde([x.flatten(), y.flatten()]).reshape(shp)
+
+
+class SKernelHistoricVariableBandwidthNn(STKernelBase):
+
+    def __init__(self, dt, nn=None):
+        self.dt = dt
+        self.nn = nn
+        self.kde = None
+        super(SKernelHistoricVariableBandwidthNn, self).__init__()
+
+    def train(self, data):
+        # assume last data point is most recent
+        tf = data[-1, 0]
+        self.data = data[data[:, 0] >= (tf - self.dt), 1:] # only spatial component
+        self.kde = VariableBandwidthNnKde(self.data, nn=self.nn)
+
+    def _evaluate(self, t, x, y):
+        return self.kde.pdf(x, y)
+
+    def predict(self, t, x, y):
+        return self._evaluate(t, x, y)

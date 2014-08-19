@@ -259,21 +259,38 @@ if __name__ == '__main__':
     poly = compute_chicago_region()
     res, t0 = get_crimes_by_type(
         crime_type='burglary',
-        datetime__gt=start_date,
-        datetime__lte=end_date
+        start_date=start_date,
+        end_date=end_date
     )
+
     vb = validate.PpValidation(res, spatial_domain=poly, model_kwargs={
         'max_trigger_t': 30,
         'max_trigger_d': 200,
-        'estimator': lambda x: estimation.initial_guess_educated(x, ct=1, cd=0.02),
+        'estimator': lambda x, y: estimation.estimator_bowers(x, y, ct=1, cd=0.02),
     })
     vb.set_grid(250)
-    vb.set_t_cutoff(first_training_size)
-    ranks, sparse_ps, carea, cfrac, pai = vb.run(dt=1, niter=20, t_upper=first_training_size + 20)
+    vb.set_t_cutoff(first_training_size, b_train=False)
+
+    sepp_res = vb.run(time_step=1, t_upper=first_training_size + 1,
+                 train_kwargs={'niter': 20, 'tol_p': 1e-5},
+                 verbose=True)
 
     # use basic historic data spatial hotspot
-    sk7 = hotspot.SKernelHistoric(2) # use heatmap from final 7 days data
-    vb_sk7 = validation.ValidationBase(res, hotspot.Hotspot, poly, model_args=(sk7,))
-    vb_sk7.set_grid(grid_length=250)
-    vb_sk7.set_t_cutoff(first_training_size)
-    polys_sk7, ranks_sk7, carea_sk7, cfrac_sk7, pai_sk7 = vb_sk7.run(dt=1, t_upper=first_training_size + 20)
+    sk = hotspot.SKernelHistoric(first_training_size) # use heatmap from same period
+    vb_sk = validation.ValidationBase(res, hotspot.Hotspot, poly, model_args=(sk,))
+    vb_sk._grid = vb._grid
+    vb_sk.centroids = vb.centroids
+    vb_sk.a = vb.a
+    vb_sk.set_t_cutoff(first_training_size, b_train=False)
+    sk_res = vb_sk.run(time_step=1, t_upper=first_training_size + 1,
+                         verbose=True)
+
+    # use variable bandwidth KDE
+    skvb = hotspot.SKernelHistoricVariableBandwidthNn(first_training_size)
+    vb_skvb = validation.ValidationBase(res, hotspot.Hotspot, poly, model_args=(skvb,))
+    vb_skvb._grid = vb._grid
+    vb_skvb.centroids = vb.centroids
+    vb_skvb.a = vb.a
+    vb_skvb.set_t_cutoff(first_training_size, b_train=False)
+    skvb_res = vb_skvb.run(time_step=1, t_upper=first_training_size + 1,
+                         verbose=True)

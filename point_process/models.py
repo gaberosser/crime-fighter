@@ -166,25 +166,54 @@ class PointProcess(object):
     #     col_sums = np.sum(self.p, axis=0)
     #     self.p /= col_sums
 
+    def _target_source_linkages(self, t, x, y, data=None, chunksize=2**16):
+        """ Iteration-based approach to computing parent-offspring couplings for the arbitrary target locations
+            supplied in t, x, y arrays.  Optionally can supply different data, in which case this is treated as the
+            putative parent data instead of self.data.
+            :return: Tuple of two index arrays, with same interpretation as self.linkages
+            NB indices are treated as if t, x, y are flat"""
+
+        data = data if data is not None else self.data
+        ndata = data.shape[0]
+
+        chunksize = min(chunksize, ndata ** 2)
+        idx_i, idx_j = np.meshgrid(range(ndata), range(t.size), copy=False)
+        link_i = []
+        link_j = []
+
+        for k in range(0, idx_i.size, chunksize):
+            i = idx_i.flat[k:(k + chunksize)]
+            j = idx_j.flat[k:(k + chunksize)]
+            tt = t.flat[j] - data[i, 0]
+            dd = np.sqrt((x.flat[j] - data[i, 1])**2 + (y.flat[j] - data[i, 2])**2)
+            mask = (tt <= self.max_trigger_t) & (tt > 0.) & (dd <= self.max_trigger_d)
+            link_i.extend(i[mask])
+            link_j.extend(j[mask])
+
+        return np.array(link_i), np.array(link_j)
+
     def background_density(self, t, x, y, spatial_only=False):
         """
         Return the (unnormalised) density due to background events
+        :param spatial_only: Boolean switch.  When enabled, only use the spatial component of the background, since
+        using the time component leads to the background 'fading out' when predicting into the future.
         NB normalise (x,y) components and keep t component unnormed
+        Triple integral over all (t, x, y) should return num_bg
         """
-        return self.bg_t_kde.pdf(t, normed=False) * self.bg_xy_kde.pdf(x, y, normed=False) / self.ndata
-        ## FIXME: why does the following not work?
-        # if spatial_only:
-        #     return self.bg_xy_kde.pdf(x, y, normed=False) / self.ndata
-        # else:
-        #     return self.bg_t_kde.pdf(t, normed=False) * self.bg_xy_kde.pdf(x, y, normed=True) / self.ndata
+
+        if spatial_only:
+            # estimate mean intensity per unit time
+            k = self.num_bg[-1] / float(self.T * self.ndata)
+            return k * self.bg_xy_kde.pdf(x, y, normed=False)
+        else:
+            return self.bg_t_kde.pdf(t, normed=False) * self.bg_xy_kde.pdf(x, y, normed=True)
 
     def trigger_density(self, t, x, y):
         """
         Return the (unnormalised) trigger density
+        Triple integral over all (t, x, y) should return num_trig / num_events
         """
         return self.trigger_kde.pdf(t, x, y, normed=False) / self.ndata
-        ## FIXME: why does the following not work?
-        # return self.trigger_kde.pdf(t, x, y, normed=True) / self.ndata
 
     def _evaluate_conditional_intensity(self, t, x, y, data=None, spatial_bg_only=False):
         """
@@ -215,32 +244,6 @@ class PointProcess(object):
         trigger = trigger.reshape(shp)
 
         return bg + trigger
-
-    def _target_source_linkages(self, t, x, y, data=None, chunksize=2**16):
-        """ Iteration-based approach to computing parent-offspring couplings for the arbitrary target locations
-            supplied in t, x, y arrays.  Optionally can supply different data, in which case this is treated as the
-            putative parent data instead of self.data.
-            :return: Tuple of two index arrays, with same interpretation as self.linkages
-            NB indices are treated as if t, x, y are flat"""
-
-        data = data if data is not None else self.data
-        ndata = data.shape[0]
-
-        chunksize = min(chunksize, ndata ** 2)
-        idx_i, idx_j = np.meshgrid(range(ndata), range(t.size), copy=False)
-        link_i = []
-        link_j = []
-
-        for k in range(0, idx_i.size, chunksize):
-            i = idx_i.flat[k:(k + chunksize)]
-            j = idx_j.flat[k:(k + chunksize)]
-            tt = t.flat[j] - data[i, 0]
-            dd = np.sqrt((x.flat[j] - data[i, 1])**2 + (y.flat[j] - data[i, 2])**2)
-            mask = (tt <= self.max_trigger_t) & (tt > 0.) & (dd <= self.max_trigger_d)
-            link_i.extend(i[mask])
-            link_j.extend(j[mask])
-
-        return np.array(link_i), np.array(link_j)
 
     def predict(self, t, x, y):
         """
