@@ -21,7 +21,9 @@ def create_spatial_grid(spatial_domain, grid_length, offset_coords=None):
     sq_y_r = math.ceil((ymax - offset_coords[1]) / grid_length)
     edges_x = grid_length * np.arange(-sq_x_l, sq_x_r + 1) + offset_coords[0]
     edges_y = grid_length * np.arange(-sq_y_l, sq_y_r + 1) + offset_coords[1]
-    polys = []
+
+    intersect_polys = []
+    full_extents = []
     for ix in range(len(edges_x) - 1):
         for iy in range(len(edges_y) - 1):
             p = geos.Polygon((
@@ -32,9 +34,10 @@ def create_spatial_grid(spatial_domain, grid_length, offset_coords=None):
                 (edges_x[ix], edges_y[iy]),
             ))
             if spatial_domain.intersects(p):
-                polys.append(spatial_domain.intersection(p))
+                intersect_polys.append(spatial_domain.intersection(p))
+                full_extents.append(p.extent)
 
-    return polys
+    return intersect_polys, full_extents
 
 
 def is_clockwise(poly):

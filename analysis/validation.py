@@ -3,7 +3,7 @@ from django.contrib.gis import geos
 import numpy as np
 import mcint
 import math
-from spatial import create_spatial_grid
+from roc import RocSpatial
 import collections
 
 
@@ -30,12 +30,9 @@ class ValidationBase(object):
 
         # set initial time cut point
         self.cutoff_t = tmax_initial or self.t[int(self.ndata / 2)]
-        # self.set_t_cutoff(tmax_initial or self.t[int(self.ndata / 2)])
 
-        # set grid for evaluation
-        self._grid = []
-        self.centroids = np.array([], dtype=float)
-        self.a = []
+        # set roc
+        self.roc = RocSpatial(poly=self.spatial_domain)
         if grid_length:
             self.set_grid(grid_length)
 
@@ -51,30 +48,22 @@ class ValidationBase(object):
             self.train_model(**kwargs)
 
     def set_grid(self, grid_length):
-        if not self.spatial_domain:
-            # find minimal bounding rectangle
-            xmin, ymin = np.min(self.data[:, 1:], axis=0)
-            xmax, ymax = np.max(self.data[:, 1:], axis=0)
-            self.spatial_domain = geos.Polygon([
-                (xmin, ymin),
-                (xmax, ymin),
-                (xmax, ymax),
-                (xmin, ymax),
-                (xmin, ymin),
-            ])
-        self._grid = create_spatial_grid(self.spatial_domain, grid_length)
-        self.centroids = np.array([t.centroid.coords for t in self._grid])
-        self.a = np.array([t.area for t in self._grid])
+        self.roc.set_grid(grid_length)
 
     @property
-    def grid(self):
-        if len(self._grid):
-            return self._grid
-        raise AttributeError("Grid has not been computed, run set_grid with grid length")
+    def centroids(self):
+        return self.roc.centroids
 
-    @property
-    def A(self):
-        return sum([t.area for t in self.grid])
+
+    # @property
+    # def grid(self):
+    #     if len(self._grid):
+    #         return self._grid
+    #     raise AttributeError("Grid has not been computed, run set_grid with grid length")
+    #
+    # @property
+    # def A(self):
+    #     return sum([t.area for t in self.grid])
 
     @property
     def ndata(self):
@@ -111,6 +100,7 @@ class ValidationBase(object):
 
     def predict_on_poly(self, t, poly, *args, **kwargs):
         # FIXME: disabled as too slow
+        # idea here is to allow more accurate assessment of prediction on a region, rather than just using the centroid
         method = kwargs.pop('method', 'centroid')
         if method == 'int':
             res, err = mcint.integrate(lambda x: self.model.predict(t, x[0], x[1]), mc_sampler(poly), n=100)
@@ -124,57 +114,64 @@ class ValidationBase(object):
         print "predict"
         # estimate total propensity in each grid poly
         # use centroid method for speed
-        ts = np.ones(len(self.grid)) * t
+        ts = np.ones(len(self.roc.egrid)) * t
         return self.model.predict(ts, self.centroids[:, 0], self.centroids[:, 1])
 
-    def true_values(self, dt_plus, dt_minus):
-        # count actual crimes in testing dataset on grid
-        n = np.zeros(len(self.grid))
-        testing = self.testing(dt_plus=dt_plus, dt_minus=dt_minus, as_point=True)
-        for i in range(len(self.grid)):
-            n[i] += sum([t[1].intersects(self.grid[i]) for t in testing])
-        return n
+    # def true_values(self, dt_plus, dt_minus):
+    #     # count actual crimes in testing dataset on grid
+    #     n = np.zeros(len(self.grid))
+    #     testing = self.testing(dt_plus=dt_plus, dt_minus=dt_minus, as_point=True)
+    #     for i in range(len(self.grid)):
+    #         n[i] += sum([t[1].intersects(self.grid[i]) for t in testing])
+    #     return n
 
-    def predict_assess(self, pred_dt_plus, true_dt_plus=None, true_dt_minus=0, *args, **kwargs):
-        """
-        Assess the trained model on the polygonal grid.  Return the PAI metric for varying hit rate.
-        :param pred_dt_plus: Time units ahead of cutoff_t to use when computing the prediction
-        :param true_dt_plus: Time units ahead of cutoff_t to take as the maximum test data, defaults to same value as
-        pred_dt_plus
-        :param true_dt_minus: Time units ahead of cutoff_t to take as the minimum test data, defaults to 0
-        """
-        print "predict_assess"
-        true_dt_plus = true_dt_plus or pred_dt_plus
-        pred = self.predict(self.cutoff_t + pred_dt_plus, **kwargs)
-
-        # count actual crimes in testing dataset on same grid
-        true = self.true_values(true_dt_plus, true_dt_minus)
-
-        # sort by descending predicted values
-        rank = np.argsort(pred)[::-1]
-        true = true[rank]
-        pred = pred[rank]
-
-        N = sum(true)
-        a = [self.a[i] for i in rank]
-        cfrac = np.cumsum(true) / N
-        carea = np.cumsum(a) / self.A
-        pai = cfrac * (self.A / np.cumsum(a))
-
-        return rank, pred, carea, cfrac, pai
+    # def predict_assess(self, pred_dt_plus, true_dt_plus=None, true_dt_minus=0, *args, **kwargs):
+    #     """
+    #     Assess the trained model on the polygonal grid.  Return the PAI metric for varying hit rate.
+    #     :param pred_dt_plus: Time units ahead of cutoff_t to use when computing the prediction
+    #     :param true_dt_plus: Time units ahead of cutoff_t to take as the maximum test data, defaults to same value as
+    #     pred_dt_plus
+    #     :param true_dt_minus: Time units ahead of cutoff_t to take as the minimum test data, defaults to 0
+    #     """
+    #     print "predict_assess"
+    #     true_dt_plus = true_dt_plus or pred_dt_plus
+    #     pred = self.predict(self.cutoff_t + pred_dt_plus, **kwargs)
+    #
+    #     # count actual crimes in testing dataset on same grid
+    #     true = self.true_values(true_dt_plus, true_dt_minus)
+    #
+    #     # sort by descending predicted values
+    #     rank = np.argsort(pred)[::-1]
+    #     true = true[rank]
+    #     pred = pred[rank]
+    #
+    #     N = sum(true)
+    #     a = [self.a[i] for i in rank]
+    #     cfrac = np.cumsum(true) / N
+    #     carea = np.cumsum(a) / self.A
+    #     pai = cfrac * (self.A / np.cumsum(a))
+    #
+    #     return rank, pred, carea, cfrac, pai
 
     def _iterate_run(self, pred_dt_plus, true_dt_plus, true_dt_minus, **kwargs):
         print "_iterate_run"
-        rank, _, carea, cfrac, pai = self.predict_assess(pred_dt_plus=pred_dt_plus,
-                                                         true_dt_plus=true_dt_plus,
-                                                         true_dt_minus=true_dt_minus,
-                                                         **kwargs)
-        return {
-            'rank': rank,
-            'carea': carea,
-            'cfrac': cfrac,
-            'pai': pai
-        }
+        true_dt_plus = true_dt_plus or pred_dt_plus
+        prediction = self.predict(self.cutoff_t + pred_dt_plus, **kwargs)
+        testing_data = self.testing(dt_plus=true_dt_plus, dt_minus=true_dt_minus)
+        self.roc.set_data(testing_data[:, 1:])
+        self.roc.set_prediction(prediction)
+
+        return self.roc.evaluate()
+        # rank, _, carea, cfrac, pai = self.predict_assess(pred_dt_plus=pred_dt_plus,
+        #                                                  true_dt_plus=true_dt_plus,
+        #                                                  true_dt_minus=true_dt_minus,
+        #                                                  **kwargs)
+        # return {
+        #     'rank': rank,
+        #     'carea': carea,
+        #     'cfrac': cfrac,
+        #     'pai': pai
+        # }
 
     def run(self, time_step, pred_dt_plus=None, true_dt_plus=None, true_dt_minus=0, t_upper=None, pred_kwargs=None,
             train_kwargs=None, **kwargs):
@@ -214,29 +211,30 @@ class ValidationBase(object):
         count = 0
 
         try:
-            while self.cutoff_t < t_upper:
+            while count < n_iter:
                 if verbose:
                     print "Running validation with cutoff time %s (iteration %d / %d)" % (str(self.cutoff_t),
                                                                                           count + 1,
                                                                                           n_iter)
 
-                # initial training
                 if count == 0:
+                    # initial training
                     self._initial_setup(**train_kwargs)
+                else:
+                    # update model as required and update the cutoff time
+                    self._update(time_step, **train_kwargs)
 
                 # predict and assess iteration
                 this_res = self._iterate_run(pred_dt_plus, true_dt_plus, true_dt_minus, **pred_kwargs)
                 for k, v in this_res.items():
                     res[k].append(v)
 
-                # update model as required and update the cutoff time
-                self._update(time_step, **train_kwargs)
-
                 count += 1
 
         except KeyboardInterrupt:
             # this breaks the loop, now return res as it stands
             pass
+
         finally:
             self.set_t_cutoff(t0, b_train=False)
 

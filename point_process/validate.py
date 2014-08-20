@@ -100,15 +100,15 @@ class PpValidation(validation.ValidationBase):
                                            tmax_initial=tmax_initial, model_args=model_args, model_kwargs=model_kwargs)
 
     def predict(self, t, **kwargs):
-        print "PP predict"
+        print "SEPP predict"
         # estimate total propensity in each grid poly
         # use centroid method for speed
         # use spatial background only to avoid background 'fade out'
-        ts = np.ones(len(self.grid)) * t
+        ts = np.ones(self.roc.ngrid) * t
         return self.model.predict_fixed_background(ts, self.centroids[:, 0], self.centroids[:, 1])
 
     def _update(self, time_step, **train_kwargs):
-        print "_update"
+        print "SEPP _update"
         pre_training = self.training
         self.set_t_cutoff(self.cutoff_t + time_step, b_train=False)
         # update p based on previous
@@ -124,7 +124,7 @@ class PpValidation(validation.ValidationBase):
         self.train_model(**train_kwargs)
 
     def _iterate_run(self, pred_dt_plus, true_dt_plus, true_dt_minus, **kwargs):
-        print "_iterate_run"
+        print "SEPP _iterate_run"
         # conventional assessment
         res = super(PpValidation, self)._iterate_run(pred_dt_plus, true_dt_plus, true_dt_minus, **kwargs)
         # also store p matrix and KDEs
@@ -141,7 +141,7 @@ class PpValidation(validation.ValidationBase):
     def compute_new_p(self, pre_training):
         """ Compute the new initial estimate of p based on the previous value.
         Assumes that the new training set is the old set with additional records. """
-        print "compute_new_p"
+        print "SEPP compute_new_p"
         num_old = len(pre_training)
         num_new = len(self.training)
         if (num_new - num_old) < 0:

@@ -278,9 +278,10 @@ if __name__ == '__main__':
     # use basic historic data spatial hotspot
     sk = hotspot.SKernelHistoric(first_training_size) # use heatmap from same period
     vb_sk = validation.ValidationBase(res, hotspot.Hotspot, poly, model_args=(sk,))
-    vb_sk._grid = vb._grid
-    vb_sk.centroids = vb.centroids
-    vb_sk.a = vb.a
+    vb_sk.roc.copy_grid(vb.roc)
+    # vb_sk._grid = vb._grid
+    # vb_sk.centroids = vb.centroids
+    # vb_sk.a = vb.a
     vb_sk.set_t_cutoff(first_training_size, b_train=False)
     sk_res = vb_sk.run(time_step=1, t_upper=first_training_size + 1,
                          verbose=True)
@@ -288,9 +289,10 @@ if __name__ == '__main__':
     # use variable bandwidth KDE
     skvb = hotspot.SKernelHistoricVariableBandwidthNn(first_training_size)
     vb_skvb = validation.ValidationBase(res, hotspot.Hotspot, poly, model_args=(skvb,))
-    vb_skvb._grid = vb._grid
-    vb_skvb.centroids = vb.centroids
-    vb_skvb.a = vb.a
+    vb_skvb.roc.copy_grid(vb.roc)
+    # vb_skvb._grid = vb._grid
+    # vb_skvb.centroids = vb.centroids
+    # vb_skvb.a = vb.a
     vb_skvb.set_t_cutoff(first_training_size, b_train=False)
     skvb_res = vb_skvb.run(time_step=1, t_upper=first_training_size + 1,
                          verbose=True)
