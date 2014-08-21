@@ -12,6 +12,7 @@ import settings
 import os
 from django.contrib.gis.gdal import DataSource
 from django.db import connection
+from matplotlib import pyplot as plt
 
 CHICAGO_DATA_DIR = os.path.join(settings.DATA_DIR, 'chicago')
 SRID = 2028
@@ -52,6 +53,36 @@ def get_crimes_by_type(crime_type='burglary', start_date=None, end_date=None, **
     t = [(x - t0).total_seconds() / float(60 * 60 * 24) for x in t]
     res = np.array([(t[i], res[i][1], res[i][2]) for i in range(len(res))])
     return res, t0
+
+def pairwise_time_lag_events(max_distance=200, num_bins=None, crime_type='burglary',
+                             start_date=datetime.datetime(2010, 1, 1),
+                             end_date=datetime.datetime(2010, 3, 1),
+                             **where_strs):
+    """ Recreate Fig 1(b) Mohler et al 2011 'Self-exciting point process modeling of crime'
+        max_distance is in units of metres. """
+
+    res, t0 = get_crimes_by_type(crime_type=crime_type, start_date=start_date, end_date=end_date, **where_strs)
+    res = res[np.argsort(res[:, 0])]
+
+    # use SEPP model linkage method
+    sepp = pp_models.PointProcess(max_trigger_d=max_distance, max_trigger_t=1e12)
+    sepp.set_data(res)
+    sepp.set_linkages()
+    ii, jj = sepp.linkage
+
+    dt = [res[j, 0] - res[i, 0] for i, j in zip(ii, jj)]
+    max_dt = max(dt)
+    k = 0.5 * max_dt * (max_dt - 1)
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    ax.hist(dt, num_bins or range(int(max_dt) + 1), normed=True, edgecolor='none', facecolor='gray')
+    ax.plot(np.arange(1, max_dt), np.arange(1, max_dt)[::-1] / k, 'k--')
+    ax.set_xlabel('Time difference (days)')
+    ax.set_ylabel('Event pair density')
+    plt.show()
+
+    return dt
 
 
 def apply_point_process():
