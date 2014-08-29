@@ -22,9 +22,10 @@ def marginal_icdf_optimise(k, y, dim=0, tol=1e-8):
         ye = f(xe)
         idx = np.argmin(ye)
         if idx == 0:
-            return xe[idx]
+            # return xe[idx]
+            minx -= mean_bd
+            continue
         if idx == (n-1):
-
             maxx += mean_bd
             continue
         err = ye[idx]

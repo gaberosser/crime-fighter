@@ -10,6 +10,7 @@ import spatial
 import hotspot
 import validation
 import cad
+import roc
 from database.models import Division, DivisionType
 from database.populate import setup_cad250_grid
 
@@ -27,32 +28,50 @@ class TestSpatial(unittest.TestCase):
             (1, 0),
             (0, 0),
         ])
-        grid = spatial.create_spatial_grid(domain, grid_length=0.1) # no offset
-        self.assertEqual(len(grid), 100)
-        self.assertAlmostEqual(sum([g.area for g in grid]), 1.0)
-        for g in grid:
+        igrid, egrid = spatial.create_spatial_grid(domain, grid_length=0.1) # no offset
+        self.assertEqual(len(igrid), 100)
+        self.assertEqual(len(egrid), 100)
+        self.assertAlmostEqual(sum([g.area for g in igrid]), 1.0)
+        for g in igrid:
             self.assertAlmostEqual(g.area, 0.01)
             self.assertTrue(g.intersects(domain))
+        for g in egrid:
+            self.assertAlmostEqual(g[2], g[0] + 0.1)
+            self.assertAlmostEqual(g[3], g[1] + 0.1)
 
-        grid = spatial.create_spatial_grid(domain, grid_length=0.1, offset_coords=(0.05, 0.)) # offset
-        self.assertEqual(len(grid), 110)
-        self.assertAlmostEqual(sum([g.area for g in grid]), 1.0)
-        self.assertAlmostEqual(grid[0].area, 0.005)
-        for g in grid:
+        igrid, egrid = spatial.create_spatial_grid(domain, grid_length=0.1, offset_coords=(0.05, 0.)) # offset
+        self.assertEqual(len(igrid), 110)
+        self.assertEqual(len(igrid), 110)
+        self.assertAlmostEqual(sum([g.area for g in igrid]), 1.0)
+        self.assertAlmostEqual(igrid[0].area, 0.005)
+        for g in igrid:
             self.assertTrue(g.intersects(domain))
+        for g in egrid:
+            self.assertAlmostEqual(g[2], g[0] + 0.1)
+            self.assertAlmostEqual(g[3], g[1] + 0.1)
 
-        grid = spatial.create_spatial_grid(domain, grid_length=0.1, offset_coords=(0., 1.1)) # offset outside of domain
-        self.assertEqual(len(grid), 100)
-        self.assertAlmostEqual(sum([g.area for g in grid]), 1.0)
+        igrid, egrid = spatial.create_spatial_grid(domain, grid_length=0.1, offset_coords=(0., 1.1)) # offset outside of domain
+        self.assertEqual(len(igrid), 100)
+        self.assertEqual(len(egrid), 100)
+        self.assertAlmostEqual(sum([g.area for g in igrid]), 1.0)
+        for g in igrid:
+            self.assertTrue(g.intersects(domain))
+        for g in egrid:
+            self.assertAlmostEqual(g[2], g[0] + 0.1)
+            self.assertAlmostEqual(g[3], g[1] + 0.1)
 
     def test_grid_circle(self):
         """
         Circular domain
         """
         domain = geos.Point([0., 0.]).buffer(1.0, 100)
-        grid = spatial.create_spatial_grid(domain, grid_length=0.25)
-        self.assertEqual(len(grid), 60)
-        self.assertAlmostEqual(sum([g.area for g in grid]), np.pi, places=3) # should approximate PI
+        igrid, egrid = spatial.create_spatial_grid(domain, grid_length=0.25)
+        self.assertEqual(len(igrid), 60)
+        self.assertEqual(len(igrid), len(egrid))
+        self.assertAlmostEqual(sum([g.area for g in igrid]), np.pi, places=3) # should approximate PI
+        for g in egrid:
+            self.assertAlmostEqual(g[2], g[0] + 0.25)
+            self.assertAlmostEqual(g[3], g[1] + 0.25)
 
     ## TODO: test case where a grid square is split into a multipolygon?  seems to work
 
@@ -113,7 +132,6 @@ class TestCadAnalysis(unittest.TestCase):
         DivisionType.objects.all().delete()
 
 
-
 class TestHotspot(unittest.TestCase):
 
     def test_stkernel_bowers(self):
@@ -141,6 +159,118 @@ class TestHotspot(unittest.TestCase):
         stk = hotspot.STKernelBowers(a, b)
         h = hotspot.Hotspot(stk, data=data)
         self.assertEqual(h.predict(1.3, 4.6, 7.8), stk.predict(1.3, 4.6, 7.8))
+
+
+class TestRoc(unittest.TestCase):
+
+    def setUp(self):
+        n = 100
+        t = np.linspace(0, 1, n).reshape((n, 1))
+        np.random.shuffle(t)
+        self.udata = np.hstack((t, np.random.RandomState(42).rand(n, 2)))
+        self.data = np.array([
+            [0.25, 0.25],
+            [0.49, 0.25],
+            [0.51, 0.25],
+            [1.01, 0.25],
+            [0.25, 0.49],
+            [0.75, 0.75],
+            [0.75, 0.75],
+            [0.75, 0.75],
+        ])
+
+    def test_instantiation(self):
+        r = roc.RocSpatial()
+        with self.assertRaises(AttributeError):
+            r.ngrid
+        with self.assertRaises(AttributeError):
+            r.ndata
+        with self.assertRaises(Exception):
+            r.true_count
+        with self.assertRaises(AttributeError):
+            r.set_data(self.udata)
+        r.set_data(self.udata[:, 1:])
+        self.assertListEqual(list(r.data[:, 0]), list(self.udata[:, 1]))
+
+    def test_grid_no_poly(self):
+        # no spatial domain supplied
+        r = roc.RocSpatial(data=self.udata[:, 1:])
+        r.set_grid(0.1)
+        self.assertTupleEqual(r.poly.extent, (
+            min(self.udata[:, 1]),
+            min(self.udata[:, 2]),
+            max(self.udata[:, 1]),
+            max(self.udata[:, 2]),
+        ))
+
+        self.assertEqual(r.ngrid, 100)
+        self.assertEqual(max(np.array(r.egrid)[:, 2]), 1.0)
+        self.assertEqual(max(np.array(r.egrid)[:, 3]), 1.0)
+        self.assertEqual(sum(np.array([x.area for x in r.igrid]) > 0.00999), 64) # 8 x 8 centre grid
+
+        # different arrangement
+        r = roc.RocSpatial(data=self.data)
+        r.set_grid(0.5)
+        self.assertEqual(r.ngrid, 6)
+        areas = sorted([x.area for x in r.igrid])
+        areas_expctd = [0.0025, 0.0025, 0.0625, 0.0625, 0.125, 0.125]
+        for a, ae in zip(areas, areas_expctd):
+            self.assertAlmostEqual(a, ae)
+
+    def test_true_count(self):
+        r = roc.RocSpatial(data=self.data)
+        r.set_grid(0.5)
+        tc = r.true_count
+        self.assertEqual(len(tc), r.ngrid)
+        self.assertEqual(sum(tc), self.data.shape[0])
+        expctd_count = {
+            (0.26, 0.26): 3,
+            (0.75, 0.26): 1,
+            (1.005, 0.26): 1,
+            (0.26, 0.74): 0,
+            (0.75, 0.74): 3,
+            (1.005, 0.74): 0,
+        }
+        for k, v in expctd_count.items():
+            # find correct grid square
+            idx = [i for i, x in enumerate(r.igrid) if x.intersects(geos.Point(k))][0]
+            # check count
+            self.assertEqual(tc[idx], v)
+
+    def test_prediction(self):
+        r = roc.RocSpatial(data=self.data)
+        r.set_grid(0.5)
+        tc = r.true_count
+
+        pred = np.linspace(0, 1, r.ngrid)
+        with self.assertRaises(AttributeError):
+            r.set_prediction(pred[1:])
+        r.set_prediction(pred)
+        self.assertTrue(np.all(pred == r.prediction_values))
+        self.assertListEqual(list(r.prediction_rank), range(r.ngrid)[::-1])
+
+    def test_evaluate(self):
+        r = roc.RocSpatial(data=self.data)
+        r.set_grid(0.5)
+        with self.assertRaises(AttributeError):
+            res = r.evaluate()
+        r.set_prediction(np.linspace(0, 1, r.ngrid))
+        res = r.evaluate()
+        self.assertListEqual(list(res['prediction_rank']), range(r.ngrid)[::-1])
+        self.assertListEqual(list(res['prediction_values']), list(r.prediction_values[::-1])) # sorted descending
+
+        cumul_area_expctd = np.cumsum([x.area for x in r.igrid][::-1])
+        cumul_area_expctd /= cumul_area_expctd[-1]
+        self.assertListEqual(list(res['cumulative_area']), list(cumul_area_expctd))
+
+        cumul_crime_expctd = np.cumsum(r.true_count[::-1])
+        cumul_crime_expctd = cumul_crime_expctd / float(cumul_crime_expctd[-1])  ## FIXME: why can't we use /= here??
+        self.assertListEqual(list(res['cumulative_crime']), list(cumul_crime_expctd))
+
+        cumulative_crime_max_expctd = np.cumsum(np.sort(r.true_count)[::-1]) / float(sum(r.true_count))
+        self.assertListEqual(list(res['cumulative_crime_max']), list(cumulative_crime_max_expctd))
+
+        ## TODO: test pai too
 
 
 class TestValidation(unittest.TestCase):
@@ -197,88 +327,138 @@ class TestValidation(unittest.TestCase):
             self.assertListEqual(list(x), list(y))
 
     def test_instantiation(self):
-        # check that model is NOT trained initially
-        stk = mock.create_autospec(hotspot.STKernelBowers)
+
+        stk = hotspot.SKernelHistoric(1, bdwidth=0.3)
         vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
-        self.assertEqual(stk.train.call_count, 0)
+        vb.train_model()
 
         # check data are present and sorted
-        self.assertEqual(self.vb.ndata, self.data.shape[0])
-        self.assertTrue(np.all(np.diff(self.vb.data[:, 0]) > 0))
+        self.assertEqual(vb.ndata, self.data.shape[0])
+        self.assertTrue(np.all(np.diff(vb.data[:, 0]) > 0))
 
-    def test_grid(self):
+        # no grid present yet as not supplied
+        self.assertTrue(vb.roc.poly is None)
 
-        #  no grid length provided
-        self.assertEqual(self.vb.spatial_domain, None)
-        with self.assertRaises(Exception):
-            self.vb.grid
-        self.vb.set_grid(0.1)
+        # instantiate grid
+        vb.set_grid(0.1)
 
-        # check that spatial extent is now set correctly
-        poly = self.vb.spatial_domain
-        self.assertTupleEqual(poly.extent, (
+        # should now have automatically made a spatial domain
+        self.assertListEqual(list(vb.roc.poly.extent), [
             min(self.data[:, 1]),
             min(self.data[:, 2]),
             max(self.data[:, 1]),
             max(self.data[:, 2]),
-        ))
-        self.assertEqual(len(self.vb.grid), 100)
+        ])
 
     def test_time_cutoff(self):
 
-        # check time cutoff and training/test split
+        stk = hotspot.SKernelHistoric(1, bdwidth=0.3)
+        vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
+        vb.train_model()
+
         data = self.data[np.argsort(self.data[:, 0])]
+        # expected cutoff automatically chosen
         cutoff_te = data[int(self.data.shape[0] / 2), 0]
-        self.assertEqual(self.vb.cutoff_t, cutoff_te)
+
+        # check time cutoff and training/test split
+        self.assertEqual(vb.cutoff_t, cutoff_te)
+
         # training set
-        self.assertEqual(self.vb.training.shape[0], sum(self.data[:, 0] <= cutoff_te))
-        for i in range(int(self.data.shape[0] / 2)):
-            self.assertListEqual(list(self.vb.training[i]), list(data[i]))
+        training_expctd = data[data[:, 0] <= cutoff_te]
+        self.assertEqual(vb.training.shape[0], len(training_expctd))
+        for i in range(len(training_expctd)):
+            self.assertListEqual(list(vb.training[i]), list(data[i]))
+
         # testing set
-        testinge = data[data[:, 0] > cutoff_te]
-        self.assertEqual(self.vb.testing().shape[0], len(testinge))
-        for i in range(len(testinge)):
-            self.assertListEqual(list(self.vb.testing()[i]), list(testinge[i]))
+        testing_expctd = data[data[:, 0] > cutoff_te]
+        self.assertEqual(vb.testing().shape[0], len(testing_expctd))
+        for i in range(len(testing_expctd)):
+            self.assertListEqual(list(vb.testing()[i]), list(testing_expctd[i]))
+
+        # test when as_point=True
+        tst = vb.testing(as_point=True)
+        self.assertEqual(len(tst), len(testing_expctd))
+        for i in range(len(testing_expctd)):
+            self.assertEqual(tst[i][0], testing_expctd[i, 0])
+            self.assertIsInstance(tst[i][1], geos.Point)
+            self.assertListEqual(list(tst[i][1].coords), list(testing_expctd[i, 1:]))
+
+        # change cutoff_t
+        cutoff_te = 0.3
+        vb.set_t_cutoff(cutoff_te)
+        testing_expctd = data[data[:, 0] > cutoff_te]
+        self.assertEqual(vb.testing().shape[0], len(testing_expctd))
+        for i in range(len(testing_expctd)):
+            self.assertListEqual(list(vb.testing()[i]), list(testing_expctd[i]))
 
         # testing dataset with dt_plus specified
-        dt_plus = data[data[:, 0] > cutoff_te][2, 0] - cutoff_te
-        testinge = data[(data[:, 0] > cutoff_te) & (data[:, 0] <= (cutoff_te + dt_plus))]
-        self.assertEqual(self.vb.testing(dt_plus=dt_plus).shape[0], len(testinge))
-        for i in range(len(testinge)):
-            self.assertListEqual(list(self.vb.testing(dt_plus=dt_plus)[i]), list(testinge[i]))
+        dt_plus = testing_expctd[2, 0] - cutoff_te
+        testing_expctd = testing_expctd[:3]  # three results
+        self.assertEqual(vb.testing(dt_plus=dt_plus).shape[0], len(testing_expctd))
+        for i in range(len(testing_expctd)):
+            self.assertListEqual(list(vb.testing(dt_plus=dt_plus)[i]), list(testing_expctd[i]))
 
         # testing dataset with dt_plus and dt_minus
         dt_plus = data[data[:, 0] > cutoff_te][17, 0] - cutoff_te
         dt_minus = data[data[:, 0] > cutoff_te][10, 0] - cutoff_te
-        testinge = data[(data[:, 0] > (cutoff_te + dt_minus)) & (data[:, 0] <= (cutoff_te + dt_plus))]
-        self.assertEqual(self.vb.testing(dt_plus=dt_plus, dt_minus=dt_minus).shape[0], len(testinge))
-        for i in range(len(testinge)):
-            self.assertListEqual(list(self.vb.testing(dt_plus=dt_plus, dt_minus=dt_minus)[i]), list(testinge[i]))
+        testing_expctd = data[(data[:, 0] > (cutoff_te + dt_minus)) & (data[:, 0] <= (cutoff_te + dt_plus))]
+        self.assertEqual(vb.testing(dt_plus=dt_plus, dt_minus=dt_minus).shape[0], 7)
+        self.assertEqual(vb.testing(dt_plus=dt_plus, dt_minus=dt_minus).shape[0], len(testing_expctd))
+        for i in range(len(testing_expctd)):
+            self.assertListEqual(list(vb.testing(dt_plus=dt_plus, dt_minus=dt_minus)[i]), list(testing_expctd[i]))
 
     def test_training(self):
+
         stk = mock.create_autospec(hotspot.STKernelBowers)
         vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
+        # check that model is NOT trained initially
         self.assertEqual(stk.train.call_count, 0)
-        vb.set_t_cutoff(vb.cutoff_t)
+
+        # spoof train
+        vb.train_model()
         self.assertEqual(stk.train.call_count, 1)
+        self.assertEqual(len(stk.train.call_args[0]), 1)
+        self.assertTrue(np.all(stk.train.call_args[0][0] == vb.training))
+
         vb.train_model()
         self.assertEqual(stk.train.call_count, 2)
 
-    def test_predict(self):
-        self.vb.set_grid(0.1)
-        self.vb.train_model()
-        pop = self.vb.predict_on_poly(self.vb.cutoff_t, self.vb.spatial_domain)
-        centroid = self.vb.spatial_domain.centroid.coords
-        pope = self.vb.model.predict(self.vb.cutoff_t, *centroid)
-        self.assertEqual(pop, pope)
+        # set cutoff time, no training
+        vb.set_t_cutoff(0.1, b_train=False)
+        self.assertEqual(stk.train.call_count, 2)
 
-        stk = mock.create_autospec(hotspot.STKernelBowers)
+        # set cutoff time, training
+        vb.set_t_cutoff(0.1, b_train=True)
+        self.assertEqual(stk.train.call_count, 3)
+        self.assertEqual(len(stk.train.call_args[0]), 1)
+        self.assertTrue(np.all(stk.train.call_args[0][0] == vb.training))
+
+    def test_predict(self):
+
+        stk = hotspot.SKernelHistoric(1, bdwidth=0.3)
         vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
         vb.train_model()
         vb.set_grid(0.1)
+
+        # predict at centroid of domain
+        pop = vb.predict_on_poly(vb.cutoff_t, vb.spatial_domain)
+        centroid = vb.spatial_domain.centroid.coords
+        pope = vb.model.predict(vb.cutoff_t, *centroid)
+        self.assertEqual(pop, pope)
+
+        # spoof predict at all grid centroids
+        stk = mock.create_autospec(hotspot.STKernelBowers)
+        vb.model = stk
         pop = vb.predict(self.vb.cutoff_t)
-        # FIXME: next assertion may break if we implement a more efficient routine for eval (reducing num of calls)
-        self.assertEqual(stk.predict.call_count, len(vb.grid))
+
+        self.assertEqual(stk.predict.call_count, 1)
+        self.assertEqual(len(stk.predict.call_args[0]), 3)
+        te = np.ones(vb.centroids.shape[0]) * vb.cutoff_t
+        xe = vb.centroids[:, 0]
+        ye = vb.centroids[:, 1]
+        self.assertListEqual(list(stk.predict.call_args[0][0]), list(te))
+        self.assertListEqual(list(stk.predict.call_args[0][1]), list(xe))
+        self.assertListEqual(list(stk.predict.call_args[0][2]), list(ye))
 
         class MockKernel(hotspot.STKernelBase):
 
@@ -291,30 +471,21 @@ class TestValidation(unittest.TestCase):
         vb.train_model()
         vb.set_grid(0.1)
         pop = vb.predict(self.vb.cutoff_t)
-        self.assertEqual(len(pop), len(vb.grid))
-        pope = np.array([np.sum(self.data[self.data[:, 0] <= self.vb.cutoff_t, 1] - x.centroid.coords[0]) for x in vb.grid])
+        self.assertEqual(len(pop), len(vb.centroids))
+        pope = np.array([np.sum(self.data[self.data[:, 0] <= vb.cutoff_t, 1] - x.centroid.coords[0]) for x in vb.roc.igrid])
         for (p, pe) in zip(pop, pope):
             self.assertAlmostEqual(p, pe)
 
-    def test_true_values(self):
-        self.vb.set_grid(0.1)
-        self.vb.train_model()
-        polys = self.vb.grid
-
-        # check computing true values
-        true = self.vb.true_values(0.2, 0)
-        testing_idx = (self.data[:, 0] > self.vb.cutoff_t) & (self.data[:, 0] <= (self.vb.cutoff_t + 0.2))
-        testing = [geos.Point(x[1], x[2]) for x in self.data[testing_idx]]
-        truee = []
-        for p in polys:
-            truee.append(sum([p.intersects(t) for t in testing]))
-        truee = np.array(truee)
-        self.assertEqual(len(true), len(truee))
-        self.assertListEqual(list(true), list(truee))
-
     def test_assess(self):
-        self.vb.set_grid(0.1)
-        self.vb.train_model()
+        ## FIXME: broken for now.  No need to test the output per se, because most of the evaluation is in RocSpatial.
+        ## instead, use mocks to test that the correct call to RocSpatial is being made, with the expected data.
+
+        stk = hotspot.SKernelHistoric(1, bdwidth=0.3)
+        vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
+        vb.train_model()
+        vb.set_grid(0.1)
+
+        res = vb._iterate_run(pred_dt_plus=0.2, true_dt_plus=None, true_dt_minus=0.)
 
         polys, pred, carea, cfrac, pai = self.vb.predict_assess(dt_plus=0.2)
 
@@ -352,6 +523,7 @@ class TestValidation(unittest.TestCase):
             self.assertAlmostEqual(p, pe)
 
     def test_run(self):
+        ## FIXME: broke
         with mock.patch.object(validation.ValidationBase, 'predict_assess',
                                return_value=tuple([0 for i in range(5)])) as m:
             stk = hotspot.SKernelHistoric(1, bdwidth=0.3)

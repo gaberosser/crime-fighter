@@ -22,7 +22,6 @@ class ValidationBase(object):
         # sort data in increasing time
         self.data = data
         self.data = np.array(data)[np.argsort(self.t)]
-        self.spatial_domain = spatial_domain
 
         self.model_args = model_args or []
         self.model_kwargs = model_kwargs or {}
@@ -32,7 +31,9 @@ class ValidationBase(object):
         self.cutoff_t = tmax_initial or self.t[int(self.ndata / 2)]
 
         # set roc
-        self.roc = RocSpatial(poly=self.spatial_domain)
+        self.roc = RocSpatial(poly=spatial_domain)
+        # set roc with ALL data initially
+        self.roc.set_data(self.data[:, 1:])
         if grid_length:
             self.set_grid(grid_length)
 
@@ -47,23 +48,24 @@ class ValidationBase(object):
         if b_train:
             self.train_model(**kwargs)
 
-    def set_grid(self, grid_length):
-        self.roc.set_grid(grid_length)
+    def set_grid(self, grid):
+        """
+        Set the domain grid for computing SER etc.
+        :param grid: Either a scalar giving the grid square length or an instance of RocSpatial from which the grid
+        will be copied
+        """
+        if isinstance(grid, RocSpatial):
+            self.roc.copy_grid(grid)
+        else:
+            self.roc.set_grid(grid)
+
+    @property
+    def spatial_domain(self):
+        return self.roc.poly
 
     @property
     def centroids(self):
         return self.roc.centroids
-
-
-    # @property
-    # def grid(self):
-    #     if len(self._grid):
-    #         return self._grid
-    #     raise AttributeError("Grid has not been computed, run set_grid with grid length")
-    #
-    # @property
-    # def A(self):
-    #     return sum([t.area for t in self.grid])
 
     @property
     def ndata(self):
@@ -117,42 +119,6 @@ class ValidationBase(object):
         ts = np.ones(len(self.roc.egrid)) * t
         return self.model.predict(ts, self.centroids[:, 0], self.centroids[:, 1])
 
-    # def true_values(self, dt_plus, dt_minus):
-    #     # count actual crimes in testing dataset on grid
-    #     n = np.zeros(len(self.grid))
-    #     testing = self.testing(dt_plus=dt_plus, dt_minus=dt_minus, as_point=True)
-    #     for i in range(len(self.grid)):
-    #         n[i] += sum([t[1].intersects(self.grid[i]) for t in testing])
-    #     return n
-
-    # def predict_assess(self, pred_dt_plus, true_dt_plus=None, true_dt_minus=0, *args, **kwargs):
-    #     """
-    #     Assess the trained model on the polygonal grid.  Return the PAI metric for varying hit rate.
-    #     :param pred_dt_plus: Time units ahead of cutoff_t to use when computing the prediction
-    #     :param true_dt_plus: Time units ahead of cutoff_t to take as the maximum test data, defaults to same value as
-    #     pred_dt_plus
-    #     :param true_dt_minus: Time units ahead of cutoff_t to take as the minimum test data, defaults to 0
-    #     """
-    #     print "predict_assess"
-    #     true_dt_plus = true_dt_plus or pred_dt_plus
-    #     pred = self.predict(self.cutoff_t + pred_dt_plus, **kwargs)
-    #
-    #     # count actual crimes in testing dataset on same grid
-    #     true = self.true_values(true_dt_plus, true_dt_minus)
-    #
-    #     # sort by descending predicted values
-    #     rank = np.argsort(pred)[::-1]
-    #     true = true[rank]
-    #     pred = pred[rank]
-    #
-    #     N = sum(true)
-    #     a = [self.a[i] for i in rank]
-    #     cfrac = np.cumsum(true) / N
-    #     carea = np.cumsum(a) / self.A
-    #     pai = cfrac * (self.A / np.cumsum(a))
-    #
-    #     return rank, pred, carea, cfrac, pai
-
     def _iterate_run(self, pred_dt_plus, true_dt_plus, true_dt_minus, **kwargs):
         print "_iterate_run"
         true_dt_plus = true_dt_plus or pred_dt_plus
@@ -162,16 +128,6 @@ class ValidationBase(object):
         self.roc.set_prediction(prediction)
 
         return self.roc.evaluate()
-        # rank, _, carea, cfrac, pai = self.predict_assess(pred_dt_plus=pred_dt_plus,
-        #                                                  true_dt_plus=true_dt_plus,
-        #                                                  true_dt_minus=true_dt_minus,
-        #                                                  **kwargs)
-        # return {
-        #     'rank': rank,
-        #     'carea': carea,
-        #     'cfrac': cfrac,
-        #     'pai': pai
-        # }
 
     def run(self, time_step, pred_dt_plus=None, true_dt_plus=None, true_dt_minus=0, t_upper=None, pred_kwargs=None,
             train_kwargs=None, **kwargs):

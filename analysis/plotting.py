@@ -65,12 +65,13 @@ def plot_geodjango_shapes(shapes, ax=None, set_axes=True, **kwargs):
 
 
 def plot_surface_on_polygon(poly, func, n=50, cmap=cm.jet, nlevels=10,
-                            vmax=None):
+                            vmax=None, egrid=None):
     """
     :param poly: geos Polygon or Multipolygon defining region
     :param func: function accepting two vectorized input arrays returning the values to be plotted
     :param n: number of pts along one side (approx)
     :param cmap: matplotlib cmap to use
+    :param egrid: egrid member of RocSpatial for plotting.  No grid is plotted if None.
     :return:
     """
     x_min, y_min, x_max, y_max = poly.extent
@@ -82,6 +83,16 @@ def plot_surface_on_polygon(poly, func, n=50, cmap=cm.jet, nlevels=10,
     fig = plt.figure()
     ax = fig.add_subplot(111)
     h = plt.contourf(xx, yy, zz, nlevels, vmax=vmax)
+
+    # plot grid if required
+    if egrid is not None:
+        egrid = np.array(egrid)
+        xu = np.unique(np.vstack((egrid[:, 0], egrid[:, 2])))
+        yu = np.unique(np.vstack((egrid[:, 1], egrid[:, 3])))
+        for x in xu:
+            ax.plot(np.ones(2) * x, [y_min, y_max], 'w-', alpha=0.3)
+        for y in yu:
+            ax.plot([x_min, x_max], np.ones(2) * y, 'w-', alpha=0.3)
 
     poly_verts = list(poly.coords[0])
     # check handedness of poly

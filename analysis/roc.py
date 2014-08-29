@@ -88,6 +88,8 @@ class RocSpatial(object):
 
     @property
     def prediction_rank(self):
+        if self.prediction_values is None:
+            raise AttributeError("No prediction supplied, run set_prediction")
         return np.argsort(self.prediction_values)[::-1]
 
     @property

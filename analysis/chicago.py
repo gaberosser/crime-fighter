@@ -111,7 +111,7 @@ def validate_point_process(
         training_size=None,
         num_validation=20,
         num_pp_iter=20,
-        grid_size=500,
+        grid=500,
         prediction_dt=1):
 
     if not training_size:
@@ -139,14 +139,14 @@ def validate_point_process(
         'max_trigger_d': 200,
         'estimator': lambda x, y: estimation.estimator_bowers(x, y, ct=1, cd=0.02),
     })
-    vb.set_grid(grid_size)
+    vb.set_grid(grid)
     vb.set_t_cutoff(training_size, b_train=False)
 
     res = vb.run(time_step=prediction_dt, t_upper=training_size + ndays,
                  train_kwargs={'niter': num_pp_iter, 'tol_p': 1e-5},
                  verbose=True)
 
-    return res
+    return res, vb
 
 
 def validate_point_process_multi(
@@ -171,24 +171,24 @@ May be useful for pickling output incrementally.
             taken from the final run of each time slice.
 """
 
+    grid = grid_size
+
     # validate the SEPP method over the whole dataset, running 20 iterations at a time and
     # applying to different temporal slices
-
-    ## TODO: can make this a bit more efficient by not repeating grid calculations etc, but not saving much
-    ## compared to the main brunt of the computation.
 
     res = collections.OrderedDict()
     t = start_date
 
     while t < Tmax:
         try:
-            res[t] = validate_point_process(
+            res[t], vb = validate_point_process(
                 start_date=t,
                 training_size=training_size,
                 num_validation=num_validation,
                 num_pp_iter=num_pp_iter,
-                grid_size=grid_size
+                grid=grid
             )
+            grid = vb.roc
         except Exception as exc:
             # TODO: something smarter
             print repr(exc)
