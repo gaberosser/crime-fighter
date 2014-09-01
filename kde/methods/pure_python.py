@@ -293,7 +293,10 @@ class WeightedVariableBandwidthNnKde(VariableBandwidthNnKde):
         z = reduce(operator.add, (w * getattr(x, funcstr)(flat_data, **kwargs) for w, x in zip(self.weights, self.mvns)))
         if normed:
             z /= sum(self.weights)
-        return np.reshape(z, shp)
+        try:
+            return np.reshape(z, shp)
+        except Exception:
+            import ipdb; ipdb.set_trace()
 
 
 class FixedBandwidthXValidationKde(FixedBandwidthKde):

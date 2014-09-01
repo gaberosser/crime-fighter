@@ -206,7 +206,7 @@ class ValidationBase(object):
         self.set_t_cutoff(self.cutoff_t + time_step, **train_kwargs)
 
     def _initial_setup(self, **train_kwargs):
-        self._update(time_step=0, **train_kwargs)
+        self._update(time_step=0., **train_kwargs)
 
 
 if __name__ == "__main__":

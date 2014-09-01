@@ -1,5 +1,6 @@
 __author__ = 'gabriel'
 import unittest
+import collections
 import csv
 import pickle
 import numpy as np
@@ -477,69 +478,90 @@ class TestValidation(unittest.TestCase):
             self.assertAlmostEqual(p, pe)
 
     def test_assess(self):
-        ## FIXME: broken for now.  No need to test the output per se, because most of the evaluation is in RocSpatial.
-        ## instead, use mocks to test that the correct call to RocSpatial is being made, with the expected data.
 
         stk = hotspot.SKernelHistoric(1, bdwidth=0.3)
         vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
         vb.train_model()
-        vb.set_grid(0.1)
+
+        # mock roc object with grid
+        mocroc = mock.create_autospec(roc.RocSpatial)
+        mocroc.centroids = np.array([[0., 0.],
+                                     [1., 1.]])
+        mocroc.egrid = range(2) # needs to have the correct length, contents not used
+        vb.roc = mocroc
 
         res = vb._iterate_run(pred_dt_plus=0.2, true_dt_plus=None, true_dt_minus=0.)
 
-        polys, pred, carea, cfrac, pai = self.vb.predict_assess(dt_plus=0.2)
+        # set data
+        self.assertTrue(vb.roc.set_data.called)
+        self.assertEqual(vb.roc.set_data.call_count, 1)
+        self.assertTrue(np.all(vb.roc.set_data.call_args[0] == vb.testing(dt_plus=0.2)[:, 1:]))
 
-        # check pred and polys
-        self.assertEqual(len(pred), len(self.vb.grid))
+        # set prediction
+        self.assertTrue(vb.roc.set_prediction.called)
+        self.assertEqual(vb.roc.set_prediction.call_count, 1)
+        self.assertEqual(len(vb.roc.set_prediction.call_args[0]), 1)
+        t = (vb.cutoff_t + 0.2) * np.ones(2)
+        pred_expctd = vb.model.predict(t, np.array([0., 1.]), np.array([0., 1.]))
+        self.assertTrue(np.all(vb.roc.set_prediction.call_args[0][0] == pred_expctd))
 
-        stk = self.vb.model
-        prede = np.array([stk.predict(self.vb.cutoff_t + 0.2, *p.centroid.coords) for p in self.vb.grid])
-        sort_idx = np.argsort(prede)[::-1]
-        polyse = [self.vb.grid[i] for i in sort_idx]
-        self.assertEqual(len(polys), len(self.vb.grid))
-        for (p, pe) in zip(polys, polyse):
-            self.assertTupleEqual(p.coords, pe.coords)
+        # set grid
+        self.assertFalse(vb.roc.set_grid.called)
+        vb.set_grid(0.1)
+        self.assertTrue(vb.roc.set_grid.called)
+        self.assertEqual(vb.roc.set_grid.call_count, 1)
+        self.assertTupleEqual(vb.roc.set_grid.call_args[0], (0.1,))
 
-        prede = prede[sort_idx]
-        for (p, pe) in zip(pred, prede):
-            self.assertAlmostEqual(p, pe)
-
-        # check carea
-        ae = np.array([p.area for p in polyse])
-        self.assertAlmostEqual(self.vb.A, sum(ae))
-        careae = np.cumsum(ae) / sum(ae)
-        for (p, pe) in zip(carea, careae):
-            self.assertAlmostEqual(p, pe)
-
-        # check cfrac
-        true = self.vb.true_values(dt_plus=0.2, dt_minus=0)
-        cfrace = np.cumsum(true[sort_idx]) / np.sum(true)
-        for (p, pe) in zip(cfrac, cfrace):
-            self.assertAlmostEqual(p, pe)
-
-        # check pai
-        paie = cfrace * sum(ae) / np.cumsum(ae)
-        for (p, pe) in zip(pai, paie):
-            self.assertAlmostEqual(p, pe)
+        # evaluate
+        self.assertTrue(vb.roc.evaluate.called)
+        self.assertEqual(vb.roc.evaluate.call_count, 1)
 
     def test_run(self):
-        ## FIXME: broke
-        with mock.patch.object(validation.ValidationBase, 'predict_assess',
-                               return_value=tuple([0 for i in range(5)])) as m:
-            stk = hotspot.SKernelHistoric(1, bdwidth=0.3)
+
+        stk = hotspot.SKernelHistoric(1, bdwidth=0.3)
+        with mock.patch.object(validation.ValidationBase, '_iterate_run',
+                               return_value=collections.defaultdict(list)) as m:
             vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
             t0 = vb.cutoff_t
-            polys, carea, cfrac, pai = vb.run(dt=0.1)
+            res = vb.run(time_step=0.1)
             expct_call_count = math.ceil((1 - vb.cutoff_t) / 0.1)
             self.assertEqual(m.call_count, expct_call_count)
             for c in m.call_args_list:
-                self.assertEqual(c, mock.call(dt_plus=0.1, dt_minus=0))
+                self.assertEqual(c, mock.call(0.1, 0.1, 0.))  # signature: pred_dt_plus, true_dt_plus, true_dt_minus
             # check that cutoff time is reset correctly
             self.assertEqual(vb.cutoff_t, t0)
 
-        self.vb.set_grid(0.1)
-        polys, carea, cfrac, pai = self.vb.run(dt=0.1)
-        self.assertEqual(len(polys[0]), len(self.vb.grid))
-        self.assertEqual(len(carea), expct_call_count)
-        self.assertEqual(len(cfrac), expct_call_count)
-        self.assertEqual(len(pai), expct_call_count)
+        with mock.patch.object(validation.ValidationBase, '_initial_setup') as m:
+            vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
+            vb.set_grid(0.1)
+            t0 = vb.cutoff_t
+            res = vb.run(time_step=0.1)
+            self.assertEqual(m.call_count, 1)
+            self.assertEqual(m.call_args, mock.call())
+            train_kwargs = {'foo': 'bar'}
+            res = vb.run(time_step=0.1, train_kwargs=train_kwargs)
+            self.assertEqual(m.call_args, mock.call(**train_kwargs))
+
+        with mock.patch.object(validation.ValidationBase, '_update') as m:
+            vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
+            vb.set_grid(0.1)
+            t0 = vb.cutoff_t
+            res = vb.run(time_step=0.1)
+            expct_call_count = math.ceil((1 - vb.cutoff_t) / 0.1)
+            self.assertEqual(m.call_count, expct_call_count)
+            self.assertEqual(m.call_args_list[0], mock.call(time_step=0.0))  # _initial_setup routes to here
+            self.assertEqual(m.call_args, mock.call(0.1))  # normal operation
+
+        stk = hotspot.SKernelHistoric(1, bdwidth=0.3)
+        vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
+        expct_call_count = math.ceil((1 - vb.cutoff_t) / 0.1)
+
+        # no grid specified raises error
+        with self.assertRaises(AttributeError):
+            res = vb.run(time_step=0.1)
+        vb.set_grid(0.1)
+        res = vb.run(time_step=0.1)
+
+        for v in res.values():
+            self.assertEqual(len(v), expct_call_count)
+

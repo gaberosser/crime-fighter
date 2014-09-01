@@ -93,16 +93,18 @@ def apply_point_process():
         end_date=datetime.datetime(2010, 6, 1, 0)
     )
 
-    max_trigger_t = 30 # units days
-    max_trigger_d = 200 # units metres
-    # min_bandwidth = np.array([0., 125., 125.])
-    min_bandwidth = None
+    max_trigger_t = 40 # units days
+    max_trigger_d = 300 # units metres
+    min_bandwidth = np.array([0.3, 5., 5.])
+    # min_bandwidth = None
 
     # manually estimate p initially
-    p = estimation.initial_guess_educated(res, ct=1, cd=0.02)
-    r = pp_models.PointProcess(p=p, max_trigger_t=max_trigger_t, max_trigger_d=max_trigger_d,
+    est = lambda x, y: estimation.estimator_bowers(x, y, ct=1, cd=0.02)
+    r = pp_models.PointProcessStochasticNn(estimator=est, max_trigger_t=max_trigger_t, max_trigger_d=max_trigger_d,
                             min_bandwidth=min_bandwidth)
-    ps = r.train(data=res, niter=30, tol_p=1e-9)
+    # r = pp_models.PointProcessStochastic(estimator=est, max_trigger_t=max_trigger_t, max_trigger_d=max_trigger_d,
+    #                         min_bandwidth=[1., 5., 5.])
+    ps = r.train(data=res, niter=12, tol_p=5e-5)
     return r, ps
 
 

@@ -14,7 +14,7 @@ class Hotspot(object):
     def ndata(self):
         return self.stkernel.ndata
 
-    def train(self, data):
+    def train(self, data, **kwargs):
         self.stkernel.train(data)
 
     def predict(self, t, x, y):
