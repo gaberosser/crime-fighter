@@ -54,6 +54,7 @@ def get_crimes_by_type(crime_type='burglary', start_date=None, end_date=None, **
     res = np.array([(t[i], res[i][1], res[i][2]) for i in range(len(res))])
     return res, t0
 
+
 def pairwise_time_lag_events(max_distance=200, num_bins=None, crime_type='burglary',
                              start_date=datetime.datetime(2010, 1, 1),
                              end_date=datetime.datetime(2010, 3, 1),

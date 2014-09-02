@@ -94,7 +94,6 @@ class Chicago(models.Model):
     arrest = models.BooleanField(help_text='Was an arrest made?', default=False)
     domestic = models.BooleanField(help_text='Is incident domestic?', default=False)
     location = models.PointField(help_text='Crime location', srid=2028)
-    # location_nad1983 = models.PointField(help_text='Crime location', srid=102671) # redundant
 
     objects = models.GeoManager()
 
@@ -125,6 +124,23 @@ class Division(models.Model):
 
     class Meta:
         unique_together = ('name', 'type', 'code')
+
+
+class ChicagoDivision(models.Model):
+    name = models.CharField(help_text='Region name', max_length=50)
+    type = models.ForeignKey('DivisionType', help_text='Type of division', related_name='chicagodivision_set')
+    mpoly = models.MultiPolygonField(srid=2028)
+
+    objects = models.GeoManager()
+
+    def __str__(self):
+        if self.type:
+            return "%s - %s" % (self.type.name, self.name)
+        else:
+            return "None - %s" % self.name
+
+    class Meta:
+        unique_together = ('name', 'type')
 
 
 class Cris(models.Model):

@@ -44,10 +44,12 @@ def plot_geodjango_shapes(shapes, ax=None, set_axes=True, **kwargs):
             x_max = max(x_max, s.extent[2])
             y_max = max(y_max, s.extent[3])
         if isinstance(s, geos.Point):
-            res.append(ax.plot(s.coords[0], s.coords[1], 'ko'))
+            res.append(ax.plot(s.coords[0], s.coords[1], 'ko', **kwargs))
         elif isinstance(s, geos.LineString):
-            ##TODO: implement
-            raise NotImplementedError()
+            lsc = s.coords
+            x = [t[0] for t in s.coords]
+            y = [t[1] for t in s.coords]
+            res.append(ax.plot(x, y, **kwargs))
         elif isinstance(s, geos.Polygon):
             res.append(ax.add_patch(polygonpatch_from_polygon(s, **kwargs)))
         elif isinstance(s, geos.MultiPolygon):
@@ -65,24 +67,38 @@ def plot_geodjango_shapes(shapes, ax=None, set_axes=True, **kwargs):
 
 
 def plot_surface_on_polygon(poly, func, n=50, cmap=cm.jet, nlevels=10,
-                            vmax=None, egrid=None):
+                            vmax=None, fmax=None, egrid=None):
     """
     :param poly: geos Polygon or Multipolygon defining region
     :param func: function accepting two vectorized input arrays returning the values to be plotted
     :param n: number of pts along one side (approx)
     :param cmap: matplotlib cmap to use
     :param egrid: egrid member of RocSpatial for plotting.  No grid is plotted if None.
+    :param vmax: maximum value to assign on colourmap - values beyond this are clipped
+    :param fmax: maximum value on CDF at which to clip z values
     :return:
     """
+    if fmax and vmax:
+        raise AttributeError("Either specify vmax OR fmax")
+
     x_min, y_min, x_max, y_max = poly.extent
     x = np.linspace(x_min, x_max, n)
     y = np.linspace(y_min, y_max, n)
     xx, yy = np.meshgrid(x, y, copy=False)
     zz = func(xx, yy)
 
+    if vmax:
+        zz[zz > vmax] = vmax
+
+    if fmax:
+        tmp = sorted(zz.flat)
+        cut = int(np.floor(len(tmp) * fmax))
+        vmax = tmp[cut]
+        zz[zz > vmax] = vmax
+
     fig = plt.figure()
     ax = fig.add_subplot(111)
-    h = plt.contourf(xx, yy, zz, nlevels, vmax=vmax)
+    h = plt.contourf(xx, yy, zz, nlevels)
 
     # plot grid if required
     if egrid is not None:

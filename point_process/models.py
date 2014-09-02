@@ -215,21 +215,19 @@ class PointProcess(object):
         """
         return self.trigger_kde.pdf(t, x, y, normed=False) / self.ndata
 
-    def _evaluate_conditional_intensity(self, t, x, y, data=None, spatial_bg_only=False):
+    def trigger_density_in_place(self, t, x, y, data=None):
         """
-        Evaluate the conditional intensity, lambda, at point (t, x, y) or at points specified in 1D arrays t, x, y.
-        :param data: Optionally provide data matrix to incorporate new history, affecting triggering,
-         if None then run with training data.
-        :param spatial_bg_only: Boolean.  When True, only the spatial components of the BG density are used.
+        Return the sum of trigger densities at the points in (t, x, y).
+        Optionally supply new data to be used, otherwise self.data is used.
         """
         shp = t.shape
-        if (shp != x.shape) or (shp != y.shape):
-            raise AttributeError("Dimensions of supplied t, x, y do not match")
 
-        data = data or self.data
+        if data is not None and len(data):
+            data = np.array(data)
+        else:
+            data = self.data
+
         ndata = data.shape[0]
-        bg = self.background_density(t, x, y, spatial_only=spatial_bg_only)
-
         link_source, link_target = self._target_source_linkages(t, x, y, data=data)
         trigger = sparse.csr_matrix((ndata, t.size))
 
@@ -241,7 +239,26 @@ class PointProcess(object):
 
         trigger = np.array(trigger.sum(axis=0))
         # may need to reshape if t, x, y had shape before
-        trigger = trigger.reshape(shp)
+        return trigger.reshape(shp)
+
+    def _evaluate_conditional_intensity(self, t, x, y, data=None, spatial_bg_only=False):
+        """
+        Evaluate the conditional intensity, lambda, at point (t, x, y) or at points specified in 1D arrays t, x, y.
+        :param data: Optionally provide data matrix to incorporate new history, affecting triggering,
+         if None then run with training data.
+        :param spatial_bg_only: Boolean.  When True, only the spatial components of the BG density are used.
+        """
+        shp = t.shape
+        if (shp != x.shape) or (shp != y.shape):
+            raise AttributeError("Dimensions of supplied t, x, y do not match")
+
+        if data is not None and len(data):
+            data = np.array(data)
+        else:
+            data = self.data
+
+        bg = self.background_density(t, x, y, spatial_only=spatial_bg_only)
+        trigger = self.trigger_density_in_place(t, x, y, data=data)
 
         return bg + trigger
 

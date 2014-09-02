@@ -298,26 +298,205 @@ def setup_cad250_grid(verbose=True, test=False):
         print "Created %u grid areas" % len(polys)
 
 
+def setup_chicago_community_area(**kwargs):
+    dt = models.DivisionType.objects.get(name='chicago_community_area')
+    shp_file = os.path.join(CHICAGO_DATA_DIR, 'community_areas', 'CommAreas.shp')
+    ds = DataSource(shp_file)
+    lyr = ds[0]
+    source_srid = 102671
+    dest_srid = 2028
+
+    for x in lyr:
+        name = x.get('COMMUNITY')
+        mpoly = x.geom
+        mpoly.srid = source_srid
+        mpoly.transform(dest_srid)
+        mpoly = mpoly.geos
+        if isinstance(mpoly, Polygon):
+            mpoly = MultiPolygon(mpoly)
+
+        try:
+            m = models.ChicagoDivision.objects.get(name=name, type=dt)
+        except models.ChicagoDivision.DoesNotExist:
+            m = models.ChicagoDivision(name=name, type=dt)
+        m.mpoly = mpoly
+        m.save()
+
+    if kwargs.pop('verbose', False):
+        print "Created Chicago community areas"
+
+
 # not required - single mpoly is easy to load straight from file
 def setup_chicago_division(**kwargs):
     dt = models.DivisionType.objects.get(name='city')
-    ds = DataSource(os.path.join(CHICAGO_DATA_DIR, 'city_boundary', 'City_Boundary.shp'))
-    mpoly = ds[0].get_geoms()[0].geos
-    mpoly.srid = 102671
-    mpoly.transform(27700)
+    shp_file = os.path.join(CHICAGO_DATA_DIR, 'community_areas', 'CommAreas.shp')
+    ds = DataSource(shp_file)
+    lyr = ds[0]
+    source_srid = 102671
+    dest_srid = 2028
+
+    mpolys = []
+
+    for x in lyr:
+        mpoly = x.geom
+        mpoly.srid = source_srid
+        mpoly.transform(dest_srid)
+        mpoly = mpoly.geos
+        if isinstance(mpoly, Polygon):
+            mpoly = MultiPolygon(mpoly)
+        mpolys.append(mpoly)
+
+    mpoly = reduce(lambda x, y: x.union(y), mpolys)
+
     try:
-        chicago = models.Division.objects.get(name='Chicago')
-    except Exception as exc:
-        chicago = models.Division(name='Chicago', code='Chicago', type=dt)
-    chicago.mpoly = mpoly
+        m = models.ChicagoDivision.objects.get(name='Chicago', type=dt)
+    except models.ChicagoDivision.DoesNotExist:
+        m = models.ChicagoDivision(name='Chicago', type=dt)
+    m.mpoly = mpoly
+    m.save()
+
+    # filled in version
+    mls = mpoly.boundary
+    x = mls[0].coords
+    x += (x[0],)
+    mpoly = MultiPolygon(Polygon(x))
+
     try:
-        chicago.save()
-    except Exception as exc:
-        print repr(exc)
-        raise exc
+        m = models.ChicagoDivision.objects.get(name='ChicagoFilled', type=dt)
+    except models.ChicagoDivision.DoesNotExist:
+        m = models.ChicagoDivision(name='ChicagoFilled', type=dt)
+    m.mpoly = mpoly
+    m.save()
 
     if kwargs.pop('verbose', False):
         print "Created Chicago city region"
+
+
+def setup_chicago_sides(**kwargs):
+
+    dt = models.DivisionType.objects.get(name='chicago_side')
+    mappings = {
+        'Central': [
+            'Near North Side',
+            'Loop',
+            'Near South Side',
+        ],
+        'North': [
+            'North Center',
+            'Lake View',
+            'Lincoln Park',
+            'Avondale',
+            'Logan Square'
+        ],
+        'Far North': [
+            'Rogers Park',
+            'West Ridge',
+            'Uptown',
+            'Lincoln Square',
+            'Edison Park',
+            'Norwood Park',
+            'Jefferson Park',
+            'Forest Glen',
+            'North Park',
+            'Albany Park',
+            "OHare",
+            'Edgewater',
+        ],
+        'Northwest': [
+            'Portage Park',
+            'Irving Park',
+            'Dunning',
+            'Montclare',
+            'Belmont Cragin',
+            'Hermosa',
+        ],
+        'West': [
+            'Humboldt Park',
+            'West Town',
+            'Austin',
+            'West Garfield Park',
+            'East Garfield Park',
+            'Near West Side',
+            'North Lawndale',
+            'South Lawndale',
+            'Lower West Side'
+        ],
+        'South': [
+            'Armour Square',
+            'Douglas',
+            'Oakland',
+            'Fuller Park',
+            'Grand Boulevard',
+            'Kenwood',
+            'Washington Park',
+            'Hyde Park',
+            'Woodlawn',
+            'South Shore',
+            'Bridgeport',
+            'Greater Grand Crossing',
+        ],
+        'Southwest': [
+            'Garfield Ridge',
+            'Archer Heights',
+            'Brighton Park',
+            'McKinley Park',
+            'New City',
+            'West Elsdon',
+            'Gage Park',
+            'Clearing',
+            'West Lawn',
+            'Chicago Lawn',
+            'West Englewood',
+            'Englewood',
+        ],
+        'Far Southeast': [
+            'Chatham',
+            'Avalon Park',
+            'South Chicago',
+            'Burnside',
+            'Calumet Heights',
+            'Roseland',
+            'Pullman',
+            'South Deering',
+            'East Side',
+            'West Pullman',
+            'Riverdale',
+            'Hegewisch',
+        ],
+        'Far Southwest': [
+            'Ashburn',
+            'Auburn Gresham',
+            'Beverly',
+            'Washington Heights',
+            'Mount Greenwood',
+            'Morgan Park',
+        ]
+    }
+
+    # not_found = collections.defaultdict(list)
+    for k, v in mappings.items():
+        cas = []
+        # try to find all CAs
+        for x in v:
+            try:
+                cas.append(models.ChicagoDivision.objects.get(type='chicago_community_area', name__iexact=x).mpoly)
+            except Exception:
+                # not_found[k].append(x)
+                raise
+        mpoly = reduce(lambda x, y: x.union(y), cas)
+        try:
+            m = models.ChicagoDivision.objects.get(type=dt, name=k)
+        except models.ChicagoDivision.DoesNotExist:
+            m = models.ChicagoDivision(type=dt, name=k)
+
+        if isinstance(mpoly, Polygon):
+            mpoly = MultiPolygon(mpoly)
+
+        m.mpoly = mpoly
+        m.save()
+
+    if kwargs.pop('verbose', False):
+        print "Created Chicago sides"
 
 
 def setup_divisiontypes(**kwargs):
@@ -350,6 +529,16 @@ def setup_divisiontypes(**kwargs):
 
     dt, created = models.DivisionType.objects.get_or_create(name='city')
     dt.description = 'City region'
+    dt.save()
+    res.append(dt.name)
+
+    dt, created = models.DivisionType.objects.get_or_create(name='chicago_community_area')
+    dt.description = 'Community areas in the City of Chicago'
+    dt.save()
+    res.append(dt.name)
+
+    dt, created = models.DivisionType.objects.get_or_create(name='chicago_side')
+    dt.description = 'Sides in the City of Chicago'
     dt.save()
     res.append(dt.name)
 
