@@ -29,13 +29,19 @@ def polygonpatch_from_polygon(poly, **kwargs):
 
 
 def plot_geodjango_shapes(shapes, ax=None, set_axes=True, **kwargs):
-    # shapes is an iterable containing Geodjango GEOS objects
-    # returns plot objects
+    # shapes is one or an iterable of Geodjango GEOS objects
+    # returns plot object(s)
 
     ax = ax or plt.gca()
     res = []
     x_min = y_min = 1e8
     x_max = y_max = -1e8
+
+    if issubclass(shapes.__class__, geos.GEOSGeometry):
+        # single GEOS geometry supplied
+        shapes = [shapes]
+
+    pts = []
 
     for s in shapes:
         if set_axes:
@@ -44,7 +50,8 @@ def plot_geodjango_shapes(shapes, ax=None, set_axes=True, **kwargs):
             x_max = max(x_max, s.extent[2])
             y_max = max(y_max, s.extent[3])
         if isinstance(s, geos.Point):
-            res.append(ax.plot(s.coords[0], s.coords[1], 'ko', **kwargs))
+            pts.append(s.coords)
+            # res.append(ax.plot(s.coords[0], s.coords[1], 'ko', **kwargs))
         elif isinstance(s, geos.LineString):
             lsc = s.coords
             x = [t[0] for t in s.coords]
@@ -58,11 +65,17 @@ def plot_geodjango_shapes(shapes, ax=None, set_axes=True, **kwargs):
                 this_res.append(ax.add_patch(polygonpatch_from_polygon(poly, **kwargs)))
             res.append(this_res)
 
+    # plot all points together
+    if len(pts):
+        pts = np.array(pts)
+        res.append(ax.plot(pts[:, 0], pts[:, 1], 'ko', **kwargs))
+
     if set_axes:
         x_range = x_max - x_min
         y_range = y_max - y_min
         ax.set_xlim([x_min - x_range * 0.02, x_max + x_range * 0.02])
         ax.set_ylim([y_min - y_range * 0.02, y_max + y_range * 0.02])
+        ax.set_aspect('equal')
     return res
 
 
@@ -98,7 +111,7 @@ def plot_surface_on_polygon(poly, func, n=50, cmap=cm.jet, nlevels=10,
 
     fig = plt.figure()
     ax = fig.add_subplot(111)
-    h = plt.contourf(xx, yy, zz, nlevels)
+    h = plt.contourf(xx, yy, zz, nlevels, cmap=cmap)
 
     # plot grid if required
     if egrid is not None:
@@ -116,7 +129,7 @@ def plot_surface_on_polygon(poly, func, n=50, cmap=cm.jet, nlevels=10,
         poly_verts = poly_verts[::-1]
 
     mask_outside_polygon(poly_verts, ax=ax)
-    plot_geodjango_shapes((poly,), ax=ax, facecolor='none')
+    plot_geodjango_shapes(poly, ax=ax, facecolor='none')
 
     return h
 

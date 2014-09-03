@@ -35,14 +35,26 @@ def compute_chicago_region(fill_in=True):
     return mpoly.geos
 
 
-def get_crimes_by_type(crime_type='burglary', start_date=None, end_date=None, **where_strs):
+def get_crimes_by_type(crime_type='burglary', start_date=None, end_date=None, domain=None, **where_strs):
+    """
+    Get all matching crimes from the Chicago dataset
+    :param crime_type:
+    :param start_date:
+    :param end_date:
+    :param domain: geos.GEOSGeometry object
+    :param where_strs:
+    :return:
+    """
     cursor = connection.cursor()
     sql = """ SELECT datetime, ST_X(location), ST_Y(location) FROM database_chicago
-              WHERE LOWER(primary_type) LIKE '%{0}%' """.format(crime_type)
+              WHERE LOWER(primary_type) LIKE '%{0}%' """.format(crime_type.lower())
     if start_date:
         sql += """AND datetime >= '{0}' """.format(start_date.strftime('%Y-%m-%d'))
     if end_date:
         sql += """AND datetime <= '{0}' """.format(end_date.strftime('%Y-%m-%d'))
+    if domain:
+        sql += """AND ST_Intersects(location, ST_GeomFromText('{0}', {1}))"""\
+            .format(domain.wkt, SRID)
     for x in where_strs.values():
         sql += """AND {0}""".format(x)
 
@@ -108,6 +120,31 @@ def apply_point_process():
     ps = r.train(data=res, niter=12, tol_p=5e-5)
     return r, ps
 
+
+def apply_point_process_southwest():
+
+    southwest = models.ChicagoDivision.objects.get(name='Southwest').mpoly.buffer(1500)
+
+    res, t0 = get_crimes_by_type(
+        crime_type='burglary',
+        start_date=datetime.datetime(2009, 6, 1, 0),
+        end_date=datetime.datetime(2010, 6, 1, 0),
+        domain=southwest
+    )
+
+    max_trigger_t = 40 # units days
+    max_trigger_d = 300 # units metres
+    min_bandwidth = np.array([0.3, 5., 5.])
+    # min_bandwidth = None
+
+    # manually estimate p initially
+    est = lambda x, y: estimation.estimator_bowers(x, y, ct=1, cd=0.02)
+    r = pp_models.PointProcessStochasticNn(estimator=est, max_trigger_t=max_trigger_t, max_trigger_d=max_trigger_d,
+                            min_bandwidth=min_bandwidth)
+    # r = pp_models.PointProcessStochastic(estimator=est, max_trigger_t=max_trigger_t, max_trigger_d=max_trigger_d,
+    #                         min_bandwidth=[1., 5., 5.])
+    ps = r.train(data=res, niter=12, tol_p=5e-5)
+    return r, ps
 
 def validate_point_process(
         start_date=datetime.datetime(2001, 3, 1, 0),
