@@ -64,11 +64,13 @@ def plot_txy_kde(k, max_x, max_y, npt_1d=50, tpt=None, **kwargs):
     return fig
 
 
-def _plot_marginals(k, dim, norm=1.0, data_min=0., data_max=None, npt_1d=200, **kwargs):
+def _plot_marginals(k, dim, norm=1.0, data_min=None, data_max=None, npt_1d=200, **kwargs):
     style = kwargs.pop('style', 'k-')
-    # if data_max is missing, use the 95th percentile
+    # if data_max is missing, use the 99th percentile
     if data_max is None:
-        data_max = k.marginal_icdf(0.95, dim=dim)
+        data_max = k.marginal_icdf(0.99, dim=dim)
+    if data_min is None:
+        data_min = k.marginal_icdf(0.01, dim=dim)
     t = np.linspace(data_min, data_max, npt_1d)
     z = k.marginal_pdf(t, dim=dim, normed=False) / float(norm)
     if 'ax' in kwargs:
@@ -82,22 +84,24 @@ def _plot_marginals(k, dim, norm=1.0, data_min=0., data_max=None, npt_1d=200, **
     return fig, ax
 
 
-def plot_txy_t_marginals(k, norm=1.0, t_max=50, npt_1d=200, **kwargs):
-    fig, ax = _plot_marginals(k, 0, norm=norm, data_max=t_max, npt_1d=npt_1d, **kwargs)
+def plot_txy_t_marginals(k, norm=1.0, t_max=None, npt_1d=200, **kwargs):
+    fig, ax = _plot_marginals(k, 0, norm=norm, data_min=0., data_max=t_max, npt_1d=npt_1d, **kwargs)
     ax.set_xlabel('Time (days)')
     ax.set_ylabel('Density')
     return fig
 
 
-def plot_txy_x_marginals(k, norm=1.0, x_max=50, npt_1d=200, **kwargs):
-    fig, ax = _plot_marginals(k, 1, norm=norm, data_min=-x_max, data_max=x_max, npt_1d=npt_1d)
+def plot_txy_x_marginals(k, norm=1.0, x_max=None, npt_1d=200, **kwargs):
+    x_min = -x_max if x_max else None
+    fig, ax = _plot_marginals(k, 1, norm=norm, data_min=x_min, data_max=x_max, npt_1d=npt_1d, **kwargs)
     ax.set_xlabel('X (metres)')
     ax.set_ylabel('Density')
     return fig
 
 
-def plot_txy_y_marginals(k, norm=1.0, y_max=50, npt_1d=200, **kwargs):
-    fig, ax = _plot_marginals(k, 2, norm=norm, data_min=-y_max, data_max=y_max, npt_1d=npt_1d)
+def plot_txy_y_marginals(k, norm=1.0, y_max=None, npt_1d=200, **kwargs):
+    y_min = -y_max if y_max else None
+    fig, ax = _plot_marginals(k, 2, norm=norm, data_min=y_min, data_max=y_max, npt_1d=npt_1d, **kwargs)
     ax.set_xlabel('Y (metres)')
     ax.set_ylabel('Density')
     return fig
@@ -267,3 +271,18 @@ def multiplots(ppobj, simobj=None, maxes=None):
         ax.set_ylim([0, 1.05 * zmax_infer])
     ax.set_xlim([-y_max, y_max])
     ax.legend(ax.get_lines(), ('Inferred', 'True'), 'upper right')
+
+
+def plot_trigger_marginals(trigger_kde):
+    f, (ax1, ax2, ax3) = plt.subplots(1, 3, sharex=False, sharey=False)
+    ax1.yaxis.set_ticklabels([])
+    ax1.yaxis.set_ticks([])
+    ax2.yaxis.set_ticklabels([])
+    ax2.yaxis.set_ticks([])
+    ax3.yaxis.set_ticklabels([])
+    ax3.yaxis.set_ticks([])
+
+    plot_txy_t_marginals(trigger_kde, ax=ax1)
+    plot_txy_x_marginals(trigger_kde, ax=ax2)
+    plot_txy_y_marginals(trigger_kde, ax=ax3)
+

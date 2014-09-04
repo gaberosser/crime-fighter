@@ -38,12 +38,31 @@ def marginal_icdf_optimise(k, y, dim=0, tol=1e-8):
 
 def weighted_stdev(data, weights):
     ndata = data.shape[0]
-    ndim = data.shape[1]
+    if weights.ndim != 1:
+        raise AttributeError("Weights must be a 1D array")
+    if weights.size != ndata:
+        raise AttributeError("Length of weights vector not equal to number of data")
+
+    if data.ndim == 1:
+        # 1D data
+        ndim = 1
+        _data = data.reshape(ndata, 1)
+    else:
+        ndim = data.shape[1]
+        _data = data
+
     tiled_weights = np.tile(weights.reshape(ndata, 1), (1, ndim))
     sum_weights = np.sum(weights)
-    M = weights.nonzero()[0].size
-    wm = np.sum(tiled_weights * data, axis=0) / sum_weights
-    return np.sqrt(np.sum((tiled_weights * (data - wm)) ** 2, axis=0) / sum_weights * M / (M - 1.))
+    M = float(sum(weights != 0.))  # number nonzero weights
+    wm = np.sum(tiled_weights * _data, axis=0) / sum_weights  # weighted arithmetic mean
+    a = np.sum(tiled_weights * ((_data - wm) ** 2), axis=0)  # numerator
+    b = sum_weights * (M - 1.) / M  # denominator
+
+    # check return type
+    if ndim == 1:
+        return np.sqrt(a / b)[0]
+    else:
+        return np.sqrt(a / b)
 
 
 class FixedBandwidthKde(object):
@@ -58,7 +77,6 @@ class FixedBandwidthKde(object):
         self.pool = None
 
     def set_bandwidths(self, *args, **kwargs):
-
         try:
             bandwidths = kwargs.pop('bandwidths')
         except KeyError:
@@ -96,7 +114,7 @@ class FixedBandwidthKde(object):
 
     @property
     def raw_std_devs(self):
-        return np.std(self.data, axis=0)
+        return np.std(self.data, axis=0, ddof=1)
 
     def _additive_operation(self, funcstr, *args, **kwargs):
         """ Generic interface to call function named in funcstr on the data, handling normalisation and reshaping """
@@ -156,6 +174,46 @@ class FixedBandwidthKde(object):
         for x in it:
             x[-1][...] = self.pdf(*x[:-1]) # NB must unpack, as x[:-1] is a tuple
         return it.operands[-1]
+
+    @property
+    def marginal_mean(self):
+        return np.mean(self.data, axis=0)
+
+    @property
+    def marginal_second_moment(self):
+        return np.sum(self.bandwidths ** 2 + self.data ** 2, axis=0) / float(self.ndata)
+
+    @property
+    def marginal_variance(self):
+        return self.marginal_second_moment - self.marginal_mean ** 2
+
+    def _t_dependent_variance(self, t):
+        ## TODO: test me!
+        # have already checked that ndim > 1 by this point
+        z0 = np.tile(
+            np.array([m.marginal_pdf(t, dim=0) for m in self.mvns]).reshape((self.ndata, 1)),
+            (1, self.ndim - 1)
+        )
+        tdm = np.mean(self.data[:, 1:] * z0, axis=0)
+        tdsm = np.mean((self.bandwidths[:, 1:] ** 2 + self.data[:, 1:] ** 2) * z0, axis=0)
+        tdv = tdsm - tdm ** 2
+
+        return tdm, tdsm, tdv
+
+    def t_dependent_mean(self, t):
+        if self.ndim == 1:
+            raise NotImplementedError("Unable to compute time-dependent mean with ndim=1")
+        return self._t_dependent_variance(t)[0]
+
+    def t_dependent_second_moment(self, t):
+        if self.ndim == 1:
+            raise NotImplementedError("Unable to compute time-dependent second moment with ndim=1")
+        return self._t_dependent_variance(t)[1]
+
+    def t_dependent_variance(self, t):
+        if self.ndim == 1:
+            raise NotImplementedError("Unable to compute time-dependent variance with ndim=1")
+        return self._t_dependent_variance(t)[2]
 
 
 class VariableBandwidthKde(FixedBandwidthKde):
