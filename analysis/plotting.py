@@ -5,6 +5,8 @@ from django.contrib.gis import geos
 import cartopy.crs as ccrs
 from matplotlib import pyplot as plt
 from matplotlib import cm
+import matplotlib.patches as mpatches
+import matplotlib.path as mpath
 from descartes import PolygonPatch
 import json
 from analysis.spatial import is_clockwise
@@ -79,7 +81,7 @@ def plot_geodjango_shapes(shapes, ax=None, set_axes=True, **kwargs):
     return res
 
 
-def plot_surface_on_polygon(poly, func, n=50, cmap=cm.jet, nlevels=10,
+def plot_surface_on_polygon(poly, func, ax=None, n=50, cmap=cm.jet, nlevels=50,
                             vmax=None, fmax=None, egrid=None):
     """
     :param poly: geos Polygon or Multipolygon defining region
@@ -109,9 +111,11 @@ def plot_surface_on_polygon(poly, func, n=50, cmap=cm.jet, nlevels=10,
         vmax = tmp[cut]
         zz[zz > vmax] = vmax
 
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-    h = plt.contourf(xx, yy, zz, nlevels, cmap=cmap)
+    if not ax:
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+
+    cont = ax.contourf(xx, yy, zz, nlevels, cmap=cmap)
 
     # plot grid if required
     if egrid is not None:
@@ -128,10 +132,11 @@ def plot_surface_on_polygon(poly, func, n=50, cmap=cm.jet, nlevels=10,
     if is_clockwise(poly):
         poly_verts = poly_verts[::-1]
 
-    mask_outside_polygon(poly_verts, ax=ax)
+    # mask_outside_polygon(poly_verts, ax=ax)
+    mask_contour(cont, poly_verts, ax=ax, show_clip_path=True)
     plot_geodjango_shapes(poly, ax=ax, facecolor='none')
 
-    return h
+    return cont
 
 
 def mask_outside_polygon(poly_verts, ax=None):
@@ -144,33 +149,70 @@ def mask_outside_polygon(poly_verts, ax=None):
 
     Returns the matplotlib.patches.PathPatch instance plotted on the figure.
     """
-    import matplotlib.patches as mpatches
-    import matplotlib.path as mpath
 
     if ax is None:
         ax = plt.gca()
+
+    # fraction by which to extend outer bound
+    # required to avoid slithers of underlying surface sticking out
+    buf_frac = 0.01
 
     # Get current plot limits
     xlim = ax.get_xlim()
     ylim = ax.get_ylim()
 
+    xbuf = np.diff(xlim)[0] * buf_frac
+    ybuf = np.diff(ylim)[0] * buf_frac
+
+
     # Verticies of the plot boundaries in clockwise order
-    bound_verts = [(xlim[0], ylim[0]), (xlim[0], ylim[1]),
-                   (xlim[1], ylim[1]), (xlim[1], ylim[0]),
-                   (xlim[0], ylim[0])]
+    bound_verts = [
+        (xlim[0] - xbuf, ylim[0] - ybuf),
+        (xlim[0] - xbuf, ylim[1] + ybuf),
+        (xlim[1] + xbuf, ylim[1] + ybuf),
+        (xlim[1] + xbuf, ylim[0] - ybuf),
+        (xlim[0] - xbuf, ylim[0] - ybuf)
+    ]
 
     # A series of codes (1 and 2) to tell matplotlib whether to draw a line or
     # move the "pen" (So that there's no connecting line)
     bound_codes = [mpath.Path.MOVETO] + (len(bound_verts) - 1) * [mpath.Path.LINETO]
-    poly_codes = [mpath.Path.MOVETO] + (len(poly_verts) - 1) * [mpath.Path.LINETO]
+    # poly_codes = [mpath.Path.MOVETO] + (len(poly_verts) - 1) * [mpath.Path.LINETO]
 
-    # Plot the masking patch
+    # can also implement this with a closing statement at the end:
+    poly_codes = [mpath.Path.MOVETO] + (len(poly_verts) - 2) * [mpath.Path.LINETO] + [mpath.Path.CLOSEPOLY]
+
+    # Create the masking patch
     path = mpath.Path(bound_verts + poly_verts, bound_codes + poly_codes)
     patch = mpatches.PathPatch(path, facecolor='white', edgecolor='none')
+
+    # apply the masking patch
     patch = ax.add_patch(patch)
 
     # Reset the plot limits to their original extents
     ax.set_xlim(xlim)
     ax.set_ylim(ylim)
 
+    return patch
+
+
+def mask_contour(cont, poly_verts, ax=None, show_clip_path=True):
+
+    if ax is None:
+        ax = plt.gca()
+
+    poly_codes = [mpath.Path.MOVETO] + (len(poly_verts) - 2) * [mpath.Path.LINETO] + [mpath.Path.CLOSEPOLY]
+    path = mpath.Path(poly_verts, poly_codes)
+    if show_clip_path:
+        ec = 'k'
+    else:
+        ec = 'none'
+    patch = mpatches.PathPatch(path, facecolor='none', edgecolor=ec)
+
+    ax.add_patch(patch)
+
+    for col in cont.collections:
+        col.set_clip_path(patch)
+
+    plt.draw()
     return patch

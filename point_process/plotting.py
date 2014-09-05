@@ -64,14 +64,24 @@ def plot_txy_kde(k, max_x, max_y, npt_1d=50, tpt=None, **kwargs):
     return fig
 
 
-def _plot_marginals(k, dim, norm=1.0, data_min=None, data_max=None, npt_1d=200, **kwargs):
+def _plot_marginals(k, dim, norm=1.0, data_min=None, data_max=None, **kwargs):
     style = kwargs.pop('style', 'k-')
+    npt = kwargs.pop('npt', 200)  # number of points
+    symm = kwargs.pop('symm', True)  # toggles whether x axes are symmetric
+    perc = kwargs.pop('percentile', 0.01)  # lower percentile to use for cutoff
+
     # if data_max is missing, use the 99th percentile
     if data_max is None:
-        data_max = k.marginal_icdf(0.99, dim=dim)
+        data_max = k.marginal_icdf(1. - perc, dim=dim)
     if data_min is None:
-        data_min = k.marginal_icdf(0.01, dim=dim)
-    t = np.linspace(data_min, data_max, npt_1d)
+        data_min = k.marginal_icdf(perc, dim=dim)
+
+    if symm:
+        tmp = max(np.abs(data_min), np.abs(data_max))
+        data_min = -tmp  # assumed to be negative
+        data_max = tmp  # assumed to be positive
+
+    t = np.linspace(data_min, data_max, npt)
     z = k.marginal_pdf(t, dim=dim, normed=False) / float(norm)
     if 'ax' in kwargs:
         ax = kwargs.pop('ax')
@@ -84,24 +94,24 @@ def _plot_marginals(k, dim, norm=1.0, data_min=None, data_max=None, npt_1d=200, 
     return fig, ax
 
 
-def plot_txy_t_marginals(k, norm=1.0, t_max=None, npt_1d=200, **kwargs):
-    fig, ax = _plot_marginals(k, 0, norm=norm, data_min=0., data_max=t_max, npt_1d=npt_1d, **kwargs)
+def plot_txy_t_marginals(k, norm=1.0, t_max=None, **kwargs):
+    fig, ax = _plot_marginals(k, 0, norm=norm, data_min=0., data_max=t_max, **kwargs)
     ax.set_xlabel('Time (days)')
     ax.set_ylabel('Density')
     return fig
 
 
-def plot_txy_x_marginals(k, norm=1.0, x_max=None, npt_1d=200, **kwargs):
+def plot_txy_x_marginals(k, norm=1.0, x_max=None, **kwargs):
     x_min = -x_max if x_max else None
-    fig, ax = _plot_marginals(k, 1, norm=norm, data_min=x_min, data_max=x_max, npt_1d=npt_1d, **kwargs)
+    fig, ax = _plot_marginals(k, 1, norm=norm, data_min=x_min, data_max=x_max, **kwargs)
     ax.set_xlabel('X (metres)')
     ax.set_ylabel('Density')
     return fig
 
 
-def plot_txy_y_marginals(k, norm=1.0, y_max=None, npt_1d=200, **kwargs):
+def plot_txy_y_marginals(k, norm=1.0, y_max=None, **kwargs):
     y_min = -y_max if y_max else None
-    fig, ax = _plot_marginals(k, 2, norm=norm, data_min=y_min, data_max=y_max, npt_1d=npt_1d, **kwargs)
+    fig, ax = _plot_marginals(k, 2, norm=norm, data_min=y_min, data_max=y_max, **kwargs)
     ax.set_xlabel('Y (metres)')
     ax.set_ylabel('Density')
     return fig
@@ -208,6 +218,11 @@ def multiplots(ppobj, simobj=None, maxes=None):
     a simulation object with 'ground truth' information.
     """
     ci = 0.99
+    fig_kwargs = {
+        'figsize': (8, 6),
+        'dpi': 100,
+        'facecolor': 'w',
+        }
 
     if maxes:
         t_max,x_max, y_max = maxes
@@ -274,15 +289,26 @@ def multiplots(ppobj, simobj=None, maxes=None):
 
 
 def plot_trigger_marginals(trigger_kde):
-    f, (ax1, ax2, ax3) = plt.subplots(1, 3, sharex=False, sharey=False)
+    f, (ax1, ax2, ax3) = plt.subplots(1, 3, sharex=False, sharey=False, figsize=(12, 6))
+    perc = 0.005
+
+    plot_txy_t_marginals(trigger_kde, ax=ax1, symm=False, percentile=perc)
+    plot_txy_x_marginals(trigger_kde, ax=ax2, symm=True, percentile=perc)
+    plot_txy_y_marginals(trigger_kde, ax=ax3, symm=True, percentile=perc)
+
     ax1.yaxis.set_ticklabels([])
     ax1.yaxis.set_ticks([])
-    ax2.yaxis.set_ticklabels([])
-    ax2.yaxis.set_ticks([])
-    ax3.yaxis.set_ticklabels([])
-    ax3.yaxis.set_ticks([])
+    # only ax1 requires a visible y-axis
+    ax2.yaxis.set_visible(False)
+    ax3.yaxis.set_visible(False)
 
-    plot_txy_t_marginals(trigger_kde, ax=ax1)
-    plot_txy_x_marginals(trigger_kde, ax=ax2)
-    plot_txy_y_marginals(trigger_kde, ax=ax3)
+    plt.tight_layout()
+
+
+def prediction_heatmap(sepp, t, poly=None, kind=None):
+    if poly:
+        _poly = poly.simplify()
+
+    if kind is None or kind == "":
+        pass
 
