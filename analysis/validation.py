@@ -209,6 +209,13 @@ class ValidationBase(object):
         self._update(time_step=0., **train_kwargs)
 
 
+class WeightedValidation(ValidationBase):
+    ## TODO: implement WeightedRocSpatial - should be a fairly trivial extension
+    # -> include ALL test data
+    # -> BUT modify the time column to ensure that self.cutoff_t corresponds to 0
+    # -> only real change is in def testing()?
+    pass
+
 if __name__ == "__main__":
     from database import logic, models
     from scipy.stats import multivariate_normal

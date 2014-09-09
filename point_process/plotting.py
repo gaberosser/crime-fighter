@@ -4,6 +4,8 @@ from matplotlib import pyplot as plt
 import numpy as np
 import datetime
 import os
+from analysis import roc
+from analysis.plotting import plot_surface_on_polygon
 
 
 def plot_t_kde(k, max_t=50):
@@ -305,10 +307,31 @@ def plot_trigger_marginals(trigger_kde):
     plt.tight_layout()
 
 
-def prediction_heatmap(sepp, t, poly=None, kind=None):
+def prediction_heatmap(sepp, t, poly=None, kind=None, **kwargs):
+
     if poly:
         _poly = poly.simplify()
+    else:
+        # use basic bounding rectangle
+        r = roc.RocSpatial(sepp.data[:, 1:])
+        _poly = r.generate_bounding_poly()
 
-    if kind is None or kind == "":
-        pass
+    if kind is None or kind == "" or kind == "dynamic":
+        # full prediction (BG and trigger), BG is time-dependent
+        pred_fun = lambda x, y: sepp.predict(np.ones_like(x) * t, x, y)
+    elif kind == "static":
+        # full prediction (BG and trigger), BG is spatial-only
+        pred_fun = lambda x, y: sepp.predict_fixed_background(np.ones_like(x) * t, x, y)
+    elif kind == "trigger":
+        # trigger only prediction
+        pred_fun = lambda x, y: sepp.trigger_density_in_place(np.ones_like(x) * t, x, y)
+    elif kind == "bg":
+        # BG only prediction, BG is time-dependent
+        pred_fun = lambda x, y: sepp.background_density(np.ones_like(x) * t, x, y, spatial_only=False)
+    elif kind == "bgstatic":
+        # BG only prediction, BG is spatial-only
+        pred_fun = lambda x, y: sepp.background_density(np.ones_like(x) * t, x, y, spatial_only=True)
+    else:
+        raise AttributeError("Supplied kind %s is not recognised", kind)
 
+    return plot_surface_on_polygon(_poly, pred_fun, **kwargs)

@@ -92,20 +92,42 @@ def compute_lineage_matrix(linkage_col):
 
 class PpValidation(validation.ValidationBase):
 
-    pp_class = models.PointProcess # model class
+    pp_class = models.PointProcessStochasticNn # model class
 
     def __init__(self, data, spatial_domain=None, grid_length=None, tmax_initial=None, model_args=None, model_kwargs=None):
         """ Thin wrapper for parent's init method, but pp model class is set """
         super(PpValidation, self).__init__(data, self.pp_class, spatial_domain=spatial_domain, grid_length=grid_length,
                                            tmax_initial=tmax_initial, model_args=model_args, model_kwargs=model_kwargs)
 
+
     def predict(self, t, **kwargs):
-        print "SEPP predict"
         # estimate total propensity in each grid poly
         # use centroid method for speed
-        # use spatial background only to avoid background 'fade out'
+        # background varies in space AND time
+        ts = np.ones(self.roc.ngrid) * t
+        return self.model.predict(ts, self.centroids[:, 0], self.centroids[:, 1])
+
+    def predict_static(self, t, **kwargs):
+        # use spatial background only
         ts = np.ones(self.roc.ngrid) * t
         return self.model.predict_fixed_background(ts, self.centroids[:, 0], self.centroids[:, 1])
+
+    def predict_bg(self, t, **kwargs):
+        # estimate total propensity in each grid poly based on ONLY the background density
+        # background varies in space AND time
+        ts = np.ones(self.roc.ngrid) * t
+        return self.model.background_density(ts, self.centroids[:, 0], self.centroids[:, 1], spatial_only=False)
+
+    def predict_bg_static(self, t, **kwargs):
+        # estimate total propensity in each grid poly based on ONLY the background density
+        # use spatial background only
+        ts = np.ones(self.roc.ngrid) * t
+        return self.model.background_density(ts, self.centroids[:, 0], self.centroids[:, 1], spatial_only=True)
+
+    def predict_trigger(self, t, **kwargs):
+        # estimate total propensity in each grid poly based on ONLY the in-place trigger density
+        ts = np.ones(self.roc.ngrid) * t
+        return self.model.trigger_density_in_place(ts, self.centroids[:, 0], self.centroids[:, 1])
 
     def _update(self, time_step, **train_kwargs):
         print "SEPP _update"
@@ -125,14 +147,32 @@ class PpValidation(validation.ValidationBase):
 
     def _iterate_run(self, pred_dt_plus, true_dt_plus, true_dt_minus, **kwargs):
         print "SEPP _iterate_run"
-        # conventional assessment
-        res = super(PpValidation, self)._iterate_run(pred_dt_plus, true_dt_plus, true_dt_minus, **kwargs)
-        # also store p matrix and KDEs
-        # res['p'] = self.model.p
-        # res['trigger_kde'] = copy.deepcopy(self.model.trigger_kde)
-        # res['bg_t_kde'] = copy.deepcopy(self.model.bg_t_kde)
-        # res['bg_xy_kde'] = copy.deepcopy(self.model.bg_xy_kde)
-        # store a copy full SEPP model
+
+        true_dt_plus = true_dt_plus or pred_dt_plus
+        testing_data = self.testing(dt_plus=true_dt_plus, dt_minus=true_dt_minus)
+        self.roc.set_data(testing_data[:, 1:])
+
+        # cycle through the various prediction options and append to results
+        # NB: bg and bg_static will give the same result as the predictions are simply scaled
+        pred_opt = {
+            'full': self.predict,
+            'full_static': self.predict_static,
+            'bg': self.predict_bg,
+            'bg_static': self.predict_bg_static,
+            'trigger': self.predict_trigger,
+        }
+        res = {}
+
+        for app, func in pred_opt.items():
+            prediction = func(self.cutoff_t + pred_dt_plus, **kwargs)
+            self.roc.set_prediction(prediction)
+            this_res = self.roc.evaluate()
+            for k, v in this_res.items():
+                # append to name to maintain uniqueness
+                name = k + '_' + app
+                res[name] = v
+
+        # store a copy of the full SEPP model
         # this contains p matrix and KDEs, plus data
         res['model'] = copy.deepcopy(self.model)
 

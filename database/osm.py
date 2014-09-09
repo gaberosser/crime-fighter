@@ -136,15 +136,25 @@ class Osm(object):
         else:
             raise AttributeError("Category %s not recognised", category)
 
-        cats = tuple(cats)
-        if len(cats) == 1:
-            cats = "('" + cats[0] + "')"
+        # put categories in correct format for query
+        if cats == '__all':
+            b_cats = False
         else:
-            cats = str(cats)
+            b_cats = True
+            cats = tuple(cats)
+            if len(cats) == 1:
+                cats = "('" + cats[0] + "')"
+            else:
+                cats = str(cats)
 
         qry = '''SELECT "{1}", ST_AsText(ST_Transform(way, {2})) FROM {0}
-             WHERE ST_Intersects(ST_Transform(way, {2}), ST_GeomFromText('{3}', {2}))
-             AND LOWER("{1}") IN {4};'''.format(table, type_, self.srid, domain, cats)
+             WHERE ST_Intersects(ST_Transform(way, {2}), ST_GeomFromText('{3}', {2}))'''.format(
+            table, type_, self.srid, domain)
+
+        if b_cats:
+            qry += '''AND LOWER("{0}") IN {1};'''.format(type_, cats)
+
+        qry += ';'
 
         self.cursor.execute(qry)
         return [x[:-1] + (geos.fromstr(x[-1]),) for x in self.cursor.fetchall()]
@@ -174,6 +184,7 @@ class OsmRendererBase(object):
         'highway': {
             'motorway': {'linewidth': 3, 'color': 'orange', 'alpha': 0.5},
             'primary': {'linewidth': 2, 'color': (1, 1, 0, 0.5)},
+            '__other': {'linewidth': 2, 'color': 'k', 'alpha': 0.3},
         },
         'natural': {
             'water': {'edgecolor': '#1C73FF', 'linewidth': 1, 'facecolor': '#1CCAFF'},
@@ -205,6 +216,9 @@ class OsmRendererBase(object):
                 for k, x in v.items():
                     if k in this_style:
                         s = this_style[k]
+                        plotting.plot_geodjango_shapes(x, ax=ax, set_axes=False, **s)
+                    elif '__other' in this_style:
+                        s = this_style['__other']
                         plotting.plot_geodjango_shapes(x, ax=ax, set_axes=False, **s)
         ax.set_aspect('equal')
         return ax

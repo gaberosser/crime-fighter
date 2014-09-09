@@ -82,15 +82,18 @@ def plot_geodjango_shapes(shapes, ax=None, set_axes=True, **kwargs):
 
 
 def plot_surface_on_polygon(poly, func, ax=None, n=50, cmap=cm.jet, nlevels=50,
-                            vmax=None, fmax=None, egrid=None):
+                            vmin=None, vmax=None, fmax=None, egrid=None, **kwargs):
     """
     :param poly: geos Polygon or Multipolygon defining region
     :param func: function accepting two vectorized input arrays returning the values to be plotted
     :param n: number of pts along one side (approx)
     :param cmap: matplotlib cmap to use
+    :param nlevels: number of contour colour levels to use
     :param egrid: egrid member of RocSpatial for plotting.  No grid is plotted if None.
+    :param vmin: minimum value to plot. Values below this are left unfilled
     :param vmax: maximum value to assign on colourmap - values beyond this are clipped
     :param fmax: maximum value on CDF at which to clip z values
+    :param kwargs: any other kwargs are passed to the plt.contourf call
     :return:
     """
     if fmax and vmax:
@@ -111,11 +114,19 @@ def plot_surface_on_polygon(poly, func, ax=None, n=50, cmap=cm.jet, nlevels=50,
         vmax = tmp[cut]
         zz[zz > vmax] = vmax
 
+    if vmin:
+        # need to specify levels to ensure minimum is enforced
+        levels = np.linspace(vmin, np.max(zz), nlevels)
+    else:
+        levels = np.linspace(np.min(zz), np.max(zz), nlevels)
+
     if not ax:
         fig = plt.figure()
-        ax = fig.add_subplot(111)
+        buf = 2e-2
+        ax = fig.add_axes([buf, buf, 1 - 2 * buf, 1 - 2 * buf])
+        ax.axis('off')
 
-    cont = ax.contourf(xx, yy, zz, nlevels, cmap=cmap)
+    cont = ax.contourf(xx, yy, zz, levels=levels, cmap=cmap, **kwargs)
 
     # plot grid if required
     if egrid is not None:

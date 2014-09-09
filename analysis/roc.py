@@ -41,18 +41,22 @@ class RocSpatial(object):
         # self._data = [geos.Point(list(t)) for t in data]
         self._data = data
 
-    def set_grid(self, side_length):
-        if not self.poly:
-            # find minimal bounding rectangle
-            xmin, ymin = np.min(self.data, axis=0)
-            xmax, ymax = np.max(self.data, axis=0)
-            self.poly = geos.Polygon([
+    def generate_bounding_poly(self):
+        # called when no polygon is provided, computes the bounding rectangle for the data
+        xmin, ymin = np.min(self.data, axis=0)
+        xmax, ymax = np.max(self.data, axis=0)
+        return geos.Polygon([
                 (xmin, ymin),
                 (xmax, ymin),
                 (xmax, ymax),
                 (xmin, ymax),
                 (xmin, ymin),
-            ])
+        ])
+
+    def set_grid(self, side_length):
+        if not self.poly:
+            # find minimal bounding rectangle
+            self.poly = self.generate_bounding_poly()
         self._intersect_grid, self._extent_grid = create_spatial_grid(self.poly, side_length)
         self.centroids = np.array([t.centroid.coords for t in self._intersect_grid])
         self.a = np.array([t.area for t in self._intersect_grid])
@@ -118,6 +122,74 @@ class RocSpatial(object):
         carea = np.cumsum(area) / total_area
         cfrac = np.cumsum(true_counts) / float(N)
         cfrac_max = np.cumsum(true_counts_sorted) / float(N)
+        pai = cfrac * (total_area / np.cumsum(area))
+
+        res = {
+            'prediction_rank': self.prediction_rank,
+            'prediction_values': pred_values,
+            'cumulative_area': carea,
+            'cumulative_crime': cfrac,
+            'cumulative_crime_max': cfrac_max,
+            'pai': pai,
+        }
+
+        return res
+
+
+class WeightedRocSpatial(RocSpatial):
+
+    def __init__(self, data=None, poly=None, half_life=1.):
+        super(WeightedRocSpatial, self).__init__(data=data, poly=poly)
+        self.decay_constant = None
+        self.set_decay_constant(half_life)
+
+    def set_decay_constant(self, half_life):
+        self.decay_constant = np.log(2.) / half_life
+
+    def set_data(self, data):
+        # Data is a 2D array, cols: t, x, y
+        # Time = 0 is the present, by convention
+        if data is not None:
+            if data.ndim != 2:
+                raise AttributeError("Data must be a 2D array")
+            if data.shape[1] != 3:
+                raise AttributeError("Second dimension must be of length 3 (spatiotemporal data)")
+        # self._data = [geos.Point(list(t)) for t in data]
+        self._data = data
+
+    @property
+    def weights(self):
+        return np.exp(-self.decay_constant * self._data[:, 0])
+
+    @property
+    def sum_weights(self):
+        return np.sum(self.weights)
+
+    @property
+    def true_count(self):
+
+        n = []
+        for xmin, ymin, xmax, ymax in self.egrid:
+            idx = (self.data[:, 1] >= xmin) \
+                & (self.data[:, 1] < xmax) \
+                & (self.data[:, 2] >= ymin) \
+                & (self.data[:, 2] < ymax)
+            n.append(sum(self.weights[idx]))
+
+        return np.array(n)
+
+    def evaluate(self):
+
+        # count actual crimes in testing dataset on same grid
+        true_counts = self.true_count[self.prediction_rank]
+        true_counts_sorted = np.sort(self.true_count)[::-1]
+        pred_values = self.prediction_values[self.prediction_rank]
+        area = self.a[self.prediction_rank]
+        total_area = sum(area)
+
+        carea = np.cumsum(area) / total_area
+        cfrac = np.cumsum(true_counts) / self.sum_weights
+        cfrac_max = np.cumsum(true_counts_sorted) / self.sum_weights
         pai = cfrac * (total_area / np.cumsum(area))
 
         res = {

@@ -59,17 +59,26 @@ class STKernelBowers(STKernelBase):
 
 class SKernelHistoric(STKernelBase):
 
-    def __init__(self, dt, bdwidth=None):
+    def __init__(self, dt=None, bdwidth=None):
         self.dt = dt
         self.bdwidth = bdwidth
         self.kde = None
         super(SKernelHistoric, self).__init__()
 
-    def train(self, data):
+    def set_data(self, data):
         # assume last data point is most recent
         tf = data[-1, 0]
-        self.data = data[data[:, 0] >= (tf - self.dt), 1:] # only spatial component
+        if self.dt:
+            self.data = data[data[:, 0] >= (tf - self.dt), 1:] # only spatial component
+        else:
+            self.data = data[:, 1:]
+
+    def set_kde(self):
         self.kde = gaussian_kde(self.data.transpose(), bw_method=self.bdwidth or 'silverman')
+
+    def train(self, data):
+        self.set_data(data)
+        self.set_kde()
 
     def _evaluate(self, t, x, y):
         if not isinstance(x, np.ndarray):
@@ -80,17 +89,26 @@ class SKernelHistoric(STKernelBase):
 
 class SKernelHistoricVariableBandwidthNn(STKernelBase):
 
-    def __init__(self, dt, nn=None):
+    def __init__(self, dt=None, nn=None):
         self.dt = dt
         self.nn = nn
         self.kde = None
         super(SKernelHistoricVariableBandwidthNn, self).__init__()
 
-    def train(self, data):
+    def set_data(self, data):
         # assume last data point is most recent
         tf = data[-1, 0]
-        self.data = data[data[:, 0] >= (tf - self.dt), 1:] # only spatial component
+        if self.dt:
+            self.data = data[data[:, 0] >= (tf - self.dt), 1:] # only spatial component
+        else:
+            self.data = data[:, 1:]
+
+    def set_kde(self):
         self.kde = VariableBandwidthNnKde(self.data, nn=self.nn)
+
+    def train(self, data):
+        self.set_data(data)
+        self.set_kde()
 
     def _evaluate(self, t, x, y):
         return self.kde.pdf(x, y)

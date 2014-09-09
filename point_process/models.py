@@ -325,7 +325,7 @@ class PointProcess(object):
         self.set_linkages()
 
         # set tolerance if not specified
-        tol_p = tol_p or 1 / float(self.ndata)
+        tol_p = tol_p or 0.1 / float(self.ndata)
 
         # reset all other storage containers
         self.reset()

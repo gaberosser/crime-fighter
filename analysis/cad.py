@@ -15,9 +15,12 @@ import numpy as np
 import datetime
 import pytz
 from database import logic, models
-from point_process import estimation, models as pp_models
+from point_process import estimation, models as pp_models, validate
+import hotspot
+import validation
 
 UK_TZ = pytz.timezone('Europe/London')
+SEC_IN_DAY = float(24 * 60 * 60)
 
 mpl.rcParams['backend'] = 'TkAgg'
 mpl.rcParams['interactive'] = True
@@ -27,6 +30,39 @@ def unix_time(dt):
     epoch = datetime.datetime.utcfromtimestamp(0).replace(tzinfo=dt.tzinfo)
     delta = dt - epoch
     return delta.total_seconds()
+
+
+def get_crimes_by_type(nicl_type=3, only_new=False, jiggle_scale=None, start_date=None,
+                       end_date=None):
+    # Get CAD crimes by NICL type
+    # data are de-duped, then processed into a (t, x, y) numpy array
+    # times are in units of days, relative to t0
+
+    qset = logic.clean_dedupe_cad(nicl_type=nicl_type, only_new=only_new)
+    if start_date:
+        start_date = start_date.replace(tzinfo=pytz.utc)
+        qset = [x for x in qset if x.inc_datetime >= start_date]
+    if end_date:
+        end_date = end_date.replace(tzinfo=pytz.utc)
+        qset = [x for x in qset if x.inc_datetime <= end_date]
+
+    xy = np.array([x.att_map.coords for x in qset])
+    t0 = np.min([x.inc_datetime for x in qset])
+    t = np.array([[(x.inc_datetime - t0).total_seconds() / SEC_IN_DAY] for x in qset])
+    if jiggle_scale:
+        # xy = jiggle_all_points_on_grid(xy[:, 0], xy[:, 1])
+        xy = jiggle_on_and_off_grid_points(xy[:, 0], xy[:, 1], scale=jiggle_scale)
+
+    res = np.hstack((t, xy))
+    # sort data
+    res = res[np.argsort(res[:, 0])]
+
+    return res, t0
+
+
+def get_camden_region():
+    camden = models.Division.objects.get(type='borough', name__iexact='camden')
+    return camden.mpoly.simplify()  # type Polygon
 
 
 class CadAggregate(object):
@@ -230,26 +266,99 @@ def jiggle_all_points_on_grid(x, y):
     return np.array(res)
 
 
-def apply_point_process_to_cad(nicl_type=3):
+def apply_point_process(nicl_type=3,
+                        only_new=False,
+                        niter=15,
+                        jiggle_scale=None):
+
     max_trigger_t = 30 # units days
     max_trigger_d = 500 # units metres
-    # min_bandwidth = np.array([0., 125., 125.])
-    min_bandwidth = None
-    qset = logic.clean_dedupe_cad(nicl_type=nicl_type, only_new=False)
-    xy = np.array([x.att_map.coords for x in qset])
-    new_xy = jiggle_on_and_off_grid_points(xy[:, 0], xy[:, 1], scale=15)
-    # new_xy = jiggle_all_points_on_grid(xy[:, 0], xy[:, 1])
-    rel_dt = np.min([x.inc_datetime for x in qset])
-    t = np.array([[(x.inc_datetime - rel_dt).total_seconds() / float(24 * 60 * 60)] for x in qset])
-    res = np.hstack((t, new_xy))
-    # sort data
-    res = res[np.argsort(res[:, 0])]
-    # manually estimate p initially
-    p = estimation.initial_guess_educated(res, ct=1, cd=0.02)
-    r = pp_models.PointProcess(p=p, max_trigger_t=max_trigger_t, max_trigger_d=max_trigger_d,
+    min_bandwidth = np.array([0.3, 5., 5.])
+    # min_bandwidth = None
+
+    # get data
+    res, t0 = get_crimes_by_type(nicl_type=nicl_type, only_new=only_new, jiggle_scale=jiggle_scale)
+
+    # define initial estimator
+    est = lambda x, y: estimation.estimator_bowers(x, y, ct=1, cd=0.02)
+
+
+    r = pp_models.PointProcessStochasticNn(estimator=est, max_trigger_t=max_trigger_t, max_trigger_d=max_trigger_d,
                             min_bandwidth=min_bandwidth)
-    ps = r.train(data=res, niter=30, tol_p=1e-9)
+
+    # train on all data
+    ps = r.train(data=res, niter=niter, tol_p=5e-5)
     return r, ps
+
+
+def validate_point_process(
+        end_date=datetime.datetime(2012, 3, 1, tzinfo=pytz.utc),
+        start_date=None,
+        num_validation=30,
+        num_pp_iter=15,
+        grid=100,
+        prediction_dt=1):
+
+    # get data
+    res, t0 = get_crimes_by_type(nicl_type=3, only_new=True, jiggle_scale=None, start_date=start_date)
+
+    # find end_date in days from t0
+    end_days = (end_date - t0).total_seconds() / SEC_IN_DAY
+
+    # get domain
+    poly = get_camden_region()
+
+    vb = validate.PpValidation(res, spatial_domain=poly, model_kwargs={
+        'max_trigger_t': 30,
+        'max_trigger_d': 500,
+        'estimator': lambda x, y: estimation.estimator_bowers(x, y, ct=1, cd=0.02),
+        'min_bandwidth': np.array([0.3, 5., 5.]),
+    })
+    vb.set_grid(grid)
+    vb.set_t_cutoff(end_days, b_train=False)
+
+    res = vb.run(time_step=prediction_dt, t_upper=end_days + num_validation,
+                 train_kwargs={'niter': num_pp_iter, 'tol_p': 1e-5},
+                 verbose=True)
+
+    return res, vb
+
+
+def validate_historic_kde(
+        end_date=datetime.datetime(2012, 3, 1, tzinfo=pytz.utc),
+        start_date=None,
+        num_validation=30,
+        kind=None,
+        grid=100,
+        prediction_dt=1):
+
+    # kind keyword specifies the kind of kernel to use
+    if not kind or kind == 'fbk':
+        sk = hotspot.SKernelHistoric()
+    elif kind == 'nnk':
+        sk = hotspot.SKernelHistoricVariableBandwidthNn()
+    else:
+        raise AttributeError("Specified 'kind' argument not recognised")
+
+    # get data
+    res, t0 = get_crimes_by_type(nicl_type=3, only_new=True, jiggle_scale=None, start_date=start_date)
+
+    # find end_date in days from t0
+    end_days = (end_date - t0).total_seconds() / SEC_IN_DAY
+
+    # get domain
+    poly = get_camden_region()
+
+
+
+    vb = validation.ValidationBase(res, hotspot.Hotspot, poly, model_args=(sk,))
+    vb.set_grid(grid)
+    vb.set_t_cutoff(end_days, b_train=False)
+
+    res = vb.run(time_step=prediction_dt, t_upper=end_days + num_validation,
+                 verbose=True)
+
+    return res, vb
 
 
 def diggle_st_clustering(nicl_type=3):
