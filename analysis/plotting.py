@@ -105,20 +105,22 @@ def plot_surface_on_polygon(poly, func, ax=None, n=50, cmap=cm.jet, nlevels=50,
     xx, yy = np.meshgrid(x, y, copy=False)
     zz = func(xx, yy)
 
-    if vmax:
-        zz[zz > vmax] = vmax
+    if vmax is None:
+        vmax = np.max(zz)
+
+    if vmin is None:
+        vmin = np.min(zz)
 
     if fmax:
         tmp = sorted(zz.flat)
         cut = int(np.floor(len(tmp) * fmax))
         vmax = tmp[cut]
-        zz[zz > vmax] = vmax
+        # zz[zz > vmax] = vmax
 
-    if vmin:
-        # need to specify levels to ensure minimum is enforced
-        levels = np.linspace(vmin, np.max(zz), nlevels)
-    else:
-        levels = np.linspace(np.min(zz), np.max(zz), nlevels)
+    # clip max values to vmax so they still get drawn:
+    zz[zz > vmax] = vmax
+
+    levels = np.linspace(vmin, vmax, nlevels)
 
     if not ax:
         fig = plt.figure()

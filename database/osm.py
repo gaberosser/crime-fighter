@@ -70,8 +70,12 @@ class Osm(object):
             'primary link',
             'secondary',
             'secondary link',
+            'tertiary',
+            'tertiary_link',
             'residential',
             'trunk',
+            'pedestrian',
+            'unclassified',
         ],
         'railway': [
             'rail',
@@ -94,7 +98,15 @@ class Osm(object):
         ],
         'aeroway': [
             'terminal',
+        ],
+        'leisure': '__all',
+        'landuse': [
+            'forest',
+        ],
+        'railway': [
+            'station',
         ]
+
     }
 
     def __init__(self, domain, srid=None, buffer=1500):
@@ -129,7 +141,7 @@ class Osm(object):
     def _getter(self, category, type_, domain):
         if category == 'line':
             cats = self.line_cats[type_]
-            table = 'planet_osm_roads'
+            table = 'planet_osm_line'
         elif category == 'poly':
             cats = self.poly_cats[type_]
             table = 'planet_osm_polygon'
@@ -180,11 +192,19 @@ class Osm(object):
 class OsmRendererBase(object):
 
     style = {
-        'domain': {'linewidth': 2, 'edgecolor': 'k', 'facecolor': (0, 0, 0, 0.1)},
+        'domain': {'linewidth': 2.5, 'edgecolor': 'k', 'facecolor': 'none', 'zorder': 3},
         'highway': {
-            'motorway': {'linewidth': 3, 'color': 'orange', 'alpha': 0.5},
-            'primary': {'linewidth': 2, 'color': (1, 1, 0, 0.5)},
-            '__other': {'linewidth': 2, 'color': 'k', 'alpha': 0.3},
+            'primary': {'linewidth': 2, 'color': '#FFC61C'},
+            'trunk': {'linewidth': 2, 'color': '#FFC61C'},
+            'primary_link': {'linewidth': 2, 'color': '#FFC61C'},
+            'secondary': {'linewidth': 2, 'color': 'gray', 'alpha': 0.7},
+            'secondary_link': {'linewidth': 2, 'color': 'gray', 'alpha': 0.7},
+            'tertiary': {'linewidth': 2, 'color': 'gray', 'alpha': 0.7},
+            'tertiary_link': {'linewidth': 2, 'color': 'gray', 'alpha': 0.7},
+            'residential': {'linewidth': 1.5, 'color': 'gray', 'alpha': 0.7},
+            'pedestrian': {'linewidth': 1.5, 'color': 'gray', 'alpha': 0.7},
+            'service': {'linewidth': 1.5, 'color': 'gray', 'alpha': 0.7},
+            'unclassified': {'linewidth': 1.5, 'color': 'gray', 'alpha': 0.7},
         },
         'natural': {
             'water': {'edgecolor': '#1C73FF', 'linewidth': 1, 'facecolor': '#1CCAFF'},
@@ -198,14 +218,23 @@ class OsmRendererBase(object):
         },
         'aeroway': {
             'terminal': {'linecolor': 'b', 'alpha': 0.3, 'edgecolor': 'b', 'linewidth': 0.5},
+        },
+        'leisure': {
+            'park': {'facecolor': '#5BE35B', 'alpha': 0.4, 'edgecolor': 'none'},
+        },
+        'landuse': {
+            'forest': {'facecolor': '#5BE35B', 'alpha': 0.4, 'edgecolor': 'none'},
+        },
+        'railway': {
+            'station': {'edgecolor': 'k', 'linewidth': 1, 'facecolor': 'gray'},
         }
         # 'railway': {
         #     'rail': {'linewidth': 1, 'color': (0, 0, 1, 0.6)},
         # }
     }
 
-    def __init__(self, domain):
-        self.osm = Osm(domain)
+    def __init__(self, domain, **kwargs):
+        self.osm = Osm(domain, **kwargs)
 
     def render(self, ax=None):
         ax = ax or plt.gca()

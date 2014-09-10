@@ -290,13 +290,12 @@ def multiplots(ppobj, simobj=None, maxes=None):
     ax.legend(ax.get_lines(), ('Inferred', 'True'), 'upper right')
 
 
-def plot_trigger_marginals(trigger_kde):
+def plot_trigger_marginals(trigger_kde, percentile=0.01):
     f, (ax1, ax2, ax3) = plt.subplots(1, 3, sharex=False, sharey=False, figsize=(12, 6))
-    perc = 0.005
 
-    plot_txy_t_marginals(trigger_kde, ax=ax1, symm=False, percentile=perc)
-    plot_txy_x_marginals(trigger_kde, ax=ax2, symm=True, percentile=perc)
-    plot_txy_y_marginals(trigger_kde, ax=ax3, symm=True, percentile=perc)
+    plot_txy_t_marginals(trigger_kde, ax=ax1, symm=False, percentile=percentile)
+    plot_txy_x_marginals(trigger_kde, ax=ax2, symm=True, percentile=percentile)
+    plot_txy_y_marginals(trigger_kde, ax=ax3, symm=True, percentile=percentile)
 
     ax1.yaxis.set_ticklabels([])
     ax1.yaxis.set_ticks([])
