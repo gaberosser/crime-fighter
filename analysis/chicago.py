@@ -23,16 +23,13 @@ Tmax = datetime.datetime(2014, 5, 24, 0)
 def compute_chicago_region(fill_in=True):
     """ Get (multi) polygon representing Chicago city boundary.
         fill_in parameter specifies whether holes should be filled (better for visualisation) """
-    ds = DataSource(os.path.join(CHICAGO_DATA_DIR, 'city_boundary/City_Boundary.shp'))
-    mpoly = ds[0].get_geoms()[0]
-    mpoly.srid = 102671
-    mpoly.transform(SRID)
+    mpoly = models.ChicagoDivision.objects.get(name='Chicago').mpoly
     if fill_in:
         mls = mpoly.boundary
         x = mls[0].coords
         x += (x[0],)
         return Polygon(x)
-    return mpoly.geos
+    return mpoly
 
 
 def get_crimes_by_type(crime_type='burglary', start_date=None, end_date=None, domain=None, **where_strs):
@@ -130,12 +127,13 @@ def apply_point_process(start_date=datetime.datetime(2010, 3, 1, 0),
 
 
 def validate_point_process(
-        start_date=datetime.datetime(2001, 3, 1, 0),
-        training_size=None,
+        start_date=datetime.datetime(2012, 3, 31, 0),
+        training_size=365,
         num_validation=20,
         num_pp_iter=20,
         grid=500,
-        prediction_dt=1):
+        prediction_dt=1, true_dt_plus=1,
+        domain=None):
 
     if not training_size:
         # use all possible days before start_date as training
@@ -151,13 +149,16 @@ def validate_point_process(
     ndays = training_size + num_validation
     end_date = start_date + datetime.timedelta(days=num_validation)
 
-    poly = compute_chicago_region()
+    if domain is None:
+        domain = compute_chicago_region()
+
     res, t0 = get_crimes_by_type(
         crime_type='burglary',
         start_date=pre_start_date,
-        end_date=end_date
+        end_date=end_date,
+        domain=domain,
     )
-    vb = validate.PpValidation(res, spatial_domain=poly, model_kwargs={
+    vb = validate.PpValidation(res, spatial_domain=domain, model_kwargs={
         'max_trigger_t': 30,
         'max_trigger_d': 200,
         'estimator': lambda x, y: estimation.estimator_bowers(x, y, ct=1, cd=0.02),
@@ -165,7 +166,7 @@ def validate_point_process(
     vb.set_grid(grid)
     vb.set_t_cutoff(training_size, b_train=False)
 
-    res = vb.run(time_step=prediction_dt, t_upper=training_size + ndays,
+    res = vb.run(time_step=prediction_dt, t_upper=training_size + ndays, true_dt_plus=true_dt_plus,
                  train_kwargs={'niter': num_pp_iter, 'tol_p': 1e-5},
                  verbose=True)
 

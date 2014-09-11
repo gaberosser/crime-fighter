@@ -31,11 +31,20 @@ class ValidationBase(object):
         self.cutoff_t = tmax_initial or self.t[int(self.ndata / 2)]
 
         # set roc
-        self.roc = RocSpatial(poly=spatial_domain)
-        # set roc with ALL data initially
-        self.roc.set_data(self.data[:, 1:])
+        self.roc = None
+        self.set_roc(spatial_domain)
+
+        # setup grid if grid_length supplied
         if grid_length:
             self.set_grid(grid_length)
+
+    def set_roc(self, poly):
+
+        # set roc
+        self.roc = RocSpatial(poly=poly)
+        # set roc with ALL data initially
+        self.roc.set_data(self.data[:, 1:])
+
 
     def set_t_cutoff(self, cutoff_t, b_train=True, **kwargs):
         """

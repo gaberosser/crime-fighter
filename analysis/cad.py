@@ -38,7 +38,12 @@ def get_crimes_by_type(nicl_type=3, only_new=False, jiggle_scale=None, start_dat
     # data are de-duped, then processed into a (t, x, y) numpy array
     # times are in units of days, relative to t0
 
-    qset = logic.clean_dedupe_cad(nicl_type=nicl_type, only_new=only_new)
+    if hasattr(nicl_type, '__iter__'):
+        qset = []
+        [qset.extend(logic.clean_dedupe_cad(nicl_type=t, only_new=only_new)) for t in nicl_type]
+    else:
+        qset = logic.clean_dedupe_cad(nicl_type=nicl_type, only_new=only_new)
+
     if start_date:
         start_date = start_date.replace(tzinfo=pytz.utc)
         qset = [x for x in qset if x.inc_datetime >= start_date]
@@ -292,15 +297,18 @@ def apply_point_process(nicl_type=3,
 
 
 def validate_point_process(
+        nicl_type=3,
         end_date=datetime.datetime(2012, 3, 1, tzinfo=pytz.utc),
         start_date=None,
         num_validation=30,
         num_pp_iter=15,
         grid=100,
-        prediction_dt=1):
+        prediction_dt=1,
+        true_dt_plus=1,
+        ):
 
     # get data
-    res, t0 = get_crimes_by_type(nicl_type=3, only_new=True, jiggle_scale=None, start_date=start_date)
+    res, t0 = get_crimes_by_type(nicl_type=nicl_type, only_new=True, jiggle_scale=None, start_date=start_date)
 
     # find end_date in days from t0
     end_days = (end_date - t0).total_seconds() / SEC_IN_DAY
@@ -317,7 +325,7 @@ def validate_point_process(
     vb.set_grid(grid)
     vb.set_t_cutoff(end_days, b_train=False)
 
-    res = vb.run(time_step=prediction_dt, t_upper=end_days + num_validation,
+    res = vb.run(time_step=prediction_dt, t_upper=end_days + num_validation, true_dt_plus=true_dt_plus,
                  train_kwargs={'niter': num_pp_iter, 'tol_p': 1e-5},
                  verbose=True)
 
@@ -325,12 +333,14 @@ def validate_point_process(
 
 
 def validate_historic_kde(
+        nicl_type=3,
         end_date=datetime.datetime(2012, 3, 1, tzinfo=pytz.utc),
         start_date=None,
         num_validation=30,
         kind=None,
         grid=100,
-        prediction_dt=1):
+        prediction_dt=1,
+        true_dt_plus=1):
 
     # kind keyword specifies the kind of kernel to use
     if not kind or kind == 'fbk':
@@ -341,7 +351,7 @@ def validate_historic_kde(
         raise AttributeError("Specified 'kind' argument not recognised")
 
     # get data
-    res, t0 = get_crimes_by_type(nicl_type=3, only_new=True, jiggle_scale=None, start_date=start_date)
+    res, t0 = get_crimes_by_type(nicl_type=nicl_type, only_new=True, jiggle_scale=None, start_date=start_date)
 
     # find end_date in days from t0
     end_days = (end_date - t0).total_seconds() / SEC_IN_DAY
@@ -355,7 +365,7 @@ def validate_historic_kde(
     vb.set_grid(grid)
     vb.set_t_cutoff(end_days, b_train=False)
 
-    res = vb.run(time_step=prediction_dt, t_upper=end_days + num_validation,
+    res = vb.run(time_step=prediction_dt, t_upper=end_days + num_validation, true_dt_plus=true_dt_plus,
                  verbose=True)
 
     return res, vb
