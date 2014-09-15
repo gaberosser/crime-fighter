@@ -162,11 +162,8 @@ class ValidationBase(object):
         true_dt_plus = true_dt_plus or pred_dt_plus
         t_upper = min(t_upper or np.inf, self.testing()[-1, 0])
 
-        # store current cutoff so it can be restored after this run
-        t0 = self.cutoff_t
-
         # precompute number of iterations
-        n_iter = math.ceil((t_upper - t0) / time_step)
+        n_iter = math.ceil((t_upper - self.cutoff_t) / time_step)
 
         res = collections.defaultdict(list)
 
@@ -194,14 +191,14 @@ class ValidationBase(object):
                 for k, v in this_res.items():
                     res[k].append(v)
 
+                # add record of cutoff time to help later repeats
+                res['cutoff_t'].append(self.cutoff_t)
+
                 count += 1
 
         except KeyboardInterrupt:
             # this breaks the loop, now return res as it stands
             pass
-
-        finally:
-            self.set_t_cutoff(t0, b_train=False)
 
         return res
 
@@ -217,6 +214,52 @@ class ValidationBase(object):
     def _initial_setup(self, **train_kwargs):
         self._update(time_step=0., **train_kwargs)
 
+    def repeat_run(self, run_res, time_step, pred_dt_plus=None, true_dt_plus=None, true_dt_minus=0,
+                   pred_kwargs=None, **kwargs):
+        """
+        Repeat a validation run, but rather than training the model use supplied output of a previous run to save time.
+        Parameters are as for run(), but some are unnecessary.
+        Cutoff times and trained models are extracted from res.
+        """
+        verbose = kwargs.pop('verbose', True)
+        pred_kwargs = pred_kwargs or {}
+        pred_dt_plus = pred_dt_plus or time_step
+        true_dt_plus = true_dt_plus or pred_dt_plus
+
+        # number of iterations
+        n_iter = len(run_res['cutoff_t'])
+
+        res = collections.defaultdict(list)
+
+        if verbose:
+            print "Running %d repeat validation iterations..." % n_iter
+
+        count = 0
+
+        while count < n_iter:
+
+            this_cutoff_t = run_res['cutoff_t'][count]
+            self.set_t_cutoff(this_cutoff_t, b_train=False)  # no need to train
+
+            if verbose:
+                print "Running repeat validation with cutoff time %s (iteration %d / %d)" % (str(self.cutoff_t),
+                                                                                             count + 1,
+                                                                                             n_iter)
+
+            # copy model
+            self.model = run_res['model'][count]
+
+            # predict and assess iteration
+            this_res = self._iterate_run(pred_dt_plus, true_dt_plus, true_dt_minus, **pred_kwargs)
+            for k, v in this_res.items():
+                res[k].append(v)
+
+            # add record of cutoff time to help later repeats
+            res['cutoff_t'].append(self.cutoff_t)
+
+            count += 1
+
+        return res
 
 class WeightedValidation(ValidationBase):
     ## TODO: implement WeightedRocSpatial - should be a fairly trivial extension

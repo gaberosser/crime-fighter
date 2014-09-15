@@ -9,7 +9,7 @@ import matplotlib.patches as mpatches
 import matplotlib.path as mpath
 from descartes import PolygonPatch
 import json
-from analysis.spatial import is_clockwise
+from analysis.spatial import is_clockwise, bounding_box_grid
 
 
 def geodjango_to_shapely(x, c=ccrs.OSGB()):
@@ -81,12 +81,13 @@ def plot_geodjango_shapes(shapes, ax=None, set_axes=True, **kwargs):
     return res
 
 
-def plot_surface_on_polygon(poly, func, ax=None, n=50, cmap=cm.jet, nlevels=50,
+def plot_surface_on_polygon(poly, func, ax=None, dx=None, offset_coords=None, cmap=cm.jet, nlevels=50,
                             vmin=None, vmax=None, fmax=None, egrid=None, **kwargs):
     """
     :param poly: geos Polygon or Multipolygon defining region
     :param func: function accepting two vectorized input arrays returning the values to be plotted
-    :param n: number of pts along one side (approx)
+    :param dx: interval distance between grid points
+    :param offset_coords: iterable giving the (x, y) coordinates of a grid point, default = (0, 0)
     :param cmap: matplotlib cmap to use
     :param nlevels: number of contour colour levels to use
     :param egrid: egrid member of RocSpatial for plotting.  No grid is plotted if None.
@@ -100,8 +101,11 @@ def plot_surface_on_polygon(poly, func, ax=None, n=50, cmap=cm.jet, nlevels=50,
         raise AttributeError("Either specify vmax OR fmax")
 
     x_min, y_min, x_max, y_max = poly.extent
-    x = np.linspace(x_min, x_max, n)
-    y = np.linspace(y_min, y_max, n)
+
+    if not dx:
+        dx = ((x_max - x_min) + (y_max - y_min)) / 100
+
+    x, y = bounding_box_grid(poly, dx, offset_coords=offset_coords)
     xx, yy = np.meshgrid(x, y, copy=False)
     zz = func(xx, yy)
 
@@ -149,7 +153,7 @@ def plot_surface_on_polygon(poly, func, ax=None, n=50, cmap=cm.jet, nlevels=50,
     mask_contour(cont, poly_verts, ax=ax, show_clip_path=True)
     plot_geodjango_shapes(poly, ax=ax, facecolor='none')
 
-    return cont
+    return xx, yy, zz
 
 
 def mask_outside_polygon(poly_verts, ax=None):

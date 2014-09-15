@@ -304,7 +304,7 @@ def validate_point_process(
         num_pp_iter=15,
         grid=100,
         prediction_dt=1,
-        true_dt_plus=1,
+        pred_dt_plus=1,
         ):
 
     # get data
@@ -325,7 +325,7 @@ def validate_point_process(
     vb.set_grid(grid)
     vb.set_t_cutoff(end_days, b_train=False)
 
-    res = vb.run(time_step=prediction_dt, t_upper=end_days + num_validation, true_dt_plus=true_dt_plus,
+    res = vb.run(time_step=prediction_dt, t_upper=end_days + num_validation, pred_dt_plus=pred_dt_plus,
                  train_kwargs={'niter': num_pp_iter, 'tol_p': 1e-5},
                  verbose=True)
 
@@ -340,7 +340,7 @@ def validate_historic_kde(
         kind=None,
         grid=100,
         prediction_dt=1,
-        true_dt_plus=1):
+        pred_dt_plus=1):
 
     # kind keyword specifies the kind of kernel to use
     if not kind or kind == 'fbk':
@@ -365,7 +365,7 @@ def validate_historic_kde(
     vb.set_grid(grid)
     vb.set_t_cutoff(end_days, b_train=False)
 
-    res = vb.run(time_step=prediction_dt, t_upper=end_days + num_validation, true_dt_plus=true_dt_plus,
+    res = vb.run(time_step=prediction_dt, t_upper=end_days + num_validation, pred_dt_plus=pred_dt_plus,
                  verbose=True)
 
     return res, vb

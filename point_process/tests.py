@@ -33,7 +33,7 @@ class TestSimulation(unittest.TestCase):
         self.assertTrue(np.all(c.data[~np.isnan(c.data[:, -1]), -1] < max(c.data[:, 0])))
 
 
-class TestPointProcessStochastic(unittest.TestCase):
+class TestPointProcessStochasticNn(unittest.TestCase):
 
     def setUp(self):
         self.c = simulate.MohlerSimulation()
@@ -43,7 +43,7 @@ class TestPointProcessStochastic(unittest.TestCase):
         self.data = self.c.data[:, :3]
 
     def test_linkage(self):
-        r = models.PointProcess(max_trigger_d=0.75, max_trigger_t=80)
+        r = models.PointProcessStochasticNn(max_trigger_d=0.75, max_trigger_t=80)
         r.set_data(self.data)
         link_mesh = r._set_linkages_meshed()
         link_iter = r._set_linkages_iterated()
@@ -57,7 +57,7 @@ class TestPointProcessStochastic(unittest.TestCase):
         The tests are all based on KNOWN results, NOT on the ideal results.  Failing some of these tests may still
         indicate an improvement.
         """
-        r = models.PointProcess(max_trigger_d=0.75, max_trigger_t=80)
+        r = models.PointProcessStochasticNn(max_trigger_d=0.75, max_trigger_t=80)
         models.estimation.set_seed(42)
         ps = r.train(self.data, niter=15, verbose=False, tol_p=1e-8)
         self.assertEqual(r.ndata, self.data.shape[0])
