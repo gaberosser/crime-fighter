@@ -12,16 +12,29 @@ import json
 from analysis.spatial import is_clockwise, bounding_box_grid
 
 
-def geodjango_to_shapely(x, c=ccrs.OSGB()):
+def geos_poly_to_shapely(poly):
+    return shapely_geometry.Polygon(poly.coords[0], poly.coords[1:])
+
+def geodjango_to_shapely(shapes, c=ccrs.OSGB()):
     """ Convert geodjango geometry to shapely for plotting etc
         inputs: x is a sequence of geodjango geometry objects """
 
+    converters = {
+        'polygon': lambda t: geos_poly_to_shapely(t),
+        'multipolygon': lambda t: shapely_geometry.MultiPolygon([geos_poly_to_shapely(x) for x in t])
+    }
+
+    if issubclass(shapes.__class__, geos.GEOSGeometry):
+        # single GEOS geometry supplied
+        shapes = [shapes]
+
     polys = []
-    for t in x:
+    for t in shapes:
         if isinstance(t, geos.Polygon):
             polys.append(shapely_geometry.Polygon(t.coords))
         elif isinstance(t, geos.MultiPolygon):
             polys.append(shapely_geometry.MultiPolygon([shapely_geometry.Polygon(x[0]) for x in t.coords]))
+
 
     return polys
 

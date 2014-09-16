@@ -2,6 +2,8 @@ __author__ = 'gabriel'
 from django.contrib.gis import geos
 from django.db import connections, connection
 from matplotlib import pyplot as plt
+from matplotlib.path import Path
+from matplotlib.patches import PathPatch
 from analysis import plotting
 import collections
 import models
