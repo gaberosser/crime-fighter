@@ -20,6 +20,7 @@ def geodjango_to_shapely(shapes, c=ccrs.OSGB()):
         inputs: x is a sequence of geodjango geometry objects """
 
     converters = {
+        'line': lambda t: shapely_geometry.LineString(t.coords),
         'polygon': lambda t: geos_poly_to_shapely(t),
         'multipolygon': lambda t: shapely_geometry.MultiPolygon([geos_poly_to_shapely(x) for x in t])
     }
