@@ -400,7 +400,7 @@ class PointProcessStochasticNn(PointProcess):
         self.num_trig.append(len(cause_idx))
 
 
-class PointProcessDeterministic(PointProcess):
+class PointProcessDeterministicNn(PointProcess):
 
     def _set_kdes(self):
         p_bg = self.p.diagonal()
