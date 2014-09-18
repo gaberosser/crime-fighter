@@ -196,17 +196,18 @@ class OsmRendererBase(object):
     style = {
         'domain': {'linewidth': 2.5, 'edgecolor': 'k', 'facecolor': 'none', 'zorder': 3},
         'highway': {
-            'primary': {'linewidth': 2, 'color': '#FFC61C'},
-            'trunk': {'linewidth': 2, 'color': '#FFC61C'},
-            'primary_link': {'linewidth': 2, 'color': '#FFC61C'},
-            'secondary': {'linewidth': 2, 'color': 'gray', 'alpha': 0.7},
-            'secondary_link': {'linewidth': 2, 'color': 'gray', 'alpha': 0.7},
-            'tertiary': {'linewidth': 2, 'color': 'gray', 'alpha': 0.7},
-            'tertiary_link': {'linewidth': 2, 'color': 'gray', 'alpha': 0.7},
-            'residential': {'linewidth': 1.5, 'color': 'gray', 'alpha': 0.7},
-            'pedestrian': {'linewidth': 1.5, 'color': 'gray', 'alpha': 0.7},
-            'service': {'linewidth': 1.5, 'color': 'gray', 'alpha': 0.7},
-            'unclassified': {'linewidth': 1.5, 'color': 'gray', 'alpha': 0.7},
+            '__all__': {},
+            'primary': {'buffer': 5, 'facecolor': '#FFC61C', 'edgecolor': 'none'},
+            'trunk': {'buffer': 5, 'facecolor': '#FFC61C', 'edgecolor': 'none'},
+            'primary_link': {'buffer': 5, 'facecolor': '#FFC61C', 'edgecolor': 'none'},
+            'secondary': {'buffer': 3.5, 'facecolor': 'gray', 'alpha': 0.7, 'edgecolor': 'none'},
+            'secondary_link': {'buffer': 3.5, 'facecolor': 'gray', 'alpha': 0.7, 'edgecolor': 'none'},
+            'tertiary': {'buffer': 2.5, 'facecolor': 'gray', 'alpha': 0.7, 'edgecolor': 'none'},
+            'tertiary_link': {'buffer': 2.5, 'facecolor': 'gray', 'alpha': 0.7, 'edgecolor': 'none'},
+            'residential': {'buffer': 2, 'facecolor': 'gray', 'alpha': 0.7, 'edgecolor': 'none'},
+            'pedestrian': {'buffer': 2, 'facecolor': 'gray', 'alpha': 0.7, 'edgecolor': 'none'},
+            'service': {'buffer': 2, 'facecolor': 'gray', 'alpha': 0.7, 'edgecolor': 'none'},
+            'unclassified': {'buffer': 2, 'facecolor': 'gray', 'alpha': 0.7, 'edgecolor': 'none'},
         },
         'natural': {
             'water': {'edgecolor': '#1C73FF', 'linewidth': 1, 'facecolor': '#1CCAFF'},
@@ -228,7 +229,7 @@ class OsmRendererBase(object):
             'forest': {'facecolor': '#5BE35B', 'alpha': 0.4, 'edgecolor': 'none'},
         },
         'railway': {
-            'station': {'edgecolor': 'k', 'linewidth': 1, 'facecolor': 'gray'},
+            'station': {'edgecolor': 'gray', 'linewidth': 1, 'facecolor': '#B2B2B2'},
         }
         # 'railway': {
         #     'rail': {'linewidth': 1, 'color': (0, 0, 1, 0.6)},
@@ -246,7 +247,11 @@ class OsmRendererBase(object):
                 this_style = self.style[t]
                 for k, x in v.items():
                     if k in this_style:
-                        s = this_style[k]
+                        s = dict(this_style[k])
+                        buffer = s.pop('buffer', None)
+                        if buffer:
+                            # buffer each entry in list of linestrings
+                            x = [a.buffer(buffer) for a in x]
                         plotting.plot_geodjango_shapes(x, ax=ax, set_axes=False, **s)
                     elif '__other' in this_style:
                         s = this_style['__other']

@@ -1,7 +1,7 @@
 __author__ = 'gabriel'
 import unittest
 import kernels
-from methods.pure_python import VariableBandwidthKde, VariableBandwidthNnKde, FixedBandwidthKde, \
+from models import VariableBandwidthKde, VariableBandwidthNnKde, FixedBandwidthKde, \
     WeightedVariableBandwidthNnKde, weighted_stdev
 import numpy as np
 from scipy.stats import norm, multivariate_normal

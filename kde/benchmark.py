@@ -2,7 +2,7 @@ __author__ = 'gabriel'
 
 import cProfile
 import pstats
-from methods import pure_python as pp_kde
+import models
 import kde
 import numpy as np
 import os
@@ -16,7 +16,7 @@ def run_vkde3(num_sources=1000):
         raise Exception('Must specify a number of sources with an integer sqrt.')
     source_loc = np.meshgrid(*([np.linspace(0, 1, n)]*num_dim))
     sources = np.vstack([x.flatten() for x in source_loc]).transpose()
-    k = pp_kde.VariableBandwidthKde(sources, nn=2)
+    k = models.VariableBandwidthKde(sources, nn=2)
     return k, k.values_at_data()
 
 

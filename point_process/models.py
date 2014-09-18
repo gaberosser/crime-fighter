@@ -2,7 +2,7 @@ __author__ = 'gabriel'
 
 import estimation
 import ipdb
-from kde.methods import pure_python as pp_kde
+from kde import models as pp_kde
 import numpy as np
 from time import time
 import warnings

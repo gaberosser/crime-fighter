@@ -1,6 +1,5 @@
 __author__ = 'gabriel'
 import numpy as np
-import math
 import operator
 from kde import kernels
 

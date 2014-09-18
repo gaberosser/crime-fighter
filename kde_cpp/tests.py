@@ -2,7 +2,7 @@ __author__ = 'gabriel'
 import numpy as np
 from kde_cpp import pymvn
 from time import time
-from kde.methods.pure_python import FixedBandwidthKde
+from kde.models import FixedBandwidthKde
 
 n = 5000
 data = np.random.randn(n, 3)

@@ -13,12 +13,28 @@ def normcdf(x, mu, var):
     return 0.5 * (1 + erf((x - mu) / (np.sqrt(2 * var))))
 
 
-class MultivariateNormal():
+class BaseKernel(object):
+    """
+    Abstract class to ensure basic conformation of all derived kernels
+    """
+
+    @property
+    def ndim(self):
+        raise NotImplementedError()
+
+    def pdf(self, x):
+        raise NotImplementedError()
+
+
+class MultivariateNormal(BaseKernel):
 
     def __init__(self, mean, vars):
         self.mean = np.array(mean, dtype=float)
         self.vars = np.array(vars, dtype=float)
-        self.ndim = self.vars.size
+
+    @property
+    def ndim(self):
+        return self.vars.size
 
     def pdf(self, x):
         """ Input is an ndarray of dims N x ndim. """
@@ -84,3 +100,18 @@ class MultivariateNormal():
 #             x[self.ndim][...] = self.multivariate_normal.pdf(it[:-1], mean=self.mean, cov=self.cov)
 #
 #         return it.operands[self.ndim]
+
+class LinearKernel(BaseKernel):
+
+    def __init__(self, h):
+        self.h = float(h)
+
+    @property
+    def ndim(self):
+        return 1
+
+    def pdf(self, x):
+        if x <= self.h:
+            return (self.h - x) / self.h ** 2
+        else:
+            return 0.

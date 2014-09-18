@@ -1,7 +1,7 @@
 __author__ = 'gabriel'
 import numpy as np
 from scipy.stats import gaussian_kde
-from kde.methods.pure_python import VariableBandwidthNnKde
+from kde.models import VariableBandwidthNnKde
 
 class Hotspot(object):
 
