@@ -129,3 +129,52 @@ ax1.set_ylim([0., 1.02 * ymax])
 ax3.legend(labels, loc=2)
 
 plt.tight_layout()
+
+##################
+
+labels = ['SEPP', 'NNKDE']
+
+c = 0.2
+xlim = [0, c]
+
+fig = plt.figure(figsize=(16, 6))
+ax1 = fig.add_subplot(131, xlim=xlim)
+ax3 = fig.add_subplot(132, sharex=ax1, sharey=ax1)
+ax67 = fig.add_subplot(133, sharex=ax1, sharey=ax1)
+
+ax1.plot(x1[0], mu1[0], 'k-')
+ax1.plot(x1[4], mu1[4], 'r-')
+ax1.set_title('Violence Against The Person')
+
+ax3.plot(x3[0], mu3[0], 'k-')
+ax3.plot(x3[4], mu3[4], 'r-')
+ax3.set_title('Burglary From Dwelling')
+
+ax67.plot(x67[0], mu67[0], 'k-')
+ax67.plot(x67[4], mu67[4], 'r-')
+ax67.set_title('Theft Of/From Vehicle')
+
+ax3.yaxis.set_visible(False)
+ax67.yaxis.set_visible(False)
+
+ax3.set_xlabel('Fraction area', fontsize=20)
+ax1.set_ylabel('Fraction crime', fontsize=20)
+
+plt.setp(ax1.get_xticklabels(), fontsize=16)
+plt.setp(ax3.get_xticklabels(), fontsize=16)
+plt.setp(ax67.get_xticklabels(), fontsize=16)
+plt.setp(ax1.get_yticklabels(), fontsize=16)
+
+ax1.set_xlim(xlim)
+
+ymax1 = max([np.max(b[a < c]) for a, b in zip(x1, mu1)])
+ymax3 = max([np.max(b[a < c]) for a, b in zip(x3, mu3)])
+ymax67 = max([np.max(b[a < c]) for a, b in zip(x67, mu67)])
+
+ymax = max(ymax1, ymax3, ymax67)
+
+ax1.set_ylim([0., 1.02 * ymax])
+
+ax3.legend(labels, loc=2)
+
+plt.tight_layout()

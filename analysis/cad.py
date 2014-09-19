@@ -18,6 +18,7 @@ from database import logic, models
 from point_process import estimation, models as pp_models, validate
 import hotspot
 import validation
+from itertools import combinations
 
 UK_TZ = pytz.timezone('Europe/London')
 SEC_IN_DAY = float(24 * 60 * 60)
@@ -785,7 +786,7 @@ def pairwise_distance(nicl_number=3):
 
 
 def pairwise_time_difference(nicl_number=3):
-    from itertools import combinations
+
     cad = logic.initial_filter_cad()
     cad = cad.filter(Q(cl01=nicl_number) | Q(cl02=nicl_number) | Q(cl03=nicl_number)).distinct('cris_entry')
     cad = sorted(cad, key=lambda x: x.inc_datetime)
@@ -806,34 +807,56 @@ def condensed_to_index(sub, n):
         return (idx[0][sub], idx[1][sub])
 
 
-def pairwise_time_lag_events(max_distance=200, nicl_numbers=None, num_bins=None):
+def pairwise_time_lag_events(max_distance=200, nicl_numbers=3, num_bins=None):
     """ Recreate Fig 1(b) Mohler et al 2011 'Self-exciting point process modeling of crime'
         max_distance is in units of metres. """
 
-    nicl_numbers = nicl_numbers or [1, 3, 13]
-    n = len(nicl_numbers)
-    res = []
-    cad = logic.initial_filter_cad(only_new=True)
-    for nicl in nicl_numbers:
-        pd = pairwise_distance(nicl)
-        pt = pairwise_time_difference(nicl)
-        filt_sub = np.where(pd < max_distance)[0]
-        time_diffs = pt[filt_sub]
-        res.append(time_diffs)
+    cad, t0 = get_crimes_by_type(nicl_type=nicl_numbers)
+    x1, x0 = np.meshgrid(cad[:, 1], cad[:, 1], copy=False)
+    y1, y0 = np.meshgrid(cad[:, 2], cad[:, 2], copy=False)
+    t1, t0 = np.meshgrid(cad[:, 0], cad[:, 0], copy=False)
+    triu_idx = np.triu_indices_from(x0, k=1)
+    dx = x1[triu_idx] - x0[triu_idx]
+    dy = y1[triu_idx] - y0[triu_idx]
+    pt = t1[triu_idx] - t0[triu_idx]
+    pd = np.sqrt(dx **2 + dy ** 2)
+
+    filt_sub = np.where(pd < max_distance)[0]
+    time_diffs = pt[filt_sub]
 
     fig = plt.figure()
-    for i in range(n):
-        ax = fig.add_subplot(1, n, i)
-        n_win = max(res[i])
-        D = 0.5 * n_win * (n_win - 1)
-        ax.hist(res[i], num_bins or range(n_win), normed=True, edgecolor='none', facecolor='gray')
-        ax.plot(np.arange(1, n_win), np.arange(1, n_win)[::-1]/D, 'k--')
-        ax.set_xlabel('Time difference (days)')
-        ax.set_ylabel('Event pair density')
+    ax = fig.add_subplot(111)
 
-    fig.subplots_adjust(left=0.15, right=0.95, bottom=0.1, top=0.95, wspace=0.03, hspace=0.01)
-    plt.show()
-    return res if len(nicl_numbers) > 1 else res[0]
+    n_win = int(np.max(time_diffs))
+    D = 0.5 * n_win * (n_win - 1)
+    # import ipdb; ipdb.set_trace()
+    ax.hist(time_diffs, num_bins or range(n_win), normed=True, edgecolor='none', facecolor='gray')
+    ax.plot(np.arange(1, n_win), np.arange(1, n_win)[::-1]/D, 'k--', lw=2)
+    ax.set_xlabel('Time difference (days)')
+    ax.set_ylabel('Event pair density')
+
+    return time_diffs
+
+    # for nicl in nicl_numbers:
+    #     pd = pairwise_distance(nicl)
+    #     pt = pairwise_time_difference(nicl)
+    #     filt_sub = np.where(pd < max_distance)[0]
+    #     time_diffs = pt[filt_sub]
+    #     res.append(time_diffs)
+    #
+    # fig = plt.figure()
+    # for i in range(n):
+    #     ax = fig.add_subplot(1, n, i)
+    #     n_win = max(res[i])
+    #     D = 0.5 * n_win * (n_win - 1)
+    #     ax.hist(res[i], num_bins or range(n_win), normed=True, edgecolor='none', facecolor='gray')
+    #     ax.plot(np.arange(1, n_win), np.arange(1, n_win)[::-1]/D, 'k--')
+    #     ax.set_xlabel('Time difference (days)')
+    #     ax.set_ylabel('Event pair density')
+    #
+    # fig.subplots_adjust(left=0.15, right=0.95, bottom=0.1, top=0.95, wspace=0.03, hspace=0.01)
+    # plt.show()
+    # return res if len(nicl_numbers) > 1 else res[0]
 
 
 def pairwise_distance_events(max_time=14, nicl_numbers=None, num_bins=50):
