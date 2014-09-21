@@ -3,15 +3,15 @@ import numpy as np
 import pickle
 from matplotlib import pyplot as plt
 
-labels = ['SEPP 1dayg100','SEPP 2dayg100', 'SEPP 1dayg20', 'SEPP 2dayg20', 'NNKDE 1dayg100', 'NNKDE 2dayg100', 'NNKDE 1dayg10', 'NNKDE 2dayg20']
+labels = ['SEPP 1dayg100','SEPP 2dayg100', 'SEPP 1dayg20', 'SEPP 2dayg20', 'NNKDE 1dayg100', 'NNKDE 2dayg100', 'NNKDE 1dayg20', 'NNKDE 2dayg20']
 
-f = open('cad_validation_nicl1.pickle', 'r')
+f = open('/home/gabriel/Documents/cad_validation_nicl1.pickle', 'r')
 nicl1 = [pickle.load(f)[0] for i in range(8)]
 
-f = open('cad_validation_nicl3.pickle', 'r')
+f = open('/home/gabriel/Documents/cad_validation_nicl3.pickle', 'r')
 nicl3 = [pickle.load(f)[0] for i in range(8)]
 
-f = open('cad_validation_nicl67.pickle', 'r')
+f = open('/home/gabriel/Documents/cad_validation_nicl67.pickle', 'r')
 nicl67 = [pickle.load(f)[0] for i in range(8)]
 
 x1 = []
@@ -134,6 +134,14 @@ plt.tight_layout()
 
 labels = ['SEPP', 'NNKDE']
 
+# 20 x 20 grid
+# idxsepp = 2
+# idxnnkde = 6
+
+# 100 x 100 grid
+idxsepp = 0
+idxnnkde = 4
+
 c = 0.2
 xlim = [0, c]
 
@@ -142,16 +150,19 @@ ax1 = fig.add_subplot(131, xlim=xlim)
 ax3 = fig.add_subplot(132, sharex=ax1, sharey=ax1)
 ax67 = fig.add_subplot(133, sharex=ax1, sharey=ax1)
 
-ax1.plot(x1[0], mu1[0], 'k-')
-ax1.plot(x1[4], mu1[4], 'r-')
+ax1.plot(x1[idxsepp], mu1[idxsepp], 'k-')
+ax1.plot(x1[idxnnkde], mu1[idxnnkde], 'r-')
+ax1.plot([0, c], [0, c], 'k--')
 ax1.set_title('Violence Against The Person')
 
-ax3.plot(x3[0], mu3[0], 'k-')
-ax3.plot(x3[4], mu3[4], 'r-')
+ax3.plot(x3[idxsepp], mu3[idxsepp], 'k-')
+ax3.plot(x3[idxnnkde], mu3[idxnnkde], 'r-')
+ax3.plot([0, c], [0, c], 'k--')
 ax3.set_title('Burglary From Dwelling')
 
-ax67.plot(x67[0], mu67[0], 'k-')
-ax67.plot(x67[4], mu67[4], 'r-')
+ax67.plot(x67[idxsepp], mu67[idxsepp], 'k-')
+ax67.plot(x67[idxnnkde], mu67[idxnnkde], 'r-')
+ax67.plot([0, c], [0, c], 'k--')
 ax67.set_title('Theft Of/From Vehicle')
 
 ax3.yaxis.set_visible(False)
