@@ -25,9 +25,9 @@ CHICAGO_DATA_DIR = os.path.join(settings.DATA_DIR, 'chicago')
 def setup_ocu(**kwargs):
     OCU_CSV = os.path.join(CAD_DATA_DIR, 'ocu.csv')
     with open(OCU_CSV, 'r') as f:
-        c = csv.reader(f)
+        c = csv.DictReader(f)
         for row in c:
-            ocu =  models.Ocu(code=row[0], description=row[1])
+            ocu =  models.Ocu(code=row['code'], description=row['interpretation'])
             ocu.save()
 
 
@@ -35,6 +35,8 @@ def setup_nicl(**kwargs):
     NICL_CATEGORIES_CSV = os.path.join(CAD_DATA_DIR, 'nicl_categories.csv')
     with open(NICL_CATEGORIES_CSV, 'r') as f:
         c = csv.reader(f)
+        # read header
+        fields = c.next()
         for row in c:
             data = {
                 'number': int(row[0]),
@@ -160,6 +162,8 @@ def setup_cris(**kwargs):
 
 def setup_boroughs(verbose=True):
     dt = models.DivisionType.objects.get(name='borough')
+    # delete existing boroughs
+    models.Division.objects.filter(type=dt).delete()
 
     def pre_save_callback(sender, instance, *args, **kwargs):
         instance.type = dt
@@ -602,11 +606,15 @@ def setup_all(verbose=False):
         ('NICL', setup_nicl),
         ('BOROUGHS', setup_boroughs),
         ('WARDS', setup_ward_boundaries),
-        ('LSOA', setup_lsoa_boundaries),
-        ('MSOA', setup_msoa_boundaries),
+        # ('LSOA', setup_lsoa_boundaries),
+        # ('MSOA', setup_msoa_boundaries),
         ('CADGRID', setup_cad250_grid),
         ('CAD', setup_cad),
         ('CRIS', setup_cris),
+        ('CHICAGODIVISION', setup_chicago_division),
+        ('CHICAGOSIDES', setup_chicago_sides),
+        ('CHICAGOCOMMUNITYAREA', setup_chicago_community_area),
+        ('CHICAGODATA', setup_chicago_data),
     ])
     for name, func in make_list.items():
         try:
