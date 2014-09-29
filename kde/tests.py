@@ -55,7 +55,7 @@ class TestHelperFunctions(unittest.TestCase):
         self.assertEqual(sw[0], sw[1])
 
 
-class TestMultivariateNormal(unittest.TestCase):
+class TestKernelMultivariateNormal(unittest.TestCase):
 
     def test_mvn1d(self):
         mvn = kernels.MultivariateNormal([0], [1])
@@ -84,6 +84,10 @@ class TestMultivariateNormal(unittest.TestCase):
         y_expct = multivariate_normal.pdf(x, mean=[0, 0, 0], cov=np.eye(3))
         self.assertEqual(np.sum(np.abs((y - y_expct)).flatten()>1e-12), 0) # no single difference > 1e-12
 
+
+class TestKernelLinear(unittest.TestCase):
+    ## TODO: some trivial tests
+    pass
 
 class TestFixedBandwidthKde(unittest.TestCase):
 

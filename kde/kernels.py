@@ -103,6 +103,10 @@ class MultivariateNormal(BaseKernel):
 
 class LinearKernel(BaseKernel):
 
+    """
+    Simple linear 1D kernel.  Useful for network KDE.
+    """
+
     def __init__(self, h):
         self.h = float(h)
 

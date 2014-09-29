@@ -5,6 +5,9 @@ from functools import partial
 from kde import kernels
 import multiprocessing as mp
 from models import marginal_icdf_optimise
+from contextlib import closing
+import time
+import ctypes
 
 class KernelCluster(object):
 
@@ -34,9 +37,15 @@ class KernelCluster(object):
         return reduce(operator.add, (getattr(x, funcstr)(data, **kwargs) for x in self.kernels))
 
 
-def runner(x, fstr=None, fd=None):
-    print "runner(x, %s, %s)" % (fstr, str(fd))
+def runner_parallel(x, fstr=None, fd=None):
+    # print "runner(x, %s, %s)" % (fstr, str(fd))
     return x.additive_operation(fstr, fd)
+
+
+def runner_debug(x, fd=None):
+    print "RUNNER DEBUG"
+    time.sleep(3)
+    return np.random.rand(fd.shape[0]) ** 2
 
 
 class FixedBandwidthKde(object):
@@ -118,10 +127,9 @@ class FixedBandwidthKde(object):
             shp = np.array(args[0], dtype=np.float64).shape
         flat_data = np.vstack([np.array(x, dtype=np.float64).flatten() for x in args]).transpose()
 
-        # z = sum(self.pool.map(runner, self.kernel_clusters))
-        pool = mp.Pool(processes=self.ncpu)
-        z = sum(pool.map(partial(runner, fstr=funcstr, fd=flat_data), self.kernel_clusters))
-        pool.close()
+        with closing(mp.Pool(processes=self.ncpu)) as pool:
+            z = sum(pool.map(partial(runner_parallel, fstr=funcstr, fd=flat_data), self.kernel_clusters))
+            # z = sum(pool.map(partial(runner_debug, fd=flat_data), self.kernel_clusters))
 
         if normed:
             z /= float(self.ndata)
@@ -212,20 +220,19 @@ class FixedBandwidthKde(object):
         return self._t_dependent_variance(t)[2]
 
 
-def _init(arr_to_populate, shp_to_populate):
+def _init(arr_pt_to_populate, shp_to_populate):
     """ Each pool process calls this initializer. Load the array to be populated into that process's global namespace """
-    global arr
     global shp
-    arr = arr_to_populate
+    global arr_pt
     shp = shp_to_populate
+    arr_pt = arr_pt_to_populate
 
 
-def runner2(x, fstr=None):
-    global arr
+def runner_shared_mem(x, fstr=None):
     global shp
-    v = np.ctypeslib.as_array(arr)
-    v.shape = shp
-    print "runner(x, %s, %s)" % (fstr, str(v))
+    global arr_pt
+    v = np.ctypeslib.as_array(arr_pt, shape=shp)
+    # print "runner(x, %s, %s)" % (fstr, str(v))
     return x.additive_operation(fstr, v)
 
 
@@ -242,16 +249,21 @@ class FixedBandwidthKdeShared(FixedBandwidthKde):
             # inputs not arrays
             shp = np.array(args[0], dtype=np.float64).shape
         flat_data = np.vstack([np.array(x, dtype=np.float64).flatten() for x in args]).transpose()
-        concat_data = flat_data.flat
 
-        # concat_data = np.hstack([np.array(x, dtype=np.float64).flatten() for x in args]).transpose()
+        # ctypes POINTER
+        # c_double_p = ctypes.POINTER(ctypes.c_double)
+        # flat_data_ctypes_p = flat_data.ctypes.data_as(c_double_p)
+        c_float_p = ctypes.POINTER(ctypes.c_float)
+        flat_data_ctypes_p = flat_data.astype(np.float32).ctypes.data_as(c_float_p)
 
-        flat_data_ctypes = mp.sharedctypes.RawArray('d', concat_data)
+        # ctypes ARRAY
+        # concat_data = flat_data.flat
+        # flat_data_ctypes = mp.sharedctypes.RawArray('d', concat_data)
 
-        # z = sum(self.pool.map(runner, self.kernel_clusters))
-        pool = mp.Pool(processes=self.ncpu, initializer=_init, initargs=(flat_data_ctypes, flat_data.shape))
-        z = sum(pool.map(partial(runner2, fstr=funcstr), self.kernel_clusters))
-        pool.close()
+        with closing(
+                mp.Pool(processes=self.ncpu, initializer=_init, initargs=(flat_data_ctypes_p, flat_data.shape))
+        ) as pool:
+            z = sum(pool.map(partial(runner_shared_mem, fstr=funcstr), self.kernel_clusters))
 
         if normed:
             z /= float(self.ndata)
