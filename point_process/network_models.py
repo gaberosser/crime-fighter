@@ -15,8 +15,10 @@ class NetworkPointProcess(object):
     def __init__(self, p=None, max_trigger_d=None, max_trigger_t=None, min_bandwidth=None, dtype=np.float64,
                  estimator=None, num_nn=None):
         self.dtype = dtype
-        self.data = np.array([], dtype=dtype)
+        self.point_data = np.array([], dtype=dtype)
+        self.network_locations = None
         self.network = None
+
         self.T = 0.
         self.min_bandwidth = min_bandwidth
         self.num_nn = num_nn or [None] * 3
@@ -50,22 +52,22 @@ class NetworkPointProcess(object):
 
     def reset(self):
         # reset storage containers
-        self.run_times = []
-        self.num_bg = []
-        self.num_trig = []
-        self.l2_differences = []
-        self.bg_t_kde = None
-        self.bg_xy_kde = None
-        self.trigger_kde = None
+        # TODO: UPDATE
+        pass
 
     def set_data(self, data):
         self.data = np.array(data, dtype=self.dtype)
         # sort data by time
-        self.data = self.data[self.data[:, 0].argsort()]
-        self.T = np.ptp(self.data[:, 0]) # time window
+        self.point_data = self.data[self.data[:, 0].argsort()]
+        self.T = np.ptp(self.point_data[:, 0]) # time window
         # set threshold distance and time if not provided
-        self.max_trigger_t = self.max_trigger_t or np.ptp(self.data[:, 0]) / 10.
-        self.max_trigger_d = self.max_trigger_d or np.sqrt(np.ptp(self.data[:, 1])**2 + np.ptp(self.data[:, 2])**2) / 20.
+        self.max_trigger_t = self.max_trigger_t or np.ptp(self.point_data[:, 0]) / 10.
+        self.max_trigger_d = self.max_trigger_d or \
+                             np.sqrt(np.ptp(self.point_data[:, 1])**2 + np.ptp(self.point_data[:, 2])**2) / 20.
+
+    def set_network(self, graph):
+        self.network = graph
+        self.network_locations = [graph.closest_segments_euclidean_brute_force(x, y)[1] for (x, y) in self.point_data[:, 1:]]
 
     @property
     def ndata(self):

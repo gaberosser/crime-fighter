@@ -26,4 +26,5 @@ tornado
 wsgiref
 psutil
 networkx
+pillow
 pysal
