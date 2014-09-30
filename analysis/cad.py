@@ -507,6 +507,7 @@ class CadByGrid(object):
 
 
 def global_i_analysis():
+    from stats.logic import rook_boolean_connectivity, global_morans_i_p
 
     short_names = ['Violence', 'Sexual Offences', 'Burglary Dwelling', 'Burglary Non-dwelling',
                    'Robbery', 'Theft of Vehicle', 'Theft from Vehicle', 'Other Theft',
@@ -515,26 +516,32 @@ def global_i_analysis():
 
     cbg = CadByGrid()
     a = cbg.all_time_aggregate()
-    W = logic.rook_boolean_connectivity(cbg.grid)
-    global_i = [(x, logic.global_morans_i_p(a[x], W, n_iter=5000)) for x in a]
+
+    # sort by ascending number of crimes
+    sort_idx = np.argsort(a.sum().values)
+    short_names = [short_names[i] for i in sort_idx]
+    a = a[sort_idx]
+
+    W = rook_boolean_connectivity(cbg.grid)
+    global_i = [(x, global_morans_i_p(a[x], W, n_iter=5000)) for x in a]
 
     fig = plt.figure(figsize=[10, 10])
     ax = fig.add_axes([0.1, 0.2, 0.85, 0.75])
-    hbar = ax.bar(range(cbg.l), [x[1][0] for x in global_i], width = 0.8)
+    hbar = ax.bar(range(cbg.l), [x[1][0] for x in global_i], width=0.8, edgecolor='k')
     for i in range(cbg.l):
         if global_i[i][1][1] < 0.01:
-            hbar[i].set_color('r')
+            hbar[i].set_facecolor('#FF9C9C')
         elif global_i[i][1][1] < 0.05:
-            hbar[i].set_color('y')
+            hbar[i].set_facecolor('#FFFF66')
         else:
-            hbar[i].set_color('b')
+            hbar[i].set_facecolor('gray')
     ax.set_xticks([float(x) + 0.5 for x in range(cbg.l)])
-    ax.set_xticklabels(short_names)
-    ax.set_ylabel('Global Moran''s I')
-    ax.set_xlabel('Crime type (NICL)')
+    ax.set_xticklabels(short_names, rotation=60, ha='right', fontsize=18)
+    ax.set_ylabel('Global Moran''s I', fontsize=22)
+    ax.set_xlim([0, cbg.l])
 
-    xticks = ax.xaxis.get_ticklabels()
-    plt.setp(xticks, rotation=90)
+    yticks = ax.yaxis.get_ticklabels()
+    plt.setp(yticks, fontsize=20)
     plt.show()
 
 
@@ -546,20 +553,35 @@ def numbers_by_type():
                    'Shoplifting', 'Harassment', 'Abduction/Kidnap']
 
     cbg = CadByGrid()
-    a = cbg.all_time_aggregate()
-    num_crimes = a.sum()
+    bucket_dict = collections.OrderedDict(
+        [
+            ('all', lambda x: True),
+            ('old', lambda x: x < logic.CAD_GEO_CUTOFF),
+            ('new', lambda x: x >= logic.CAD_GEO_CUTOFF),
+        ]
+    )
+    res = cbg.time_aggregate_data(bucket_dict)
+    num_crimes_all = res['all'].sum()
+    sort_idx = np.argsort(num_crimes_all.values)
+    num_crimes_old = res['old'].sum()[sort_idx]
+    num_crimes_new = res['new'].sum()[sort_idx]
+    short_names = [short_names[i] for i in sort_idx]
 
     fig = plt.figure(figsize=[12, 12])
     ax = fig.add_axes([0.1, 0.2, 0.85, 0.75])
-    hbar = ax.bar(range(cbg.l), num_crimes.values, width=0.8)
+    hbar_old = ax.bar(range(cbg.l), num_crimes_old.values, width=0.8, color='black')
+    hbar_new = ax.bar(range(cbg.l), num_crimes_new.values, width=0.8, color='gray', bottom=num_crimes_old.values)
 
     ax.set_xticks([float(x) + 0.5 for x in range(cbg.l)])
     ax.set_xticklabels(short_names)
-    ax.set_ylabel('Number in 1 year')
-    ax.set_xlabel('Crime type (NICL)')
+
+    plt.legend(('Snapped to grid', 'Snapped to segment'), loc='upper left')
 
     xticks = ax.xaxis.get_ticklabels()
-    plt.setp(xticks, rotation=90)
+    plt.setp(xticks, rotation=60, ha='right', fontsize=18)
+    yticks = ax.yaxis.get_ticklabels()
+    plt.setp(yticks, fontsize=20)
+    ax.set_xlim([0, cbg.l])
     plt.show()
 
 
