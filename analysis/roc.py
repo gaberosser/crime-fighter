@@ -2,8 +2,6 @@ __author__ = 'gabriel'
 
 from django.contrib.gis import geos
 import numpy as np
-import pp
-import mcint
 import math
 from spatial import create_spatial_grid
 import collections

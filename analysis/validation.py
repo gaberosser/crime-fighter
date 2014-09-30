@@ -1,7 +1,7 @@
 __author__ = 'gabriel'
 from django.contrib.gis import geos
 import numpy as np
-import mcint
+# import mcint
 import math
 from roc import RocSpatial
 import collections
@@ -109,17 +109,17 @@ class ValidationBase(object):
         """ Train the predictor on training data """
         self.model.train(self.training, *args, **kwargs)
 
-    def predict_on_poly(self, t, poly, *args, **kwargs):
-        # FIXME: disabled as too slow
-        # idea here is to allow more accurate assessment of prediction on a region, rather than just using the centroid
-        method = kwargs.pop('method', 'centroid')
-        if method == 'int':
-            res, err = mcint.integrate(lambda x: self.model.predict(t, x[0], x[1]), mc_sampler(poly), n=100)
-        elif method == 'centroid':
-            res = self.model.predict(t, *poly.centroid.coords)
-        else:
-            raise NotImplementedError("Unsupported method %s", method)
-        return res
+    # def predict_on_poly(self, t, poly, *args, **kwargs):
+    #     # FIXME: disabled as too slow
+    #     # idea here is to allow more accurate assessment of prediction on a region, rather than just using the centroid
+    #     method = kwargs.pop('method', 'centroid')
+    #     if method == 'int':
+    #         res, err = mcint.integrate(lambda x: self.model.predict(t, x[0], x[1]), mc_sampler(poly), n=100)
+    #     elif method == 'centroid':
+    #         res = self.model.predict(t, *poly.centroid.coords)
+    #     else:
+    #         raise NotImplementedError("Unsupported method %s", method)
+    #     return res
 
     def predict(self, t, **kwargs):
         print "predict"

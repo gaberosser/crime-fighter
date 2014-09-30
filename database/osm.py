@@ -257,4 +257,6 @@ class OsmRendererBase(object):
                         s = this_style['__other']
                         plotting.plot_geodjango_shapes(x, ax=ax, set_axes=False, **s)
         ax.set_aspect('equal')
+        ax.set_xticks([])
+        ax.set_yticks([])
         return ax

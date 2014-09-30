@@ -19,7 +19,12 @@ class PointProcess(object):
         self.data = np.array([], dtype=dtype)
         self.T = 0.
         self.min_bandwidth = min_bandwidth
-        self.num_nn = num_nn or [None] * 3
+
+        if num_nn is not None:
+            self.num_nn = num_nn
+        else:
+            self.num_nn = [None] * 3
+
         if not hasattr(self.num_nn, '__iter__'):
             self.num_nn = [self.num_nn] * 3
             warnings.warn("Received single fixed number of NNs to use for KDE (%d).  Using this for all dimensions." %
