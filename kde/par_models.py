@@ -251,10 +251,10 @@ class FixedBandwidthKdeShared(FixedBandwidthKde):
         flat_data = np.vstack([np.array(x, dtype=np.float64).flatten() for x in args]).transpose()
 
         # ctypes POINTER
-        # c_double_p = ctypes.POINTER(ctypes.c_double)
-        # flat_data_ctypes_p = flat_data.ctypes.data_as(c_double_p)
-        c_float_p = ctypes.POINTER(ctypes.c_float)
-        flat_data_ctypes_p = flat_data.astype(np.float32).ctypes.data_as(c_float_p)
+        c_double_p = ctypes.POINTER(ctypes.c_double)
+        flat_data_ctypes_p = flat_data.ctypes.data_as(c_double_p)
+        # c_float_p = ctypes.POINTER(ctypes.c_float)
+        # flat_data_ctypes_p = flat_data.astype(np.float32).ctypes.data_as(c_float_p)
 
         # ctypes ARRAY
         # concat_data = flat_data.flat

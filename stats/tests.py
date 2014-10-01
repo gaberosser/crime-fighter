@@ -16,6 +16,42 @@ from pandas import Series, DataFrame
 UKTEMP = os.path.join(os.path.dirname(__file__), 'test_data', 'uk_avg_temp.csv')
 METREGIONS = os.path.join(os.path.dirname(__file__), 'test_data/met_office_regions', 'met_office_regions.shp')
 
+
+class BasicStats(TestCase):
+
+    def test_weighted_stdev(self):
+        # 1D data
+
+        # weights all unity
+        data = np.linspace(0, 1, 11)
+        weights = np.ones_like(data)
+        # test the weighted stdev is equal to the usual UNBIASED estimator
+        sw = logic.weighted_stdev(data, weights)
+        self.assertIsInstance(sw, float)
+        self.assertEqual(sw, np.std(data, ddof=1))
+
+        # weights all equal
+        weights *= np.pi
+        # test the weighted stdev is equal to the usual UNBIASED estimator
+        self.assertEqual(logic.weighted_stdev(data, weights), np.std(data, ddof=1))
+
+        # two source distributions (weights differ)
+        n = 1000000
+        weighted_data = np.hstack((np.random.RandomState(42).randn(n) - 1, np.random.RandomState(42).randn(n) + 1))
+        weights = np.hstack((np.ones(n) * 2 / 3., np.ones(n) / 3.))
+        sw = logic.weighted_stdev(weighted_data, weights)
+
+        # analytic variance is 1 + 8/9
+        self.assertAlmostEqual(sw, np.sqrt(1 + 8/9.), places=2)  # 2DP
+
+        # 2D data
+        data = np.tile(np.linspace(0, 1, 11).reshape(11, 1), (1, 2))
+        weights = np.ones(11)
+        sw = logic.weighted_stdev(data, weights)
+        self.assertEqual(sw.size, 2)
+        self.assertEqual(sw[0], sw[1])
+
+
 class TemporalStats(TestCase):
 
     def setUp(self):

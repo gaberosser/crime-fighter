@@ -22,38 +22,6 @@ class TestHelperFunctions(unittest.TestCase):
         self.assertAlmostEqual(kernels.normcdf(10., 0., 1.), 1.0)
         self.assertAlmostEqual(kernels.normcdf(0., 0., 10.), 0.5)
 
-    def test_weighted_stdev(self):
-        # 1D data
-
-        # weights all unity
-        data = np.linspace(0, 1, 11)
-        weights = np.ones_like(data)
-        # test the weighted stdev is equal to the usual UNBIASED estimator
-        sw = weighted_stdev(data, weights)
-        self.assertIsInstance(sw, float)
-        self.assertEqual(sw, np.std(data, ddof=1))
-
-        # weights all equal
-        weights *= np.pi
-        # test the weighted stdev is equal to the usual UNBIASED estimator
-        self.assertEqual(weighted_stdev(data, weights), np.std(data, ddof=1))
-
-        # two source distributions (weights differ)
-        n = 1000000
-        weighted_data = np.hstack((np.random.RandomState(42).randn(n) - 1, np.random.RandomState(42).randn(n) + 1))
-        weights = np.hstack((np.ones(n) * 2 / 3., np.ones(n) / 3.))
-        sw = weighted_stdev(weighted_data, weights)
-
-        # analytic variance is 1 + 8/9
-        self.assertAlmostEqual(sw, np.sqrt(1 + 8/9.), places=2)  # 2DP
-
-        # 2D data
-        data = np.tile(np.linspace(0, 1, 11).reshape(11, 1), (1, 2))
-        weights = np.ones(11)
-        sw = weighted_stdev(data, weights)
-        self.assertEqual(sw.size, 2)
-        self.assertEqual(sw[0], sw[1])
-
 
 class TestKernelMultivariateNormal(unittest.TestCase):
 
