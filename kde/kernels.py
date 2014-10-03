@@ -25,6 +25,12 @@ class BaseKernel(object):
     def pdf(self, x):
         raise NotImplementedError()
 
+    def marginal_pdf(self, x, dim=0):
+        raise NotImplementedError()
+
+    def marginal_cdf(self, x, dim=0):
+        raise NotImplementedError()
+
 
 class MultivariateNormal(BaseKernel):
 

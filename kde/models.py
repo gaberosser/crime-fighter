@@ -43,26 +43,26 @@ def marginal_icdf_optimise(k, y, dim=0, tol=1e-8):
 # A few helper functions required for parallel processing
 
 
-def runner_additive(x, fstr=None, fd=None):
-    return x.additive_operation(fstr, fd)
+def runner_additive(x, fstr=None, fd=None, **kwargs):
+    return x.additive_operation(fstr, fd, **kwargs)
 
 
-def runner_additive_shared(x, fstr=None):
+def runner_additive_shared(x, fstr=None, **kwargs):
     global shp
     global arr_pt
     v = np.ctypeslib.as_array(arr_pt, shape=shp)
-    return x.additive_operation(fstr, v)
+    return x.additive_operation(fstr, v, **kwargs)
 
 
-def runner(x, fstr=None, fd=None):
-    return x.operation(fstr, fd)
+def runner(x, fstr=None, fd=None, **kwargs):
+    return x.operation(fstr, fd, **kwargs)
 
 
-def runner_shared(x, fstr=None):
+def runner_shared(x, fstr=None, **kwargs):
     global shp
     global arr_pt
     v = np.ctypeslib.as_array(arr_pt, shape=shp)
-    return x.operation(fstr, v)
+    return x.operation(fstr, v, **kwargs)
 
 
 def shared_process_init(arr_pt_to_populate, shp_to_populate):
@@ -129,11 +129,13 @@ class KdeBase(object):
 
     kernel_class = kernels.BaseKernel
 
-    def __init__(self, data, *args, **kwargs):
+    def __init__(self, data, parallel=True, *args, **kwargs):
         # print "KdeBase.__init__"
         self.data = np.array(data)
         if self.data.ndim == 1:
             self.data = self.data.reshape((self.data.size, 1))
+
+        self.parallel = parallel
 
         try:
             self.ncpu = kwargs.pop('ncpu', mp.cpu_count())
@@ -166,6 +168,9 @@ class KdeBase(object):
         """
         :return: List of (start, end) indices into data, bandwidths, each corresponding to the tasks of a worker
         """
+        if not self.parallel:
+            return [(0, self.ndata)]
+
         ## TODO: check this cutoff value
         if self.ndata < (self.ncpu * 50):
             # not worth splitting data up
@@ -228,7 +233,9 @@ class KdeBase(object):
             shp = np.array(args[0], dtype=np.float64).shape
         flat_data = np.vstack([np.array(x, dtype=np.float64).flatten() for x in args]).transpose()
 
-        if self.b_shared:
+        if not self.parallel:
+            z = self.kernel_clusters[0].additive_operation(funcstr, flat_data, **kwargs)
+        elif self.b_shared:
             # create ctypes array pointer
             c_double_p = ctypes.POINTER(ctypes.c_double)
             flat_data_ctypes_p = flat_data.ctypes.data_as(c_double_p)
@@ -236,11 +243,10 @@ class KdeBase(object):
                     mp.Pool(processes=self.ncpu, initializer=shared_process_init,
                             initargs=(flat_data_ctypes_p, flat_data.shape))
             ) as pool:
-                z = sum(pool.map(partial(runner_additive_shared, fstr=funcstr), self.kernel_clusters))
-
+                z = sum(pool.map(partial(runner_additive_shared, fstr=funcstr, **kwargs), self.kernel_clusters))
         else:
             with closing(mp.Pool(processes=self.ncpu)) as pool:
-                z = sum(pool.map(partial(runner_additive, fstr=funcstr, fd=flat_data), self.kernel_clusters))
+                z = sum(pool.map(partial(runner_additive, fstr=funcstr, fd=flat_data, **kwargs), self.kernel_clusters))
 
         if normed:
             z /= float(self.ndata)

@@ -51,15 +51,16 @@ def noisy_init(c, noise_level=0.):
 
 if __name__ == '__main__':
 
-    num_iter = 20
+    num_iter = 10
+    parallel = False
     c, data = initial_simulation()
     ndata = data.shape[0]
 
     # set estimation seed for consistency
     models.estimation.set_seed(42)
     # r = models.PointProcessStochastic(max_trigger_d=0.75, max_trigger_t=80, min_bandwidth=[1., .05, .05])
-    # r = models.PointProcessStochasticNn(max_trigger_d=0.75, max_trigger_t=80)
-    r = models.PointProcessDeterministicNn(max_trigger_d=0.75, max_trigger_t=80)
+    r = models.PointProcessStochasticNn(max_trigger_d=0.75, max_trigger_t=80, parallel=parallel)
+    # r = models.PointProcessDeterministicNn(max_trigger_d=0.75, max_trigger_t=80)
     # r = models.PointProcessDeterministicFixedBandwidth(max_trigger_d=0.75, max_trigger_t=80, min_bandwidth=[1., .05, .05])
 
     try:
