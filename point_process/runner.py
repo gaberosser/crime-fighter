@@ -52,7 +52,7 @@ def noisy_init(c, noise_level=0.):
 if __name__ == '__main__':
 
     num_iter = 10
-    parallel = False
+    parallel = True
     c, data = initial_simulation()
     ndata = data.shape[0]
 

@@ -7,6 +7,7 @@ import ctypes
 import multiprocessing as mp
 from kde import kernels
 from stats.logic import weighted_stdev
+from sklearn.neighbors import NearestNeighbors
 
 
 def marginal_icdf_optimise(k, y, dim=0, tol=1e-8):
@@ -384,6 +385,15 @@ class VariableBandwidthNnKde(VariableBandwidthKde):
         # compute nn distances on normed data
         nd = self.normed_data
         std = self.raw_std_devs
+
+        # increment NN by one since first result is always self-match
+        nn_obj = NearestNeighbors(self.nn + 1).fit(nd)
+        dist, _ = nn_obj.kneighbors(nd)
+
+        self.nn_distances = dist[:, -1]
+
+        # check for NN distances below tolerance
+        ## FIXME: continue from here using new method
 
         kd = KDTree(nd)
 
