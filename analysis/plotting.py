@@ -32,7 +32,7 @@ def geodjango_to_shapely(shapes, c=ccrs.OSGB()):
     polys = []
     for t in shapes:
         if isinstance(t, geos.Polygon):
-            polys.append(shapely_geometry.Polygon(t.coords))
+            polys.append(geos_poly_to_shapely(t))
         elif isinstance(t, geos.MultiPolygon):
             polys.append(shapely_geometry.MultiPolygon([shapely_geometry.Polygon(x[0]) for x in t.coords]))
 

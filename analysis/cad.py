@@ -19,6 +19,7 @@ from point_process import estimation, models as pp_models, validate
 import hotspot
 import validation
 from itertools import combinations
+from stats.logic import rook_boolean_connectivity, global_morans_i_p, local_morans_i as lmi
 
 UK_TZ = pytz.timezone('Europe/London')
 SEC_IN_DAY = float(24 * 60 * 60)
@@ -275,12 +276,14 @@ def jiggle_all_points_on_grid(x, y):
 def apply_point_process(nicl_type=3,
                         only_new=False,
                         niter=15,
+                        num_nn=None,
+                        min_bandwidth=None,
                         jiggle_scale=None):
 
     max_trigger_t = 30 # units days
     max_trigger_d = 500 # units metres
-    min_bandwidth = np.array([0.3, 5., 5.])
-    # min_bandwidth = None
+    # if min_bandwidth is None:
+    #     min_bandwidth = np.array([0.3, 5., 5.])
 
     # get data
     res, t0 = get_crimes_by_type(nicl_type=nicl_type, only_new=only_new, jiggle_scale=jiggle_scale)
@@ -290,7 +293,7 @@ def apply_point_process(nicl_type=3,
 
 
     r = pp_models.PointProcessStochasticNn(estimator=est, max_trigger_t=max_trigger_t, max_trigger_d=max_trigger_d,
-                            min_bandwidth=min_bandwidth)
+                            min_bandwidth=min_bandwidth, num_nn=num_nn)
 
     # train on all data
     ps = r.train(data=res, niter=niter, tol_p=5e-5)
@@ -417,8 +420,17 @@ def diggle_st_clustering(nicl_type=3):
 class CadByGrid(object):
 
     def __init__(self, nicl_numbers=range(1, 16), grid=None):
+        if nicl_numbers is None:
+            # include ALL crimes
+            nicl_numbers = [[x.number for x in models.Nicl.objects.all()]]
         self.nicl_numbers = nicl_numbers
-        self.nicl_names = [models.Nicl.objects.get(number=x).description for x in nicl_numbers]
+
+        self.nicl_names = []
+        for nicl in nicl_numbers:
+            if not hasattr(nicl, '__iter__'):
+                nicl = [nicl]
+            self.nicl_names.append(' and '.join([models.Nicl.objects.get(number=x).description for x in nicl]))
+        # self.nicl_names = [models.Nicl.objects.get(number=x).description for x in nicl_numbers]
         self.grid = grid or models.Division.objects.filter(type='cad_250m_grid')
         self.shapely_grid = pandas.Series([geodjango_to_shapely([x.mpoly]) for x in self.grid],
                                           index=[x.name for x in self.grid])
@@ -443,16 +455,27 @@ class CadByGrid(object):
 
         for i in range(self.l):
             nicl = self.nicl_numbers[i]
+            data, t0 = get_crimes_by_type(nicl_type=nicl)
+            dates = [t0 + datetime.timedelta(days=x) for x in data[:, 0]]
             # filter by crime type and de-dupe
-            this_qset = self.cad.filter(Q(cl01=nicl) | Q(cl02=nicl) | Q(cl03=nicl)).values(
-                'att_map',
-                'cris_entry',
-                'inc_datetime',
-                ).distinct('cris_entry')
+            # this_qset = self.cad.filter(Q(cl01=nicl) | Q(cl02=nicl) | Q(cl03=nicl)).values(
+            #     'att_map',
+            #     'cris_entry',
+            #     'inc_datetime',
+            #     ).distinct('cris_entry')
+
+            ## FIXME? this only works if 'grid' is square.  Fine at the moment, may need amending in future.
+
+            # iterate over grid
             for j in range(self.m):
                 this_grid = self.grid[j]
-                qry = {'att_map__within': this_grid.mpoly}
-                res[i][j] = [x['inc_datetime'] for x in this_qset.filter(**qry)]
+                this_extent = this_grid.mpoly.extent
+
+                res[i][j] = [d for d, x, y in zip(dates, data[:, 1], data[:, 2]) if
+                             this_extent[0] <= x < this_extent[2] and this_extent[1] <= y < this_extent[3]]
+
+                # qry = {'att_map__within': this_grid.mpoly}
+                # res[i][j] = [x['inc_datetime'] for x in this_qset.filter(**qry)]
                 if len(res[i][j]):
                     start_date = min(start_date, min(res[i][j]))
                     end_date = max(end_date, max(res[i][j]))
@@ -515,26 +538,32 @@ def global_i_analysis():
 
     cbg = CadByGrid()
     a = cbg.all_time_aggregate()
-    W = logic.rook_boolean_connectivity(cbg.grid)
-    global_i = [(x, logic.global_morans_i_p(a[x], W, n_iter=5000)) for x in a]
+
+    # sort by ascending number of crimes
+    sort_idx = np.argsort(a.sum().values)
+    short_names = [short_names[i] for i in sort_idx]
+    a = a[sort_idx]
+
+    W = rook_boolean_connectivity(cbg.grid)
+    global_i = [(x, global_morans_i_p(a[x], W, n_iter=5000)) for x in a]
 
     fig = plt.figure(figsize=[10, 10])
     ax = fig.add_axes([0.1, 0.2, 0.85, 0.75])
-    hbar = ax.bar(range(cbg.l), [x[1][0] for x in global_i], width = 0.8)
+    hbar = ax.bar(range(cbg.l), [x[1][0] for x in global_i], width=0.8, edgecolor='k')
     for i in range(cbg.l):
         if global_i[i][1][1] < 0.01:
-            hbar[i].set_color('r')
+            hbar[i].set_facecolor('#FF9C9C')
         elif global_i[i][1][1] < 0.05:
-            hbar[i].set_color('y')
+            hbar[i].set_facecolor('#FFFF66')
         else:
-            hbar[i].set_color('b')
+            hbar[i].set_facecolor('gray')
     ax.set_xticks([float(x) + 0.5 for x in range(cbg.l)])
-    ax.set_xticklabels(short_names)
-    ax.set_ylabel('Global Moran''s I')
-    ax.set_xlabel('Crime type (NICL)')
+    ax.set_xticklabels(short_names, rotation=60, ha='right', fontsize=18)
+    ax.set_ylabel('Global Moran''s I', fontsize=22)
+    ax.set_xlim([0, cbg.l])
 
-    xticks = ax.xaxis.get_ticklabels()
-    plt.setp(xticks, rotation=90)
+    yticks = ax.yaxis.get_ticklabels()
+    plt.setp(yticks, fontsize=20)
     plt.show()
 
 
@@ -546,24 +575,75 @@ def numbers_by_type():
                    'Shoplifting', 'Harassment', 'Abduction/Kidnap']
 
     cbg = CadByGrid()
-    a = cbg.all_time_aggregate()
-    num_crimes = a.sum()
+    bucket_dict = collections.OrderedDict(
+        [
+            ('all', lambda x: True),
+            ('old', lambda x: x < logic.CAD_GEO_CUTOFF),
+            ('new', lambda x: x >= logic.CAD_GEO_CUTOFF),
+        ]
+    )
+    res = cbg.time_aggregate_data(bucket_dict)
+    num_crimes_all = res['all'].sum()
+    sort_idx = np.argsort(num_crimes_all.values)
+    num_crimes_old = res['old'].sum()[sort_idx]
+    num_crimes_new = res['new'].sum()[sort_idx]
+    short_names = [short_names[i] for i in sort_idx]
 
     fig = plt.figure(figsize=[12, 12])
     ax = fig.add_axes([0.1, 0.2, 0.85, 0.75])
-    hbar = ax.bar(range(cbg.l), num_crimes.values, width=0.8)
+    hbar_old = ax.bar(range(cbg.l), num_crimes_old.values, width=0.8, color='black')
+    hbar_new = ax.bar(range(cbg.l), num_crimes_new.values, width=0.8, color='gray', bottom=num_crimes_old.values)
 
     ax.set_xticks([float(x) + 0.5 for x in range(cbg.l)])
     ax.set_xticklabels(short_names)
-    ax.set_ylabel('Number in 1 year')
-    ax.set_xlabel('Crime type (NICL)')
+
+    plt.legend(('Snapped to grid', 'Snapped to segment'), loc='upper left')
 
     xticks = ax.xaxis.get_ticklabels()
-    plt.setp(xticks, rotation=90)
+    plt.setp(xticks, rotation=60, ha='right', fontsize=18)
+    yticks = ax.yaxis.get_ticklabels()
+    plt.setp(yticks, fontsize=20)
+    ax.set_xlim([0, cbg.l])
     plt.show()
 
 
-def spatial_density_all_time():
+def spatial_density_all_time_all_crimes():
+
+    from database import osm
+
+    poly = get_camden_region()
+    camden_mpoly = geodjango_to_shapely([get_camden_region()])
+    oo = osm.OsmRendererBase(poly, buffer=100)
+
+    cbg = CadByGrid()
+    a = cbg.all_time_aggregate()
+
+    fig = plt.figure(figsize=(8, 8))
+    ax = fig.add_subplot(111, projection=ccrs.OSGB())
+    ax.set_extent([523000, 533000, 179000, 190000], ccrs.OSGB())
+    ax.background_patch.set_visible(False)
+    oo.render(ax)
+
+    a = a.sum(axis=1)
+
+    cmap = mpl.cm.Reds
+    norm = mpl.colors.Normalize()
+    norm.autoscale(a)
+    cax = mpl.colorbar.make_axes(ax, location='bottom', pad=0.02, fraction=0.05, shrink=0.9)
+    cbar = mpl.colorbar.ColorbarBase(cax[0], cmap=cmap, norm=norm, orientation='horizontal')
+    sm = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
+
+    for j in range(cbg.m):
+        val = a.values[j]
+        fc = sm.to_rgba(val) if val else 'none'
+        ax.add_geometries(geodjango_to_shapely([cbg.grid[j].mpoly]), ccrs.OSGB(), facecolor=fc, alpha=0.3)
+
+    ax.add_geometries(camden_mpoly, ccrs.OSGB(), facecolor='none', edgecolor='black')
+
+    plt.show()
+
+
+def spatial_density_all_time_by_crime():
 
     nicl_numbers = [3, 6, 10]
     short_names = ['Burglary Dwelling', 'Veh Theft', 'Crim Damage']
@@ -596,8 +676,8 @@ def spatial_density_all_time():
 
         ax.add_geometries(camden_mpoly, ccrs.OSGB(), facecolor='none', edgecolor='black')
 
-
     plt.show()
+
 
 def spatial_density_weekday_evening():
 
@@ -646,42 +726,53 @@ def spatial_density_weekday_evening():
 
 
 def local_morans_i():
-    nicl_numbers = [3, 6, 10]
-    short_names = ['Burglary Dwelling', 'Veh Theft', 'Crim Damage']
+    nicl_numbers = [1, 3, (6, 7)]
+    short_names = ['Violence', 'Burglary dwelling', 'Theft of/from vehicle']
     camden_mpoly = geodjango_to_shapely([models.Division.objects.get(name='Camden', type='borough').mpoly])
     cbg = CadByGrid(nicl_numbers=nicl_numbers)
     a = cbg.all_time_aggregate()
-    W = logic.rook_boolean_connectivity(cbg.grid)
+    W = rook_boolean_connectivity(cbg.grid)
 
     fig = plt.figure(figsize=(15, 6))
     axes = [fig.add_subplot(1, cbg.l, i+1, projection=ccrs.OSGB()) for i in range(cbg.l)]
     fig.subplots_adjust(left=0.05, right=0.95, bottom=0.05, top=0.95, wspace=0.03, hspace=0.01)
 
+    local_i = []
+    standard_local_i = []
+    max_li = 0.
+    min_li = 1e6
+
+    for i in range(cbg.l):
+        ds = a[cbg.nicl_names[i]]
+        this_res = lmi(ds, W)
+        local_i.append(this_res)
+        standard_local_i.append(this_res / this_res.std())
+        max_li = max(max_li, max(standard_local_i[i]))
+        min_li = min(min_li, min(standard_local_i[i]))
+
     for i in range(cbg.l):
         ax = axes[i]
-        ds = a[cbg.nicl_names[i]]
-        local_i = logic.local_morans_i(ds, W)
-
-        ax.set_title(cbg.nicl_names[i])
+        ax.set_title(short_names[i])
         ax.set_extent([523000, 533000, 179000, 190000], ccrs.OSGB())
         ax.background_patch.set_visible(False)
         # ax.outline_patch.set_visible(False)
-        cmap = mpl.cm.cool
-        norm = mpl.colors.Normalize()
-        norm.autoscale(local_i)
+        cmap = mpl.cm.jet
+        norm = mpl.colors.Normalize(vmin=min_li, vmax=max_li)
+        # norm.autoscale(local_i[i])
         cax = mpl.colorbar.make_axes(ax, location='bottom', pad=0.02, fraction=0.05, shrink=0.9)
         cbar = mpl.colorbar.ColorbarBase(cax[0], cmap=cmap, norm=norm, orientation='horizontal')
         sm = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
 
         for j in range(cbg.m):
-            val = local_i.values[j]
+            val = standard_local_i[i].values[j]
             fc = sm.to_rgba(val) if val else 'none'
             ax.add_geometries(geodjango_to_shapely([cbg.grid[j].mpoly]), ccrs.OSGB(), facecolor=fc)
 
         ax.add_geometries(camden_mpoly, ccrs.OSGB(), facecolor='none', edgecolor='black')
 
-
     plt.show()
+
+    return local_i
 
 def something_else():
 

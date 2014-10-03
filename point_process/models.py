@@ -14,12 +14,18 @@ import psutil
 
 class PointProcess(object):
     def __init__(self, p=None, max_trigger_d=None, max_trigger_t=None, min_bandwidth=None, dtype=np.float64,
-                 estimator=None, num_nn=None):
+                 estimator=None, num_nn=None, parallel=True):
         self.dtype = dtype
         self.data = np.array([], dtype=dtype)
         self.T = 0.
         self.min_bandwidth = min_bandwidth
-        self.num_nn = num_nn or [None] * 3
+        self.parallel = parallel
+
+        if num_nn is not None:
+            self.num_nn = num_nn
+        else:
+            self.num_nn = [None] * 3
+
         if not hasattr(self.num_nn, '__iter__'):
             self.num_nn = [self.num_nn] * 3
             warnings.warn("Received single fixed number of NNs to use for KDE (%d).  Using this for all dimensions." %
@@ -370,10 +376,13 @@ class PointProcessStochastic(PointProcess):
 
         # compute KDEs
         try:
-            self.bg_t_kde = pp_kde.FixedBandwidthKde(self.data[bg_idx, 0], bandwidths=self.min_bandwidth[:1])
-            self.bg_xy_kde = pp_kde.FixedBandwidthKde(self.data[bg_idx, 1:], bandwidths=self.min_bandwidth[1:])
+            self.bg_t_kde = pp_kde.FixedBandwidthKde(self.data[bg_idx, 0], bandwidths=self.min_bandwidth[:1],
+                                                     parallel=self.parallel)
+            self.bg_xy_kde = pp_kde.FixedBandwidthKde(self.data[bg_idx, 1:], bandwidths=self.min_bandwidth[1:],
+                                                      parallel=self.parallel)
             self.trigger_kde = pp_kde.FixedBandwidthKde(interpoint,
-                                                             bandwidths=self.min_bandwidth)
+                                                        bandwidths=self.min_bandwidth,
+                                                        parallel=self.parallel)
         except AttributeError as exc:
             print "Error.  Num BG: %d, num trigger %d" % (self.num_bg[-1], self.num_trig[-1])
             raise exc
@@ -387,11 +396,14 @@ class PointProcessStochasticNn(PointProcess):
 
         # compute KDEs
         try:
-            self.bg_t_kde = pp_kde.VariableBandwidthNnKde(self.data[bg_idx, 0], nn=self.num_nn[0])
-            self.bg_xy_kde = pp_kde.VariableBandwidthNnKde(self.data[bg_idx, 1:], nn=self.num_nn[1])
+            self.bg_t_kde = pp_kde.VariableBandwidthNnKde(self.data[bg_idx, 0], nn=self.num_nn[0],
+                                                          parallel=self.parallel)
+            self.bg_xy_kde = pp_kde.VariableBandwidthNnKde(self.data[bg_idx, 1:], nn=self.num_nn[1],
+                                                           parallel=self.parallel)
             self.trigger_kde = pp_kde.VariableBandwidthNnKde(interpoint,
                                                              min_bandwidth=self.min_bandwidth,
-                                                             nn=self.num_nn[2])
+                                                             nn=self.num_nn[2],
+                                                             parallel=self.parallel)
         except AttributeError as exc:
             print "Error.  Num BG: %d, num trigger %d" % (self.num_bg[-1], self.num_trig[-1])
             raise exc
@@ -407,14 +419,17 @@ class PointProcessDeterministicNn(PointProcess):
 
         self.bg_t_kde = pp_kde.WeightedVariableBandwidthNnKde(self.data[:, 0],
                                                               weights=p_bg,
-                                                              nn=self.num_nn[0])
+                                                              nn=self.num_nn[0],
+                                                              parallel=self.parallel)
         self.bg_xy_kde = pp_kde.WeightedVariableBandwidthNnKde(self.data[:, 1:],
                                                                weights=p_bg,
-                                                               nn=self.num_nn[1])
+                                                               nn=self.num_nn[1],
+                                                               parallel=self.parallel)
         self.trigger_kde = pp_kde.WeightedVariableBandwidthNnKde(self.interpoint_distance_data,
                                                                  weights=self.p[self.linkage],
                                                                  min_bandwidth=self.min_bandwidth,
-                                                                 nn=self.num_nn[2])
+                                                                 nn=self.num_nn[2],
+                                                                 parallel=self.parallel)
         self.num_bg.append(sum(p_bg))
         self.num_trig.append(self.ndata - sum(p_bg))
 

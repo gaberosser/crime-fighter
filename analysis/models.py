@@ -6,7 +6,6 @@ from django.core.management import call_command
 from database.models import Cad
 from database.logic import clean_dedupe_cad
 import numpy as np
-import pp
 
 class CadCircles(models.Model):
     cad_i = models.ForeignKey(Cad, to_field='id', help_text='Linked central CAD entry', null=False, blank=False,
@@ -52,29 +51,29 @@ def _create_cad_circle(pqset0, pqset1):
     return [(x.cad_i.id, x.cad_j.id) for x in res]
 
 
-def populate_cad_circles(nicl_type=None):
-    CadCircles.objects.all().delete()
-    qset = clean_dedupe_cad(nicl_type=nicl_type)
-    x, y = np.meshgrid(qset, qset, copy=False)
-    res = []
-    count = 0
-    job_server = pp.Server()
-    chunksize = 200000
-    xf = x.flatten()
-    yf = y.flatten()
-    total = xf.size
-
-    jobs = []
-
-    for i in range(int(total / chunksize) + 1):
-        # _create_cad_circle(xf[(i * chunksize):((i+1) * chunksize)], yf[(i * chunksize):((i+1) * chunksize)])
-        j = job_server.submit(_create_cad_circle, (xf[(i * chunksize):((i+1) * chunksize)], yf[(i * chunksize):((i+1) * chunksize)]), (), ())
-        jobs.append(j)
-        print "Dispatched chunk %d -> %d" % (i*chunksize, (i+1)*chunksize)
-
-    res = []
-    for i, j in enumerate(jobs):
-        res.append(j())
-        print "Completed job %d / %d" % (i, len(jobs))
-
-    return res
+# def populate_cad_circles(nicl_type=None):
+#     CadCircles.objects.all().delete()
+#     qset = clean_dedupe_cad(nicl_type=nicl_type)
+#     x, y = np.meshgrid(qset, qset, copy=False)
+#     res = []
+#     count = 0
+#     job_server = pp.Server()
+#     chunksize = 200000
+#     xf = x.flatten()
+#     yf = y.flatten()
+#     total = xf.size
+#
+#     jobs = []
+#
+#     for i in range(int(total / chunksize) + 1):
+#         # _create_cad_circle(xf[(i * chunksize):((i+1) * chunksize)], yf[(i * chunksize):((i+1) * chunksize)])
+#         j = job_server.submit(_create_cad_circle, (xf[(i * chunksize):((i+1) * chunksize)], yf[(i * chunksize):((i+1) * chunksize)]), (), ())
+#         jobs.append(j)
+#         print "Dispatched chunk %d -> %d" % (i*chunksize, (i+1)*chunksize)
+#
+#     res = []
+#     for i, j in enumerate(jobs):
+#         res.append(j())
+#         print "Completed job %d / %d" % (i, len(jobs))
+#
+#     return res

@@ -143,3 +143,32 @@ def rook_boolean_connectivity(areal_unit_qset):
         except ZeroDivisionError:
             pass
     return W
+
+
+def weighted_stdev(data, weights):
+    ndata = data.shape[0]
+    if weights.ndim != 1:
+        raise AttributeError("Weights must be a 1D array")
+    if weights.size != ndata:
+        raise AttributeError("Length of weights vector not equal to number of data")
+
+    if data.ndim == 1:
+        # 1D data
+        ndim = 1
+        _data = data.reshape(ndata, 1)
+    else:
+        ndim = data.shape[1]
+        _data = data
+
+    tiled_weights = np.tile(weights.reshape(ndata, 1), (1, ndim))
+    sum_weights = np.sum(weights)
+    M = float(sum(weights != 0.))  # number nonzero weights
+    wm = np.sum(tiled_weights * _data, axis=0) / sum_weights  # weighted arithmetic mean
+    a = np.sum(tiled_weights * ((_data - wm) ** 2), axis=0)  # numerator
+    b = sum_weights * (M - 1.) / M  # denominator
+
+    # check return type
+    if ndim == 1:
+        return np.sqrt(a / b)[0]
+    else:
+        return np.sqrt(a / b)

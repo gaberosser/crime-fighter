@@ -25,6 +25,12 @@ class BaseKernel(object):
     def pdf(self, x):
         raise NotImplementedError()
 
+    def marginal_pdf(self, x, dim=0):
+        raise NotImplementedError()
+
+    def marginal_cdf(self, x, dim=0):
+        raise NotImplementedError()
+
 
 class MultivariateNormal(BaseKernel):
 
@@ -102,6 +108,10 @@ class MultivariateNormal(BaseKernel):
 #         return it.operands[self.ndim]
 
 class LinearKernel(BaseKernel):
+
+    """
+    Simple linear 1D kernel.  Useful for network KDE.
+    """
 
     def __init__(self, h):
         self.h = float(h)

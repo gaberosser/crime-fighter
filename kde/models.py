@@ -1,7 +1,12 @@
 __author__ = 'gabriel'
 import numpy as np
 import operator
+from contextlib import closing
+from functools import partial
+import ctypes
+import multiprocessing as mp
 from kde import kernels
+from stats.logic import weighted_stdev
 
 
 def marginal_icdf_optimise(k, y, dim=0, tol=1e-8):
@@ -35,61 +40,49 @@ def marginal_icdf_optimise(k, y, dim=0, tol=1e-8):
     return x0
 
 
-def weighted_stdev(data, weights):
-    ndata = data.shape[0]
-    if weights.ndim != 1:
-        raise AttributeError("Weights must be a 1D array")
-    if weights.size != ndata:
-        raise AttributeError("Length of weights vector not equal to number of data")
-
-    if data.ndim == 1:
-        # 1D data
-        ndim = 1
-        _data = data.reshape(ndata, 1)
-    else:
-        ndim = data.shape[1]
-        _data = data
-
-    tiled_weights = np.tile(weights.reshape(ndata, 1), (1, ndim))
-    sum_weights = np.sum(weights)
-    M = float(sum(weights != 0.))  # number nonzero weights
-    wm = np.sum(tiled_weights * _data, axis=0) / sum_weights  # weighted arithmetic mean
-    a = np.sum(tiled_weights * ((_data - wm) ** 2), axis=0)  # numerator
-    b = sum_weights * (M - 1.) / M  # denominator
-
-    # check return type
-    if ndim == 1:
-        return np.sqrt(a / b)[0]
-    else:
-        return np.sqrt(a / b)
+# A few helper functions required for parallel processing
 
 
-class FixedBandwidthKde(object):
-    def __init__(self, data, *args, **kwargs):
+def runner_additive(x, fstr=None, fd=None, **kwargs):
+    return x.additive_operation(fstr, fd, **kwargs)
+
+
+def runner_additive_shared(x, fstr=None, **kwargs):
+    global shp
+    global arr_pt
+    v = np.ctypeslib.as_array(arr_pt, shape=shp)
+    return x.additive_operation(fstr, v, **kwargs)
+
+
+def runner(x, fstr=None, fd=None, **kwargs):
+    return x.operation(fstr, fd, **kwargs)
+
+
+def runner_shared(x, fstr=None, **kwargs):
+    global shp
+    global arr_pt
+    v = np.ctypeslib.as_array(arr_pt, shape=shp)
+    return x.operation(fstr, v, **kwargs)
+
+
+def shared_process_init(arr_pt_to_populate, shp_to_populate):
+    """ Each pool process calls this initializer. Load the array to be populated into that process's global namespace """
+    global shp
+    global arr_pt
+    shp = shp_to_populate
+    arr_pt = arr_pt_to_populate
+
+
+class KernelCluster(object):
+    """ Class for holding a 'cluster' of kernels, useful for parallelisation. """
+
+    def __init__(self, data, bandwidths, ktype=None):
+        self.ktype = ktype or kernels.MultivariateNormal
+        if data.shape != bandwidths.shape:
+            raise AttributeError("Dims of data and bandwidths do not match")
         self.data = data
-        if len(data.shape) == 1:
-            self.data = np.array(data).reshape((len(data), 1))
-
-        self.bandwidths = None
-        self.set_bandwidths(*args, **kwargs)
-        self.job_server = None
-        self.pool = None
-
-    def set_bandwidths(self, *args, **kwargs):
-        try:
-            bandwidths = kwargs.pop('bandwidths')
-        except KeyError:
-            bandwidths = self.range_array / float(self.ndata)
-
-        if len(bandwidths) != self.ndim:
-            raise AttributeError("Number of supplied bandwidths does not match the dimensionality of the data")
-
-        self.bandwidths = np.tile(bandwidths, (self.ndata, 1))
-        self.set_mvns()
-
-
-    def set_mvns(self):
-        self.mvns = [kernels.MultivariateNormal(self.data[i], self.bandwidths[i]**2) for i in range(self.ndata)]
+        self.bandwidths = bandwidths
+        self.kernels = self._kernels
 
     @property
     def ndim(self):
@@ -100,20 +93,134 @@ class FixedBandwidthKde(object):
         return self.data.shape[0]
 
     @property
-    def max_array(self):
-        return np.max(self.data, axis=0)
+    def _kernels(self):
+        return [self.ktype(self.data[i], self.bandwidths[i]**2) for i in range(self.ndata)]
+
+    def iter_operate(self, funcstr, data, **kwargs):
+        """
+        Return an iterator that executes the fun named in funcstr to each kernel in turn.
+        The function is passed the data and any kwargs supplied.
+        """
+        return (getattr(x, funcstr)(data, **kwargs) for x in self.kernels)
+
+    def additive_operation(self, funcstr, data, **kwargs):
+        """ Generic interface to call function named in funcstr on the data, reducing data by summing """
+        return reduce(operator.add, self.iter_operate(funcstr, data, **kwargs))
+
+    def operation(self, funcstr, data, **kwargs):
+        return list(self.iter_operate(funcstr, data, **kwargs))
+
+
+class WeightedKernelCluster(KernelCluster):
+
+    def __init__(self, data, weights, bandwidths, ktype=None):
+        self.weights = weights
+        super(WeightedKernelCluster, self).__init__(data, bandwidths, ktype=ktype)
+
+    def iter_operate(self, funcstr, data, **kwargs):
+        """
+        Return an iterator that executes the fun named in funcstr to each kernel in turn.
+        The function is passed the data and any kwargs supplied.
+        """
+        return (w * getattr(x, funcstr)(data, **kwargs) for (w, x) in zip(self.weights, self.kernels))
+
+
+class KdeBase(object):
+
+    kernel_class = kernels.BaseKernel
+
+    def __init__(self, data, parallel=True, *args, **kwargs):
+        # print "KdeBase.__init__"
+        self.data = np.array(data)
+        if self.data.ndim == 1:
+            self.data = self.data.reshape((self.data.size, 1))
+
+        self.parallel = parallel
+
+        try:
+            self.ncpu = kwargs.pop('ncpu', mp.cpu_count())
+        except NotImplementedError:
+            self.ncpu = 1
+        self.b_shared = kwargs.pop('sharedmem', False)
+
+        self.kernel_clusters = None
+        self.bandwidths = None
+        self.set_bandwidths(*args, **kwargs)
+        self.set_kernels()
 
     @property
-    def min_array(self):
-        return np.min(self.data, axis=0)
+    def ndim(self):
+        return self.data.shape[1]
 
     @property
-    def range_array(self):
-        return self.max_array - self.min_array
+    def ndata(self):
+        return self.data.shape[0]
 
     @property
     def raw_std_devs(self):
         return np.std(self.data, axis=0, ddof=1)
+
+    def set_bandwidths(self, *args, **kwargs):
+        raise NotImplementedError()
+
+    @property
+    def distributed_indices(self):
+        """
+        :return: List of (start, end) indices into data, bandwidths, each corresponding to the tasks of a worker
+        """
+        if not self.parallel:
+            return [(0, self.ndata)]
+
+        ## TODO: check this cutoff value
+        if self.ndata < (self.ncpu * 50):
+            # not worth splitting data up
+            return [(0, self.ndata)]
+
+        n_per_cluster = int(self.ndata / self.ncpu)
+        indices = []
+        idx = 0
+        for i in range(self.ncpu - 1):
+            indices.append((idx, idx + n_per_cluster))
+            idx += n_per_cluster
+        indices.append((idx, self.ndata))
+        return indices
+
+    def set_kernels(self):
+        self.kernel_clusters = []
+        for i, j in self.distributed_indices:
+            this_data = self.data[i:j]
+            this_bandwidths = self.bandwidths[i:j]
+            self.kernel_clusters.append(KernelCluster(this_data, this_bandwidths, ktype=self.kernel_class))
+
+    def _iterative_operation(self, funcstr, *args, **kwargs):
+        """
+        Generic interface to call function named in funcstr on the data, handling normalisation and reshaping
+        The returned list contains an element for each kernel
+        """
+        ## TODO: this is experimental, may be better to return a FLATTENED array and a shape?
+        try:
+            shp = args[0].shape
+        except AttributeError:
+            # inputs not arrays
+            shp = np.array(args[0], dtype=np.float64).shape
+        flat_data = np.vstack([np.array(x, dtype=np.float64).flatten() for x in args]).transpose()
+
+        if self.b_shared:
+
+            # create ctypes array pointer
+            c_double_p = ctypes.POINTER(ctypes.c_double)
+            flat_data_ctypes_p = flat_data.ctypes.data_as(c_double_p)
+            with closing(
+                    mp.Pool(processes=self.ncpu, initializer=shared_process_init,
+                            initargs=(flat_data_ctypes_p, flat_data.shape))
+            ) as pool:
+                z = pool.map(partial(runner_shared, fstr=funcstr), self.kernel_clusters)
+
+        else:
+            with closing(mp.Pool(processes=self.ncpu)) as pool:
+                z = pool.map(partial(runner, fstr=funcstr, fd=flat_data), self.kernel_clusters)
+
+        return reduce(operator.add, [[x.reshape(shp) for x in y] for y in z])
 
     def _additive_operation(self, funcstr, *args, **kwargs):
         """ Generic interface to call function named in funcstr on the data, handling normalisation and reshaping """
@@ -125,8 +232,22 @@ class FixedBandwidthKde(object):
             # inputs not arrays
             shp = np.array(args[0], dtype=np.float64).shape
         flat_data = np.vstack([np.array(x, dtype=np.float64).flatten() for x in args]).transpose()
-        # better to use a generator here to reduce memory usage:
-        z = reduce(operator.add, (getattr(x, funcstr)(flat_data, **kwargs) for x in self.mvns))
+
+        if not self.parallel:
+            z = self.kernel_clusters[0].additive_operation(funcstr, flat_data, **kwargs)
+        elif self.b_shared:
+            # create ctypes array pointer
+            c_double_p = ctypes.POINTER(ctypes.c_double)
+            flat_data_ctypes_p = flat_data.ctypes.data_as(c_double_p)
+            with closing(
+                    mp.Pool(processes=self.ncpu, initializer=shared_process_init,
+                            initargs=(flat_data_ctypes_p, flat_data.shape))
+            ) as pool:
+                z = sum(pool.map(partial(runner_additive_shared, fstr=funcstr, **kwargs), self.kernel_clusters))
+        else:
+            with closing(mp.Pool(processes=self.ncpu)) as pool:
+                z = sum(pool.map(partial(runner_additive, fstr=funcstr, fd=flat_data, **kwargs), self.kernel_clusters))
+
         if normed:
             z /= float(self.ndata)
         return np.reshape(z, shp)
@@ -135,14 +256,6 @@ class FixedBandwidthKde(object):
         if len(args) != self.ndim:
             raise AttributeError("Incorrect dimensions for input variable")
         return self._additive_operation('pdf', *args, **kwargs)
-
-    def pdf_interp_fn(self, *args, **kwargs):
-        """ Return a callable interpolation function based on the grid points supplied in args. """
-        from scipy.interpolate import LinearNDInterpolator, NearestNDInterpolator
-        flat_data = np.vstack([np.array(x, dtype=np.float64).flatten() for x in args]).transpose()
-        # linear interpolation is slower than actually evaluating the KDE, so not worth it:
-        # return LinearNDInterpolator(flat_data, self.pdf(*args, **kwargs).flatten())
-        return NearestNDInterpolator(flat_data, self.pdf(*args, **kwargs).flatten())
 
     def marginal_pdf(self, x, **kwargs):
         # return the marginal pdf in the dim specified in kwargs (dim=0 default)
@@ -164,15 +277,20 @@ class FixedBandwidthKde(object):
             raise e
         return xopt
 
-    def values_at_data(self, **kwargs):
-        return self.pdf(*[self.data[:, i] for i in range(self.ndim)], **kwargs)
 
-    def values_on_grid(self, n_points=10):
-        grids = np.meshgrid(*[np.linspace(mi, ma, n_points) for mi, ma in zip(self.min_array, self.max_array)])
-        it = np.nditer(grids + [None,])
-        for x in it:
-            x[-1][...] = self.pdf(*x[:-1]) # NB must unpack, as x[:-1] is a tuple
-        return it.operands[-1]
+class FixedBandwidthKde(KdeBase):
+    kernel_class = kernels.MultivariateNormal
+
+    def set_bandwidths(self, *args, **kwargs):
+        bandwidths = kwargs.pop('bandwidths')
+
+        if not hasattr(bandwidths, '__iter__'):
+            bandwidths = [bandwidths] * self.ndim
+
+        if len(bandwidths) != self.ndim:
+            raise AttributeError("Number of supplied bandwidths does not match the dimensionality of the data")
+
+        self.bandwidths = np.tile(bandwidths, (self.ndata, 1))
 
     @property
     def marginal_mean(self):
@@ -189,10 +307,15 @@ class FixedBandwidthKde(object):
     def _t_dependent_variance(self, t):
         ## TODO: test me!
         # have already checked that ndim > 1 by this point
+
         z0 = np.tile(
-            np.array([m.marginal_pdf(t, dim=0) for m in self.mvns]).reshape((self.ndata, 1)),
+            np.array(self._iterative_operation('marginal_pdf', t, dim=0)).reshape((self.ndata, 1)),
             (1, self.ndim - 1)
         )
+        # z0 = np.tile(
+        #     np.array([m.marginal_pdf(t, dim=0) for m in self.mvns]).reshape((self.ndata, 1)),
+        #     (1, self.ndim - 1)
+        # )
         tdm = np.mean(self.data[:, 1:] * z0, axis=0)
         tdsm = np.mean((self.bandwidths[:, 1:] ** 2 + self.data[:, 1:] ** 2) * z0, axis=0)
         tdv = tdsm - tdm ** 2
@@ -218,18 +341,19 @@ class FixedBandwidthKde(object):
 class VariableBandwidthKde(FixedBandwidthKde):
 
     def set_bandwidths(self, *args, **kwargs):
-        if 'bandwidths' in kwargs:
-            bandwidths = np.array(kwargs.pop('bandwidths'), dtype=float)
-            if ( len(bandwidths.shape) == 1 ) and ( self.ndim == 1 ) and ( bandwidths.size == self.ndata ):
-                self.bandwidths = bandwidths
-            elif ( bandwidths.shape[1] == self.ndim ) and ( bandwidths.shape[0] == self.ndata ):
-                self.bandwidths = bandwidths
+        bandwidths = np.array(kwargs.pop('bandwidths'), dtype=float)
+
+        if bandwidths.ndim == 1:
+            if (self.ndim == 1) and (bandwidths.size == self.ndata):
+                self.bandwidths = bandwidths.reshape((self.ndata, 1))
             else:
                 raise AttributeError("Number of supplied bandwidths does not match the dimensionality of the data")
-        else:
-            raise AttributeError("Class instantiation requires a supplied bandwidth kwarg.")
 
-        self.set_mvns()
+        elif (bandwidths.shape[1] == self.ndim) and (bandwidths.shape[0] == self.ndata):
+            self.bandwidths = bandwidths
+
+        else:
+            raise AttributeError("Number of supplied bandwidths does not match the dimensionality of the data")
 
     @property
     def normed_data(self):
@@ -239,10 +363,12 @@ class VariableBandwidthKde(FixedBandwidthKde):
 class VariableBandwidthNnKde(VariableBandwidthKde):
 
     def __init__(self, data, *args, **kwargs):
+        # print "VariableBandwidthNnKde.__init__"
+        # print args
+        # print kwargs
         self.nn = kwargs.pop('nn', None)
         self.nn_distances = []
         super(VariableBandwidthNnKde, self).__init__(data, *args, **kwargs)
-        self.set_mvns()
 
     def set_bandwidths(self, *args, **kwargs):
         tol = 1e-12
@@ -293,6 +419,20 @@ class WeightedFixedBandwidthKde(FixedBandwidthKde):
     def __init__(self, data, weights, *args, **kwargs):
         self.weights = np.array(weights)
         super(WeightedFixedBandwidthKde, self).__init__(data, *args, **kwargs)
+        # print "WeightedFixedBandwidthKde.__init__"
+        # print weights
+        # print args
+        # print kwargs
+
+    def set_kernels(self):
+        self.kernel_clusters = []
+        for i, j in self.distributed_indices:
+            this_data = self.data[i:j]
+            this_bandwidths = self.bandwidths[i:j]
+            this_weights = self.weights[i:j]
+            self.kernel_clusters.append(
+                WeightedKernelCluster(this_data, this_weights, this_bandwidths, ktype=self.kernel_class)
+            )
 
     @property
     def raw_std_devs(self):
@@ -304,59 +444,17 @@ class WeightedFixedBandwidthKde(FixedBandwidthKde):
         self.weights = weights
         self.set_bandwidths()
 
-    def _additive_operation(self, funcstr, *args, **kwargs):
-        """ Generic interface to call function named in funcstr on the data, handling normalisation and reshaping """
-        # store data shape, flatten to N x ndim array then restore
-        normed = kwargs.pop('normed', True)
-        try:
-            shp = args[0].shape
-        except AttributeError:
-            # inputs not arrays
-            shp = np.array(args[0], dtype=np.float64).shape
-        flat_data = np.vstack([np.array(x, dtype=np.float64).flatten() for x in args]).transpose()
-        # better to use a generator here to reduce memory usage:
-        z = reduce(operator.add, (w * getattr(x, funcstr)(flat_data, **kwargs) for w, x in zip(self.weights, self.mvns)))
-        if normed:
-            z /= sum(self.weights)
-        return np.reshape(z, shp)
+    def _iterative_operation(self, funcstr, *args, **kwargs):
+        raise NotImplementedError()
 
 
-class WeightedVariableBandwidthNnKde(VariableBandwidthNnKde):
-    def __init__(self, data, weights, *args, **kwargs):
-        self.weights = np.array(weights)
-        super(WeightedVariableBandwidthNnKde, self).__init__(data, *args, **kwargs)
-
-    @property
-    def raw_std_devs(self):
-        # weighted standard deviation calculation
-        return weighted_stdev(self.data, self.weights)
-
-    def set_weights(self, weights):
-        """ Required so that bandwidths are recomputed upon switching weights """
-        self.weights = weights
-        self.set_bandwidths()
-
-    def _additive_operation(self, funcstr, *args, **kwargs):
-        """ Generic interface to call function named in funcstr on the data, handling normalisation and reshaping """
-        # store data shape, flatten to N x ndim array then restore
-        normed = kwargs.pop('normed', True)
-        try:
-            shp = args[0].shape
-        except AttributeError:
-            # inputs not arrays
-            shp = np.array(args[0], dtype=np.float64).shape
-        flat_data = np.vstack([np.array(x, dtype=np.float64).flatten() for x in args]).transpose()
-        # better to use a generator here to reduce memory usage:
-        z = reduce(operator.add, (w * getattr(x, funcstr)(flat_data, **kwargs) for w, x in zip(self.weights, self.mvns)))
-        if normed:
-            z /= sum(self.weights)
-        try:
-            return np.reshape(z, shp)
-        except Exception:
-            import ipdb; ipdb.set_trace()
+class WeightedVariableBandwidthNnKde(VariableBandwidthNnKde, WeightedFixedBandwidthKde):
+    pass
 
 
 class FixedBandwidthXValidationKde(FixedBandwidthKde):
+
+    ## FIXME: not working or finished?
 
     def set_bandwidths(self, *args, **kwargs):
         self.xvfold = kwargs.pop('xvfold', min(20, self.ndata))

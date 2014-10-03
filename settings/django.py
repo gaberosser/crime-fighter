@@ -38,7 +38,7 @@ INSTALLED_APPS = (
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django.contrib.gis',
-    #'south',
+    #'south', # deprecated since Django assimilation
     'database',
     'analysis'
 )
