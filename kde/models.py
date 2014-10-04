@@ -367,13 +367,18 @@ class VariableBandwidthNnKde(VariableBandwidthKde):
         # print "VariableBandwidthNnKde.__init__"
         # print args
         # print kwargs
+
         self.nn = kwargs.pop('nn', None)
         self.nn_distances = []
         super(VariableBandwidthNnKde, self).__init__(data, *args, **kwargs)
+        # check requested number NN if supplied.
+        if (self.nn is not None) and (self.nn > (self.ndata - 1)):
+            raise AttributeError("Requested number of NNs (%d) is too large for the size of the dataset (%d)"
+                                 % (self.nn, self.ndata))
 
     def set_bandwidths(self, *args, **kwargs):
         tol = 1e-12
-        from scipy.spatial import KDTree
+
         default_distance = kwargs.pop('nn_default_distance', None)
         min_bandwidth = kwargs.pop('min_bandwidth', None)
         if not self.nn:
@@ -382,6 +387,7 @@ class VariableBandwidthNnKde(VariableBandwidthKde):
 
         if self.nn <= 1:
             raise AttributeError("The number of nearest neighbours for variable KDE must be >1")
+
         # compute nn distances on normed data
         nd = self.normed_data
         std = self.raw_std_devs
@@ -392,34 +398,53 @@ class VariableBandwidthNnKde(VariableBandwidthKde):
 
         self.nn_distances = dist[:, -1]
 
+        if np.any(np.isinf(self.nn_distances)):
+            raise AttributeError("Encountered np.inf values in NN distances")
+
         # check for NN distances below tolerance
-        ## FIXME: continue from here using new method
+        for i in np.where(self.nn_distances < tol)[0]:
+            import ipdb; ipdb.set_trace()
+            # for each point, perform a NN distance lookup on ALL valid NNs and use the first one above tol
+            datum = nd[i]
+            nn_obj.n_neighbors = self.ndata
+            dist, _ = nn_obj.kneighbors(datum)
+            dist = dist[dist[self.nn + 1:] > tol]
+            if not len(dist):
+                raise AttributeError("Could not find a NN distance for datum %d that is above the min tolerance" % i)
+            self.nn_distances[i] = min(dist)
 
-        kd = KDTree(nd)
+        self.nn_distances = self.nn_distances.reshape((self.ndata, 1))
+        self.bandwidths = std * self.nn_distances
 
-        self.nn_distances = np.zeros(self.ndata)
-        self.bandwidths = np.zeros((self.ndata, self.ndim))
+        ## OLD METHOD
 
-        for i in range(self.ndata):
-            d, _ = kd.query(nd[i, :], k=self.nn)
-            self.nn_distances[i] = max(d[~np.isinf(d)]) if np.isinf(d[-1]) else d[-1]
-
-            # check for zero distances
-            if self.nn_distances[i] < tol:
-                if default_distance:
-                    self.nn_distances[i] = default_distance
-                else:
-                    d, _ = kd.query(nd[i, :], k=kd.n) # all NN distance values
-                    idx = (~np.isinf(d)) & (d > tol)
-                    if np.any(idx):
-                        self.nn_distances[i] = d[np.where(idx)[0][0]]
-                    else:
-                        raise AttributeError("No non-zero and finite NN distances available, and no default specified")
-
-            self.bandwidths[i] = std * self.nn_distances[i]
+        # from scipy.spatial import KDTree
+        # kd = KDTree(nd)
+        #
+        # self.nn_distances = np.zeros(self.ndata)
+        # self.bandwidths = np.zeros((self.ndata, self.ndim))
+        #
+        # for i in range(self.ndata):
+        #     d, _ = kd.query(nd[i, :], k=self.nn)
+        #     self.nn_distances[i] = max(d[~np.isinf(d)]) if np.isinf(d[-1]) else d[-1]
+        #
+        #     # check for zero distances
+        #     if self.nn_distances[i] < tol:
+        #         if default_distance:
+        #             self.nn_distances[i] = default_distance
+        #         else:
+        #             d, _ = kd.query(nd[i, :], k=kd.n) # all NN distance values
+        #             idx = (~np.isinf(d)) & (d > tol)
+        #             if np.any(idx):
+        #                 self.nn_distances[i] = d[np.where(idx)[0][0]]
+        #             else:
+        #                 raise AttributeError("No non-zero and finite NN distances available, and no default specified")
+        #
+        #     self.bandwidths[i] = std * self.nn_distances[i]
 
         # apply minimum bandwidth constraint if required
         if min_bandwidth is not None and np.any(self.bandwidths < min_bandwidth):
+            import ipdb; ipdb.set_trace()
             fix_idx = np.where(self.bandwidths < min_bandwidth)
             rep_min = np.tile(min_bandwidth, (self.ndata, 1))
             self.bandwidths[fix_idx] = rep_min[fix_idx]
