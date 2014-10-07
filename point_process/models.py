@@ -101,10 +101,13 @@ class PointProcess(object):
         ndata = data.shape[0]
 
         chunksize = min(chunksize, ndata * (ndata - 1) / 2)
+        ## FIXME: this next line will consume vast amount of memory in large datasets.
+        ## switch to a GENERATOR
         idx_i, idx_j = estimation.pairwise_differences_indices(ndata)
         link_i = []
         link_j = []
 
+        ## similarly, generator needed here (xrange?)
         for k in range(0, len(idx_i), chunksize):
             i = idx_i[k:(k + chunksize)]
             j = idx_j[k:(k + chunksize)]
@@ -138,6 +141,9 @@ class PointProcess(object):
         )
 
     def sample_data(self):
+        """
+        Naive weighted sampling algorithm
+        """
         bg_idx = []
         cause_idx = []
         effect_idx = []
@@ -161,6 +167,23 @@ class PointProcess(object):
                 effect_idx.append(effect)
 
         return bg_idx, cause_idx, effect_idx
+
+    def sample_data_efraimidis(self):
+        """
+        More optimised weighted sampling algorithm
+        """
+        urvs = np.random.random(self.p.nnz)
+        ks_matrix = self.p.copy()
+        ks_matrix.data = np.power(urvs, 1. / self.p.data)
+
+        # find the largest value in each column
+        causes = [self.linkage_cols[n][np.argmax(ks_matrix[:, n].data)] for n in range(self.ndata)]
+        effects = range(self.ndata)
+
+        bg_idx = [x for x, y in zip(causes, effects) if x == y]
+        cause_idx, effect_idx = zip(*[(x, y) for x, y in zip(causes, effects) if x != y])
+
+        return bg_idx, list(cause_idx), list(effect_idx)
 
     # def delete_overlaps(self):
     #     """ Prevent lineage links with exactly overlapping entries """
@@ -291,20 +314,26 @@ class PointProcess(object):
         if sparse.tril(self.p, k=-1).nnz != 0:
             raise AttributeError("Matrix P failed requirement that lower diagonal is zero.")
 
+        tic = time()
         self._set_kdes()
+        print "self._set_kdes() in %f s" % (time() - tic)
 
         # strip spatially overlapping points from p
         # self.delete_overlaps()
 
         # evaluate BG at data points
+        tic = time()
         m = self.background_density(self.data[:, 0], self.data[:, 1], self.data[:, 2])
+        print "self.background_density() in %f s" % (time() - tic)
 
         # evaluate trigger KDE at all interpoint distances
+        tic = time()
         trigger = self.trigger_density(
             self.interpoint_distance_data[:, 0],
             self.interpoint_distance_data[:, 1],
             self.interpoint_distance_data[:, 2],
             )
+        print "self.trigger_density() in %f s" % (time() - tic)
         g = sparse.csr_matrix((trigger, self.linkage), shape=(self.ndata, self.ndata))
 
         # recompute P
@@ -391,8 +420,11 @@ class PointProcessStochastic(PointProcess):
 class PointProcessStochasticNn(PointProcess):
 
     def _set_kdes(self):
-        bg_idx, cause_idx, effect_idx = self.sample_data()
+        tic = time()
+        bg_idx, cause_idx, effect_idx = self.sample_data_efraimidis()
+        # bg_idx, cause_idx, effect_idx = self.sample_data()
         interpoint = self.data[effect_idx] - self.data[cause_idx]
+        print "self.sample_data() in %f s" % (time() - tic)
 
         # compute KDEs
         try:

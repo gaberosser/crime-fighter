@@ -98,7 +98,10 @@ def pairwise_time_lag_events(max_distance=200, num_bins=None, crime_type='burgla
 def apply_point_process(start_date=datetime.datetime(2010, 3, 1, 0),
                         end_date=datetime.datetime(2010, 6, 1, 0),
                         domain=None,
-                        niter=15):
+                        niter=15,
+                        min_bandwidth=None,
+                        max_trigger_t=40,
+                        max_trigger_d=300):
 
     res, t0 = get_crimes_by_type(
         crime_type='burglary',
@@ -107,10 +110,8 @@ def apply_point_process(start_date=datetime.datetime(2010, 3, 1, 0),
         domain=domain
     )
 
-    max_trigger_t = 40 # units days
-    max_trigger_d = 300 # units metres
-    min_bandwidth = np.array([0.3, 5., 5.])
-    # min_bandwidth = None
+    # NB t is in units of days, space is in units of metres
+    # a starting point for min_bandwidth = np.array([0.3, 5., 5.])
 
     # define initial estimator
     est = lambda x, y: estimation.estimator_bowers(x, y, ct=1, cd=0.02)
@@ -122,12 +123,12 @@ def apply_point_process(start_date=datetime.datetime(2010, 3, 1, 0),
     #                         min_bandwidth=[1., 5., 5.])
 
     # train on ALL data
-    ps = r.train(data=res, niter=niter, tol_p=5e-5)
+    ps = r.train(data=res, niter=niter, tol_p=1e-5)
     return r, ps
 
 
 def validate_point_process(
-        start_date=datetime.datetime(2012, 3, 31, 0),
+        start_date=datetime.datetime(2012, 3, 1, 0),
         training_size=365,
         num_validation=20,
         num_pp_iter=20,
@@ -166,6 +167,7 @@ def validate_point_process(
     vb.set_grid(grid)
     vb.set_t_cutoff(training_size, b_train=False)
 
+    ## TODO: check the number of iterations reported is as expected here
     res = vb.run(time_step=prediction_dt, t_upper=training_size + ndays, true_dt_plus=true_dt_plus,
                  train_kwargs={'niter': num_pp_iter, 'tol_p': 1e-5},
                  verbose=True)

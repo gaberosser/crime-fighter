@@ -8,7 +8,7 @@ import multiprocessing as mp
 from kde import kernels
 from stats.logic import weighted_stdev
 from sklearn.neighbors import NearestNeighbors
-
+import ipdb  # just in case
 
 def marginal_icdf_optimise(k, y, dim=0, tol=1e-8):
     n = 100
@@ -393,8 +393,14 @@ class VariableBandwidthNnKde(VariableBandwidthKde):
         std = self.raw_std_devs
 
         # increment NN by one since first result is always self-match
-        nn_obj = NearestNeighbors(self.nn + 1).fit(nd)
-        dist, _ = nn_obj.kneighbors(nd)
+        from time import time
+        tic = time()
+        try:
+            nn_obj = NearestNeighbors(self.nn + 1).fit(nd)
+            dist, _ = nn_obj.kneighbors(nd)
+        except Exception as exc:
+            ipdb.set_trace()
+        print "NN computation complete in %f s" % (time() - tic)
 
         self.nn_distances = dist[:, -1]
 
@@ -402,52 +408,23 @@ class VariableBandwidthNnKde(VariableBandwidthKde):
             raise AttributeError("Encountered np.inf values in NN distances")
 
         # check for NN distances below tolerance
-        for i in np.where(self.nn_distances < tol)[0]:
-            import ipdb; ipdb.set_trace()
-            # for each point, perform a NN distance lookup on ALL valid NNs and use the first one above tol
-            datum = nd[i]
+        intol_idx = np.where(self.nn_distances < tol)[0]
+        if len(intol_idx):
+            intol_data = nd[intol_idx]
             nn_obj.n_neighbors = self.ndata
-            dist, _ = nn_obj.kneighbors(datum)
-            dist = dist[dist[self.nn + 1:] > tol]
-            if not len(dist):
-                raise AttributeError("Could not find a NN distance for datum %d that is above the min tolerance" % i)
-            self.nn_distances[i] = min(dist)
+            dist, _ = nn_obj.kneighbors(intol_data)
+            # for each point, perform a NN distance lookup on ALL valid NNs and use the first one above tol
+            for i, j in enumerate(intol_idx):
+                d = dist[i][self.nn + 1:]
+                self.nn_distances[j] = d[d > tol][0]
 
         self.nn_distances = self.nn_distances.reshape((self.ndata, 1))
         self.bandwidths = std * self.nn_distances
 
-        ## OLD METHOD
-
-        # from scipy.spatial import KDTree
-        # kd = KDTree(nd)
-        #
-        # self.nn_distances = np.zeros(self.ndata)
-        # self.bandwidths = np.zeros((self.ndata, self.ndim))
-        #
-        # for i in range(self.ndata):
-        #     d, _ = kd.query(nd[i, :], k=self.nn)
-        #     self.nn_distances[i] = max(d[~np.isinf(d)]) if np.isinf(d[-1]) else d[-1]
-        #
-        #     # check for zero distances
-        #     if self.nn_distances[i] < tol:
-        #         if default_distance:
-        #             self.nn_distances[i] = default_distance
-        #         else:
-        #             d, _ = kd.query(nd[i, :], k=kd.n) # all NN distance values
-        #             idx = (~np.isinf(d)) & (d > tol)
-        #             if np.any(idx):
-        #                 self.nn_distances[i] = d[np.where(idx)[0][0]]
-        #             else:
-        #                 raise AttributeError("No non-zero and finite NN distances available, and no default specified")
-        #
-        #     self.bandwidths[i] = std * self.nn_distances[i]
-
         # apply minimum bandwidth constraint if required
         if min_bandwidth is not None and np.any(self.bandwidths < min_bandwidth):
-            import ipdb; ipdb.set_trace()
             fix_idx = np.where(self.bandwidths < min_bandwidth)
-            rep_min = np.tile(min_bandwidth, (self.ndata, 1))
-            self.bandwidths[fix_idx] = rep_min[fix_idx]
+            self.bandwidths[fix_idx] = np.array(min_bandwidth)[fix_idx[1]]
 
 
 class WeightedFixedBandwidthKde(FixedBandwidthKde):

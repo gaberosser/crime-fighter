@@ -18,7 +18,7 @@ def mc_sampler(poly):
 
 class ValidationBase(object):
 
-    def __init__(self, data, model_class, spatial_domain=None, grid_length=None, tmax_initial=None, model_args=None, model_kwargs=None):
+    def __init__(self, data, model_class, spatial_domain=None, grid_length=None, cutoff_t=None, model_args=None, model_kwargs=None):
         # sort data in increasing time
         self.data = data
         self.data = np.array(data)[np.argsort(self.t)]
@@ -28,7 +28,7 @@ class ValidationBase(object):
         self.model = model_class(*self.model_args, **self.model_kwargs)
 
         # set initial time cut point
-        self.cutoff_t = tmax_initial or self.t[int(self.ndata / 2)]
+        self.cutoff_t = cutoff_t or self.t[int(self.ndata / 2)]
 
         # set roc
         self.roc = None
@@ -109,27 +109,13 @@ class ValidationBase(object):
         """ Train the predictor on training data """
         self.model.train(self.training, *args, **kwargs)
 
-    # def predict_on_poly(self, t, poly, *args, **kwargs):
-    #     # FIXME: disabled as too slow
-    #     # idea here is to allow more accurate assessment of prediction on a region, rather than just using the centroid
-    #     method = kwargs.pop('method', 'centroid')
-    #     if method == 'int':
-    #         res, err = mcint.integrate(lambda x: self.model.predict(t, x[0], x[1]), mc_sampler(poly), n=100)
-    #     elif method == 'centroid':
-    #         res = self.model.predict(t, *poly.centroid.coords)
-    #     else:
-    #         raise NotImplementedError("Unsupported method %s", method)
-    #     return res
-
     def predict(self, t, **kwargs):
-        print "predict"
         # estimate total propensity in each grid poly
         # use centroid method for speed
         ts = np.ones(len(self.roc.egrid)) * t
         return self.model.predict(ts, self.centroids[:, 0], self.centroids[:, 1])
 
     def _iterate_run(self, pred_dt_plus, true_dt_plus, true_dt_minus, **kwargs):
-        print "_iterate_run"
         true_dt_plus = true_dt_plus or pred_dt_plus
         prediction = self.predict(self.cutoff_t + pred_dt_plus, **kwargs)
         testing_data = self.testing(dt_plus=true_dt_plus, dt_minus=true_dt_minus)
@@ -138,7 +124,13 @@ class ValidationBase(object):
 
         return self.roc.evaluate()
 
-    def run(self, time_step, pred_dt_plus=None, true_dt_plus=None, true_dt_minus=0, t_upper=None, pred_kwargs=None,
+    def run(self, time_step,
+            pred_dt_plus=None,
+            true_dt_plus=None,
+            true_dt_minus=0,
+            t_upper=None,
+            n_iter=None,
+            pred_kwargs=None,
             train_kwargs=None, **kwargs):
         """
         Run the required train / predict / assess sequence
@@ -154,16 +146,23 @@ class ValidationBase(object):
         :param kwargs: kwargs for the run function itself
         :return: results dictionary.
         """
-        print "run"
+        if bool(t_upper) and bool(n_iter):
+            raise AttributeError("Both t_upper AND n_iter were supplied, but only one is supported")
+
         verbose = kwargs.pop('verbose', True)
         pred_kwargs = pred_kwargs or {}
         train_kwargs = train_kwargs or {}
         pred_dt_plus = pred_dt_plus or time_step
         true_dt_plus = true_dt_plus or pred_dt_plus
-        t_upper = min(t_upper or np.inf, self.testing()[-1, 0])
 
-        # precompute number of iterations
-        n_iter = math.ceil((t_upper - self.cutoff_t) / time_step)
+        if t_upper:
+            n_iter = math.ceil((t_upper - self.cutoff_t) / time_step)
+        elif n_iter:
+            # check that this number of iterations is possible
+            if (self.cutoff_t + (n_iter - 1) * time_step + true_dt_minus) > self.data[-1, 0]:
+                raise AttributeError("The requested number of iterations is too great for the supplied data.")
+        else:
+            n_iter = math.ceil((self.data[-1, 0] - self.cutoff_t) / time_step)
 
         res = collections.defaultdict(list)
 
@@ -311,11 +310,11 @@ if __name__ == "__main__":
     data = data[data[:, 0].argsort()]
     vb = ValidationBase(data, pp_models.PointProcess,
                         model_kwargs={'max_trigger_t': 80, 'max_trigger_d': 0.75})
-    vb.set_grid(grid_length=5)
+    vb.set_grid(5)
     vb.train_model(niter=20)
 
 
-    rank, res, carea, cfrac, pai = vb.predict_assess(pred_dt_plus=1) # predict one day ahead
+    rank, res, carea, cfrac, pai = vb.run(time_step=1) # predict one day ahead
     polys = [vb.grid[i] for i in rank]
     n = vb.true_values(dt_plus=1, dt_minus=0)
 

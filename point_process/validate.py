@@ -94,10 +94,10 @@ class PpValidation(validation.ValidationBase):
 
     pp_class = models.PointProcessStochasticNn # model class
 
-    def __init__(self, data, spatial_domain=None, grid_length=None, tmax_initial=None, model_args=None, model_kwargs=None):
+    def __init__(self, data, spatial_domain=None, grid_length=None, cutoff_t=None, model_args=None, model_kwargs=None):
         """ Thin wrapper for parent's init method, but pp model class is set """
         super(PpValidation, self).__init__(data, self.pp_class, spatial_domain=spatial_domain, grid_length=grid_length,
-                                           tmax_initial=tmax_initial, model_args=model_args, model_kwargs=model_kwargs)
+                                           cutoff_t=cutoff_t, model_args=model_args, model_kwargs=model_kwargs)
 
 
     def predict(self, t, **kwargs):

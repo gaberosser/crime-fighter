@@ -279,11 +279,8 @@ class TestValidation(unittest.TestCase):
     def setUp(self):
         n = 100
         t = np.linspace(0, 1, n).reshape((n, 1))
-        np.random.shuffle(t)
         self.data = np.hstack((t, np.random.RandomState(42).rand(n, 2)))
         stk = hotspot.SKernelHistoric(1, bdwidth=0.3)
-        self.vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
-        self.vb.train_model()
 
     def test_mcsampler(self):
         poly = geos.Polygon([
@@ -329,13 +326,17 @@ class TestValidation(unittest.TestCase):
 
     def test_instantiation(self):
 
+        # shuffle data to check that it is resorted
+        data = np.array(self.data)
+        np.random.shuffle(data)
+
         stk = hotspot.SKernelHistoric(1, bdwidth=0.3)
-        vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
-        vb.train_model()
+        vb = validation.ValidationBase(data, hotspot.Hotspot, model_args=(stk,))
 
         # check data are present and sorted
         self.assertEqual(vb.ndata, self.data.shape[0])
         self.assertTrue(np.all(np.diff(vb.data[:, 0]) > 0))
+        self.assertTrue(np.all(vb.data == self.data))
 
         # no grid present yet as not supplied
         self.assertTrue(vb.roc.poly is None)
@@ -351,30 +352,33 @@ class TestValidation(unittest.TestCase):
             max(self.data[:, 2]),
         ])
 
+        # repeat but this time copy the grid
+        vb2 = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
+        self.assertTrue(vb2.roc.poly is None)
+        vb2.set_grid(vb.roc)
+
+        self.assertListEqual(vb.roc.egrid, vb2.roc.egrid)
+
     def test_time_cutoff(self):
 
         stk = hotspot.SKernelHistoric(1, bdwidth=0.3)
         vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
-        vb.train_model()
 
-        data = self.data[np.argsort(self.data[:, 0])]
         # expected cutoff automatically chosen
-        cutoff_te = data[int(self.data.shape[0] / 2), 0]
+        cutoff_te = vb.data[int(self.data.shape[0] / 2), 0]
 
         # check time cutoff and training/test split
         self.assertEqual(vb.cutoff_t, cutoff_te)
 
         # training set
-        training_expctd = data[data[:, 0] <= cutoff_te]
+        training_expctd = self.data[self.data[:, 0] <= cutoff_te]
         self.assertEqual(vb.training.shape[0], len(training_expctd))
-        for i in range(len(training_expctd)):
-            self.assertListEqual(list(vb.training[i]), list(data[i]))
+        self.assertTrue(np.all(vb.training == training_expctd))
 
         # testing set
-        testing_expctd = data[data[:, 0] > cutoff_te]
+        testing_expctd = self.data[self.data[:, 0] > cutoff_te]
         self.assertEqual(vb.testing().shape[0], len(testing_expctd))
-        for i in range(len(testing_expctd)):
-            self.assertListEqual(list(vb.testing()[i]), list(testing_expctd[i]))
+        self.assertTrue(np.all(vb.testing() == testing_expctd))
 
         # test when as_point=True
         tst = vb.testing(as_point=True)
@@ -387,26 +391,23 @@ class TestValidation(unittest.TestCase):
         # change cutoff_t
         cutoff_te = 0.3
         vb.set_t_cutoff(cutoff_te)
-        testing_expctd = data[data[:, 0] > cutoff_te]
+        testing_expctd = self.data[self.data[:, 0] > cutoff_te]
         self.assertEqual(vb.testing().shape[0], len(testing_expctd))
-        for i in range(len(testing_expctd)):
-            self.assertListEqual(list(vb.testing()[i]), list(testing_expctd[i]))
+        self.assertTrue(np.all(vb.testing() == testing_expctd))
 
         # testing dataset with dt_plus specified
         dt_plus = testing_expctd[2, 0] - cutoff_te
         testing_expctd = testing_expctd[:3]  # three results
         self.assertEqual(vb.testing(dt_plus=dt_plus).shape[0], len(testing_expctd))
-        for i in range(len(testing_expctd)):
-            self.assertListEqual(list(vb.testing(dt_plus=dt_plus)[i]), list(testing_expctd[i]))
+        self.assertTrue(np.all(vb.testing(dt_plus=dt_plus) == testing_expctd))
 
         # testing dataset with dt_plus and dt_minus
-        dt_plus = data[data[:, 0] > cutoff_te][17, 0] - cutoff_te
-        dt_minus = data[data[:, 0] > cutoff_te][10, 0] - cutoff_te
-        testing_expctd = data[(data[:, 0] > (cutoff_te + dt_minus)) & (data[:, 0] <= (cutoff_te + dt_plus))]
+        dt_plus = self.data[self.data[:, 0] > cutoff_te][17, 0] - cutoff_te
+        dt_minus = self.data[self.data[:, 0] > cutoff_te][10, 0] - cutoff_te
+        testing_expctd = self.data[(self.data[:, 0] > (cutoff_te + dt_minus)) & (self.data[:, 0] <= (cutoff_te + dt_plus))]
         self.assertEqual(vb.testing(dt_plus=dt_plus, dt_minus=dt_minus).shape[0], 7)
         self.assertEqual(vb.testing(dt_plus=dt_plus, dt_minus=dt_minus).shape[0], len(testing_expctd))
-        for i in range(len(testing_expctd)):
-            self.assertListEqual(list(vb.testing(dt_plus=dt_plus, dt_minus=dt_minus)[i]), list(testing_expctd[i]))
+        self.assertTrue(np.all(vb.testing(dt_plus=dt_plus, dt_minus=dt_minus) == testing_expctd))
 
     def test_training(self):
 
@@ -441,16 +442,10 @@ class TestValidation(unittest.TestCase):
         vb.train_model()
         vb.set_grid(0.1)
 
-        # predict at centroid of domain
-        pop = vb.predict_on_poly(vb.cutoff_t, vb.spatial_domain)
-        centroid = vb.spatial_domain.centroid.coords
-        pope = vb.model.predict(vb.cutoff_t, *centroid)
-        self.assertEqual(pop, pope)
-
         # spoof predict at all grid centroids
         stk = mock.create_autospec(hotspot.STKernelBowers)
         vb.model = stk
-        pop = vb.predict(self.vb.cutoff_t)
+        pop = vb.predict(vb.cutoff_t)
 
         self.assertEqual(stk.predict.call_count, 1)
         self.assertEqual(len(stk.predict.call_args[0]), 3)
@@ -471,7 +466,7 @@ class TestValidation(unittest.TestCase):
         self.assertEqual(stk.ndata, 0)
         vb.train_model()
         vb.set_grid(0.1)
-        pop = vb.predict(self.vb.cutoff_t)
+        pop = vb.predict(vb.cutoff_t)
         self.assertEqual(len(pop), len(vb.centroids))
         pope = np.array([np.sum(self.data[self.data[:, 0] <= vb.cutoff_t, 1] - x.centroid.coords[0]) for x in vb.roc.igrid])
         for (p, pe) in zip(pop, pope):
@@ -516,38 +511,59 @@ class TestValidation(unittest.TestCase):
         self.assertTrue(vb.roc.evaluate.called)
         self.assertEqual(vb.roc.evaluate.call_count, 1)
 
-    def test_run(self):
-
+    def test_run_calls_iterate_run(self):
         stk = hotspot.SKernelHistoric(1, bdwidth=0.3)
+
+        # check correct calls are made to _iterate_run with no t_upper
         with mock.patch.object(validation.ValidationBase, '_iterate_run',
                                return_value=collections.defaultdict(list)) as m:
             vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
+            vb.set_grid(0.1)
             t0 = vb.cutoff_t
-            res = vb.run(time_step=0.1)
-            expct_call_count = math.ceil((1 - vb.cutoff_t) / 0.1)
+            vb.run(time_step=0.1)
+            expct_call_count = math.ceil((1 - t0) / 0.1)
             self.assertEqual(m.call_count, expct_call_count)
             for c in m.call_args_list:
                 self.assertEqual(c, mock.call(0.1, 0.1, 0.))  # signature: pred_dt_plus, true_dt_plus, true_dt_minus
-            # check that cutoff time is reset correctly
-            self.assertEqual(vb.cutoff_t, t0)
 
+    def test_run_calls_initial_setup(self):
+        stk = hotspot.SKernelHistoric(1, bdwidth=0.3)
+
+        # need to train model before running, otherwise it won't get past the call to the mocked function
+        vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
+        vb.set_grid(0.1)
+        vb.train_model()
+
+        # check correct calls being made to _initial_setup
         with mock.patch.object(validation.ValidationBase, '_initial_setup') as m:
-            vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
-            vb.set_grid(0.1)
+
             t0 = vb.cutoff_t
             res = vb.run(time_step=0.1)
-            self.assertEqual(m.call_count, 1)
-            self.assertEqual(m.call_args, mock.call())
+            self.assertEqual(m.call_count, 1)  # initial setup only called once
+            self.assertEqual(m.call_args, mock.call())  # no arguments passed
+
+            # test passing training keywords
             train_kwargs = {'foo': 'bar'}
             res = vb.run(time_step=0.1, train_kwargs=train_kwargs)
             self.assertEqual(m.call_args, mock.call(**train_kwargs))
 
+    def test_run_calls_update(self):
+        stk = hotspot.SKernelHistoric(1, bdwidth=0.3)
+
+        # need to train model before running, otherwise it won't get past the call to the mocked function
+        vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
+        vb.set_grid(0.1)
+        vb.train_model()
+
+        # check correct calls being made to _update
         with mock.patch.object(validation.ValidationBase, '_update') as m:
-            vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
-            vb.set_grid(0.1)
             t0 = vb.cutoff_t
             res = vb.run(time_step=0.1)
-            expct_call_count = math.ceil((1 - vb.cutoff_t) / 0.1)
+
+            # _update is the time updater, so cutoff time should not have changed
+            self.assertEqual(vb.cutoff_t, t0)
+
+            expct_call_count = math.ceil((1 - t0) / 0.1)
             self.assertEqual(m.call_count, expct_call_count)
             self.assertEqual(m.call_args_list[0], mock.call(time_step=0.0))  # _initial_setup routes to here
             self.assertEqual(m.call_args, mock.call(0.1))  # normal operation
@@ -556,12 +572,17 @@ class TestValidation(unittest.TestCase):
         vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
         expct_call_count = math.ceil((1 - vb.cutoff_t) / 0.1)
 
+    def test_run_no_grid(self):
+        stk = hotspot.SKernelHistoric(1, bdwidth=0.3)
+        vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
+        t0 = vb.cutoff_t
         # no grid specified raises error
         with self.assertRaises(AttributeError):
             res = vb.run(time_step=0.1)
         vb.set_grid(0.1)
         res = vb.run(time_step=0.1)
 
+        expct_call_count = math.ceil((1 - t0) / 0.1)
         for v in res.values():
             self.assertEqual(len(v), expct_call_count)
 
