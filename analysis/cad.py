@@ -589,6 +589,8 @@ def numbers_by_type():
     num_crimes_new = res['new'].sum()[sort_idx]
     short_names = [short_names[i] for i in sort_idx]
 
+    # FIGURE: crime numbers split by old/new
+
     fig = plt.figure(figsize=[12, 12])
     ax = fig.add_axes([0.1, 0.2, 0.85, 0.75])
     hbar_old = ax.bar(range(cbg.l), num_crimes_old.values, width=0.8, color='black')
@@ -604,6 +606,23 @@ def numbers_by_type():
     yticks = ax.yaxis.get_ticklabels()
     plt.setp(yticks, fontsize=20)
     ax.set_xlim([0, cbg.l])
+
+    # FIGURE: crime numbers unsplit
+    num_crimes_both = num_crimes_old + num_crimes_new
+
+    fig = plt.figure(figsize=[12, 12])
+    ax = fig.add_axes([0.1, 0.2, 0.85, 0.75])
+    ax.bar(range(cbg.l), num_crimes_both.values, width=0.8, color='black')
+
+    ax.set_xticks([float(x) + 0.5 for x in range(cbg.l)])
+    ax.set_xticklabels(short_names)
+
+    xticks = ax.xaxis.get_ticklabels()
+    plt.setp(xticks, rotation=60, ha='right', fontsize=18)
+    yticks = ax.yaxis.get_ticklabels()
+    plt.setp(yticks, fontsize=20)
+    ax.set_xlim([0, cbg.l])
+
     plt.show()
 
 

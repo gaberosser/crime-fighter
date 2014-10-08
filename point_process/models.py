@@ -12,6 +12,69 @@ import operator
 import psutil
 
 
+class SeppBase(object):
+    def __init__(self,
+                 data=None,
+                 p=None,
+                 max_delta_t=None,
+                 max_delta_d=None,
+                 kde_kwargs=None):
+
+        self.p = p
+        self.data = None
+        if data:
+            self.set_data(data)
+
+        self.max_delta_t = None
+        self.max_delta_d = None
+        self.set_max_delta_t(max_delta_t)
+        self.set_max_delta_d(max_delta_d)
+
+        self.interpoint_data = None
+        self.linkage = None
+        self.linkage_cols = None
+        self.set_linkages()
+
+        self.bg_kde = None
+        self.trigger_kde = None
+        self.kde_kwargs = kde_kwargs or {}
+
+        self.num_bg = []
+        self.num_trig = []
+        self.l2_differences = []
+
+    @property
+    def ndata(self):
+        return len(self.data)
+
+    @property
+    def data_time(self):
+        raise NotImplementedError
+
+    @property
+    def data_space(self):
+        raise NotImplementedError
+
+    def initial_estimate(self, estimator):
+        self.p = estimator(self.data, self.linkage)
+
+    def set_data(self, data):
+        """
+        Can use this function to apply any preprocessing operations to data
+        """
+        self.data = data
+
+    def set_max_delta_t(self, max_delta_t=None):
+        raise NotImplementedError
+
+    def set_max_delta_d(self, max_delta_d=None):
+        raise NotImplementedError
+
+    def set_linkages(self):
+        # set self.linkage, self.linkage_col, self.interpoint_data
+        raise NotImplementedError
+
+
 class PointProcess(object):
     def __init__(self, p=None, max_trigger_d=None, max_trigger_t=None, min_bandwidth=None, dtype=np.float64,
                  estimator=None, num_nn=None, parallel=True):
