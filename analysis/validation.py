@@ -173,17 +173,17 @@ class ValidationBase(object):
 
         try:
             while count < n_iter:
-                if verbose:
-                    print "Running validation with cutoff time %s (iteration %d / %d)" % (str(self.cutoff_t),
-                                                                                          count + 1,
-                                                                                          n_iter)
-
                 if count == 0:
                     # initial training
                     self._initial_setup(**train_kwargs)
                 else:
                     # update model as required and update the cutoff time
                     self._update(time_step, **train_kwargs)
+
+                if verbose:
+                    print "Running validation with cutoff time %s (iteration %d / %d)" % (str(self.cutoff_t),
+                                                                                          count + 1,
+                                                                                          n_iter)
 
                 # predict and assess iteration
                 this_res = self._iterate_run(pred_dt_plus, true_dt_plus, true_dt_minus, **pred_kwargs)

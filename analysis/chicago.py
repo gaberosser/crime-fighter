@@ -168,7 +168,7 @@ def validate_point_process(
     vb.set_t_cutoff(training_size, b_train=False)
 
     ## TODO: check the number of iterations reported is as expected here
-    res = vb.run(time_step=prediction_dt, t_upper=training_size + ndays, true_dt_plus=true_dt_plus,
+    res = vb.run(time_step=prediction_dt, t_upper=ndays, true_dt_plus=true_dt_plus,
                  train_kwargs={'niter': num_pp_iter, 'tol_p': 1e-5},
                  verbose=True)
 

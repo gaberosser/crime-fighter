@@ -186,16 +186,26 @@ class PpValidation(validation.ValidationBase):
         num_new = len(self.training)
         if (num_new - num_old) < 0:
             raise AttributeError("More records in previous training set than new training set")
-        new_recs = self.training[num_old:]
-        pre_p = self.model.p
+        pre_p = self.model.p.tocsc()
         if pre_p.shape[0] != len(pre_training):
             raise AttributeError("Model p matrix has incorrect shape")
+
         # recompute new P using initial estimator
         new_linkage = self.model._set_linkages_iterated(data=self.training)
-        new_p = self.model.estimator(self.training, new_linkage)
-        # restore former probs
-        new_p[:num_old, :num_old] = pre_p
-        return new_p
+        new_p = self.model.estimator(self.training, new_linkage).tocsc()
+
+        # combine old and new indices
+        pre_indices = pre_p.indices
+        pre_indptr = pre_p.indptr
+        new_indices = new_p.indices
+        new_indptr = new_p.indptr
+
+        comb_indices = np.concatenate((pre_indices, new_indices[new_indptr[num_old]:]))
+        comb_indptr = np.concatenate((pre_indptr[:-1], new_indptr[num_old:]))
+        comb_data = np.concatenate((pre_p.data, new_p.data[pre_p.nnz:]))
+        comb_p = sparse.csc_matrix((comb_data, comb_indices, comb_indptr), shape=(num_new, num_new)).tocsr()
+
+        return comb_p
 
 
 if __name__ == "__main__":
