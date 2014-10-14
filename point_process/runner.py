@@ -59,7 +59,8 @@ if __name__ == '__main__':
     # set estimation seed for consistency
     models.estimation.set_seed(42)
     # r = models.PointProcessStochastic(max_trigger_d=0.75, max_trigger_t=80, min_bandwidth=[1., .05, .05])
-    r = models.PointProcessStochasticNn(max_trigger_d=0.75, max_trigger_t=80, parallel=parallel)
+    # r = models.PointProcessStochasticNn(max_trigger_d=0.75, max_trigger_t=80, parallel=parallel)
+    r = models.PointProcessStochasticNn(max_trigger_d=1.5, max_trigger_t=100, parallel=parallel, sharedmem=True)
     # r = models.PointProcessDeterministicNn(max_trigger_d=0.75, max_trigger_t=80)
     # r = models.PointProcessDeterministicFixedBandwidth(max_trigger_d=0.75, max_trigger_t=80, min_bandwidth=[1., .05, .05])
 

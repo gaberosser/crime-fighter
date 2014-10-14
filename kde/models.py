@@ -466,47 +466,42 @@ class WeightedVariableBandwidthNnKde(VariableBandwidthNnKde, WeightedFixedBandwi
 
 class FixedBandwidthXValidationKde(FixedBandwidthKde):
 
-    ## FIXME: not working or finished?
-
     def set_bandwidths(self, *args, **kwargs):
         self.xvfold = kwargs.pop('xvfold', min(20, self.ndata))
         self.compute_xv_bandwidth()
-        self.set_mvns()
 
     def compute_xv_bandwidth(self, hmin=None, hmax=None):
         from itertools import combinations
         from scipy import optimize
+        from copy import copy
+
         # define a range for the bandwidth
         hmin = hmin or 0.1 # 1/10 x standard deviation
         hmax = hmax or 5 # 5 x standard deviation
 
+        # shuffle data indices
         idx = np.random.permutation(self.ndata)
-        idx_sets = [idx[i::self.xvfold] for i in range(self.xvfold)]
+
+        # select xvfold validation sets
+        validation_sets = [idx[i::self.xvfold] for i in range(self.xvfold)]
+        def training_idx_gen():
+            # yields (testing idx, training idx) tuples
+            for i in range(self.xvfold):
+                yield validation_sets[i], np.concatenate(validation_sets[:i] + validation_sets[(i+1):])
 
         # CV score for minimisation
         def cv_score(h):
-            bandwidths = self.raw_std_devs * h
-            all_mvns = np.array([kernels.MultivariateNormal(self.data[i], bandwidths**2) for i in range(self.ndata)])
             ll = 0.0 # log likelihood
-            idx_sets_excl = combinations(idx_sets, self.xvfold - 1)
-            for i, test_idx_set in enumerate(idx_sets_excl):
-                testing_data = self.data[idx_sets[i], :]
-                training_mvns = all_mvns[np.concatenate(test_idx_set)]
-                ll += np.sum([np.log(x.pdf(testing_data)) for x in training_mvns])
+            for test_idx, train_idx in training_idx_gen():
+                testing_data = self.data[test_idx, :]
+                training_data = self.data[train_idx, :]
+                new_kde = FixedBandwidthKde(training_data, bandwidths=self.raw_std_devs * h, parallel=False)
+                res = new_kde.pdf(*testing_data.transpose())
+                ll += np.sum(np.log(res))
             return -ll / float(self.xvfold)
 
-        # minimise CV function over h
-        constraints = [
-            {
-                'type': 'ineq',
-                'fun': lambda x: x - hmin,
-            },
-            {
-                'type': 'ineq',
-                'fun': lambda x: hmax - x,
-            },
-        ]
-        res = optimize.minimize(cv_score, [1.0, ], method='L-BFGS-B', constraints=constraints)
+        res = optimize.minimize_scalar(cv_score, bounds=[hmin, hmax],
+                                       method='bounded', options={'disp': True})
         if res.success:
             self.bandwidths = np.tile(self.raw_std_devs * res.x, (self.ndata, 1))
         else:

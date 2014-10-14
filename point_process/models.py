@@ -77,12 +77,13 @@ class SeppBase(object):
 
 class PointProcess(object):
     def __init__(self, p=None, max_trigger_d=None, max_trigger_t=None, min_bandwidth=None, dtype=np.float64,
-                 estimator=None, num_nn=None, parallel=True):
+                 estimator=None, num_nn=None, parallel=True, sharedmem=False):
         self.dtype = dtype
         self.data = np.array([], dtype=dtype)
         self.T = 0.
         self.min_bandwidth = min_bandwidth
         self.parallel = parallel
+        self.sharedmem = sharedmem
 
         if num_nn is not None:
             self.num_nn = num_nn
@@ -441,8 +442,9 @@ class PointProcess(object):
                 self._iterate()
             except Exception as exc:
                 print repr(exc)
-                warnings.warn("Stopping training algorithm prematurely due to error on iteration %d." % (i+1))
-                break
+                raise
+                # warnings.warn("Stopping training algorithm prematurely due to error on iteration %d." % (i+1))
+                # break
 
             # record time taken
             self.run_times.append(time() - tic)
@@ -511,6 +513,7 @@ class PointProcessDeterministicNn(PointProcess):
 
     def _set_kdes(self):
         p_bg = self.p.diagonal()
+        p_trig = np.array(self.p[self.linkage].flat)
 
         self.bg_t_kde = pp_kde.WeightedVariableBandwidthNnKde(self.data[:, 0],
                                                               weights=p_bg,
@@ -521,7 +524,7 @@ class PointProcessDeterministicNn(PointProcess):
                                                                nn=self.num_nn[1],
                                                                parallel=self.parallel)
         self.trigger_kde = pp_kde.WeightedVariableBandwidthNnKde(self.interpoint_distance_data,
-                                                                 weights=self.p[self.linkage],
+                                                                 weights=p_trig,
                                                                  min_bandwidth=self.min_bandwidth,
                                                                  nn=self.num_nn[2],
                                                                  parallel=self.parallel)
