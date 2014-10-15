@@ -506,3 +506,8 @@ class FixedBandwidthXValidationKde(FixedBandwidthKde):
             self.bandwidths = np.tile(self.raw_std_devs * res.x, (self.ndata, 1))
         else:
             raise ValueError("Unable to find max likelihood bandwidth")
+
+
+class SpaceTimeFixedBandwidthKde(FixedBandwidthKde):
+    kernel_class_t = kernels.MultivariateNormal
+

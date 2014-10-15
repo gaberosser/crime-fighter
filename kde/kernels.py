@@ -1,6 +1,7 @@
 __author__ = 'gabriel'
 
 import numpy as np
+import math
 PI = np.pi
 
 # a few helper functions
@@ -73,6 +74,45 @@ class MultivariateNormal(BaseKernel):
     def marginal_cdf(self, x, dim=0):
         """ Return value is 1D marginal cdf with specified dim """
         return normcdf(x, self.mean[dim], self.vars[dim])
+
+
+class SpaceTimeNormal(MultivariateNormal):
+    """
+    Variant of the n-dimensional Gaussian kernel, but first dim is ONE-SIDED - useful for space-time purposes.
+    The mean here has the usual definition for dims > 1, but for the first dim it gives the EQUIVALENT (i.e. the first
+    non-zero point of the distribution).
+    The vars have the usual definition for dims > 1 and for the first dim it is the equivalent one-sided variance.
+    """
+    def pdf(self, x):
+        t = x if isinstance(x, np.ndarray) else np.array(x, dtype=np.float64)
+        res = super(SpaceTimeNormal, self).pdf(t)
+        if self.ndim == 1:
+            res[t < 0] = 0.
+            res[t >= 0] *= 2.
+        else:
+            res[t[0, :] < 0] = 0.
+            res[t[0, :] >= 0] *= 2.
+        return res
+
+    def marginal_pdf(self, x, dim=0):
+        t = x if isinstance(x, np.ndarray) else np.array(x, dtype=np.float64)
+        res = super(SpaceTimeNormal, self).marginal_pdf(x, dim=dim)
+        if dim == 0:
+            res[t < 0] = 0.
+            res[t >= 0] *= 2.
+
+    def marginal_cdf(self, x, dim=0):
+        from scipy.special import erf
+        t = x if isinstance(x, np.ndarray) else np.array(x, dtype=np.float64)
+        if dim == 0:
+            res = erf((x - self.mean[0]) / (math.sqrt(2 * self.vars[0])))
+        else:
+            return super(SpaceTimeNormal, self).marginal_cdf(x, dim=dim)
+
+
+
+
+
 
 
 # class MultivariateNormalScipy():

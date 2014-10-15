@@ -8,11 +8,13 @@ import numpy as np
 from scipy import sparse
 
 
-def initial_simulation():
+def initial_simulation(t_total=None):
     print "Starting simulation..."
     # simulate data
     c = simulate.MohlerSimulation()
     c.seed(42)
+    if t_total:
+        c.t_total = t_total
     # c.bg_mu_bar = 1.0
     # c.number_to_prune = 4000
     c.run()
@@ -51,16 +53,17 @@ def noisy_init(c, noise_level=0.):
 
 if __name__ == '__main__':
 
-    num_iter = 10
+    num_iter = 1
     parallel = True
-    c, data = initial_simulation()
+    t_total = 6000
+    c, data = initial_simulation(t_total=t_total)
     ndata = data.shape[0]
 
     # set estimation seed for consistency
     models.estimation.set_seed(42)
     # r = models.PointProcessStochastic(max_trigger_d=0.75, max_trigger_t=80, min_bandwidth=[1., .05, .05])
-    # r = models.PointProcessStochasticNn(max_trigger_d=0.75, max_trigger_t=80, parallel=parallel)
-    r = models.PointProcessStochasticNn(max_trigger_d=1.5, max_trigger_t=100, parallel=parallel, sharedmem=True)
+    r = models.PointProcessStochasticNn(max_trigger_d=0.75, max_trigger_t=80, parallel=parallel, sharedmem=True)
+    # r = models.PointProcessStochasticNn(max_trigger_d=1.5, max_trigger_t=100, parallel=parallel, sharedmem=True)
     # r = models.PointProcessDeterministicNn(max_trigger_d=0.75, max_trigger_t=80)
     # r = models.PointProcessDeterministicFixedBandwidth(max_trigger_d=0.75, max_trigger_t=80, min_bandwidth=[1., .05, .05])
 
