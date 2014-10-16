@@ -2,6 +2,7 @@ __author__ = 'gabriel'
 import unittest
 import simulate
 import estimation
+import utils
 import models
 import validate
 import numpy as np
@@ -31,6 +32,38 @@ class TestSimulation(unittest.TestCase):
         self.assertEqual(c.number_aftershocks, sum(~np.isnan(c.data[:, -1])))
         self.assertTrue(np.all(c.data[~np.isnan(c.data[:, -1]), -1] >= 0))
         self.assertTrue(np.all(c.data[~np.isnan(c.data[:, -1]), -1] < max(c.data[:, 0])))
+
+
+class TestUtils(unittest.TestCase):
+
+    def test_self_linkage(self):
+        data1 = np.random.randn(5000, 3)
+        max_t = max_d = 0.5
+        i, j = utils.linkages_euclidean(data1, max_d=max_d, max_t=max_t)
+        # manually test restrictions
+        # all time differences positive
+        self.assertTrue(np.all(data1[j, 0] > data1[i, 0]))
+        # all time diffs less than max_t
+        self.assertTrue(np.all(data1[j, 0] - data1[i, 0] <= max_t))
+        # all distances <= max_d
+        d = np.sqrt((data1[j, 1] - data1[i, 1])**2 + (data1[j, 2] - data1[i, 2])**2)
+        self.assertTrue(np.all(d <= max_d))
+
+    def test_cross_linkage(self):
+        data_source = np.random.randn(5000, 3)
+        data_target = np.random.randn(1000, 3)
+        max_t = max_d = 0.5
+        i, j = utils.linkages_euclidean(data_source=data_source, max_d=max_d, max_t=max_t, data_target=data_target)
+        self.assertTrue(np.all(i < 5000))
+        self.assertTrue(np.all(j < 1000))
+        # manually test restrictions
+        # all time differences positive
+        self.assertTrue(np.all(data_target[j, 0] > data_source[i, 0]))
+        # all time diffs less than max_t
+        self.assertTrue(np.all(data_target[j, 0] - data_source[i, 0] <= max_t))
+        # all distances <= max_d
+        d = np.sqrt((data_target[j, 1] - data_source[i, 1])**2 + (data_target[j, 2] - data_source[i, 2])**2)
+        self.assertTrue(np.all(d <= max_d))
 
 
 class TestPointProcessStochasticNn(unittest.TestCase):

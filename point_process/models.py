@@ -1,5 +1,6 @@
 __author__ = 'gabriel'
 
+from utils import pairwise_differences_indices
 import estimation
 import ipdb
 from kde import models as pp_kde
@@ -12,18 +13,20 @@ import operator
 import psutil
 
 
-class SeppBase(object):
+class SepBase(object):
     def __init__(self,
                  data=None,
                  p=None,
                  max_delta_t=None,
                  max_delta_d=None,
-                 kde_kwargs=None):
+                 kde_kwargs=None,
+                 parallel=True):
 
         self.p = p
         self.data = None
         if data:
             self.set_data(data)
+        self.parallel = parallel
 
         self.max_delta_t = None
         self.max_delta_d = None
@@ -47,6 +50,14 @@ class SeppBase(object):
     def ndata(self):
         return len(self.data)
 
+    def reset(self):
+        # reset storage containers
+        self.num_bg = []
+        self.num_trig = []
+        self.l2_differences = []
+        self.bg_kde = None
+        self.trigger_kde = None
+
     @property
     def data_time(self):
         raise NotImplementedError
@@ -65,14 +76,162 @@ class SeppBase(object):
         self.data = data
 
     def set_max_delta_t(self, max_delta_t=None):
-        raise NotImplementedError
+        """
+        Define automatic parameter selection here if desired
+        """
+        if not max_delta_t:
+            raise NotImplementedError
+        self.max_delta_t = max_delta_t
 
     def set_max_delta_d(self, max_delta_d=None):
-        raise NotImplementedError
+        """
+        Define automatic parameter selection here if desired
+        """
+        if not max_delta_d:
+            raise NotImplementedError
+        self.max_delta_d = max_delta_d
 
     def set_linkages(self):
         # set self.linkage, self.linkage_col, self.interpoint_data
         raise NotImplementedError
+
+    def target_source_linkages(self, target_data):
+        """
+        Compute the valid linkages between self.data and the supplied data set.
+        :return: Same format as self.linkage, (idx_i array, idx_j array)
+        """
+        raise NotImplementedError
+
+    def background_density(self, target_data, spatial_only=False):
+        """
+        Return the (unnormalised) density due to background events
+        :param spatial_only: Boolean switch.  When enabled, only use the spatial component of the background, since
+        using the time component leads to the background 'fading out' when predicting into the future.
+        Integral over all data dimensions should return num_bg
+        """
+        raise NotImplementedError
+
+    def trigger_density(self, delta_data):
+        """
+        Return the (unnormalised) trigger density
+        Integral over all data dimensions should return num_trig / num_events
+        """
+        raise NotImplementedError
+
+    def trigger_density_in_place(self, target_data, source_data=None):
+        """
+        Return the sum of trigger densities at the points in target_data.
+        Optionally supply new source data to be used, otherwise self.data is used.
+        """
+        raise NotImplementedError
+
+    def conditional_intensity(self, target_data, source_data=None, spatial_bg_only=False):
+        """
+        Evaluate the conditional intensity, lambda, at points in target_data.
+        :param data: Optionally provide source data matrix to incorporate new history, affecting triggering,
+         if None then run with training data.
+        :param spatial_bg_only: Boolean.  When True, only the spatial components of the BG density are used.
+        """
+        raise NotImplementedError
+
+    def predict(self, target_data):
+        """
+        Interface for validation code
+        """
+        return self.conditional_intensity(target_data)
+
+    def predict_fixed_background(self, target_data):
+        """
+        When predicting in 'the future', cannot use the temporal component of the background as this vanishes.
+        Therefore use ONLY the spatial components of the background here
+        """
+        return self.conditional_intensity(target_data, spatial_bg_only=True)
+
+    def set_kdes(self):
+        # set bg_kde and trigger_kde
+        raise NotImplementedError
+
+    def _iterate(self):
+        colsum = self.p.sum(0)
+        if np.any((colsum < (1 - 1e-12)) | (colsum > (1 + 1e-12))):
+            raise AttributeError("Matrix P failed requirement that columns sum to 1 within tolerance.")
+        if sparse.tril(self.p, k=-1).nnz != 0:
+            raise AttributeError("Matrix P failed requirement that lower diagonal is zero.")
+
+        tic = time()
+        self.set_kdes()
+        print "self._set_kdes() in %f s" % (time() - tic)
+
+        # strip spatially overlapping points from p
+        # self.delete_overlaps()
+
+        # evaluate BG at data points
+        tic = time()
+        m = self.background_density(self.data)
+        print "self.background_density() in %f s" % (time() - tic)
+
+        # evaluate trigger KDE at all interpoint distances
+        tic = time()
+        trigger = self.trigger_density(self.interpoint_data)
+        print "self.trigger_density() in %f s" % (time() - tic)
+        g = sparse.csr_matrix((trigger, self.linkage), shape=(self.ndata, self.ndata))
+
+        # recompute P
+        # NB use LIL sparse matrix to avoid warnings about expensive structure changes, then convert at end.
+        l = g.sum(axis=0) + m
+        new_p = sparse.lil_matrix((self.ndata, self.ndata))
+        new_p[range(self.ndata), range(self.ndata)] = m / l
+        new_p[self.linkage] = trigger / l.flat[self.linkage[1]]
+        new_p = new_p.tocsr()
+
+        # compute difference
+        q = new_p - self.p
+        err_denom = float(self.p.nnz)
+        self.l2_differences.append(math.sqrt(q.multiply(q).sum()) / err_denom)
+
+        # update p
+        self.p = new_p
+
+    def train(self, data, niter=30, verbose=True, tol_p=None):
+
+        self.set_data(data)
+        # compute linkage indices
+        self.set_linkages()
+
+        # set tolerance if not specified
+        tol_p = tol_p or 0.1 / float(self.ndata)
+
+        # reset all other storage containers
+        self.reset()
+
+        # initial estimate for p if required
+        if not self.pset:
+            self.p = self.estimator(self.data, self.linkage)
+
+        ps = []
+
+        for i in range(niter):
+            ps.append(self.p)
+            tic = time()
+            try:
+                self._iterate()
+            except Exception as exc:
+                print repr(exc)
+                raise
+                # warnings.warn("Stopping training algorithm prematurely due to error on iteration %d." % (i+1))
+                # break
+
+            # record time taken
+            self.run_times.append(time() - tic)
+
+            if verbose:
+                print "Completed %d / %d iterations in %f s.  L2 norm = %e" % (i+1, niter, self.run_times[-1], self.l2_differences[-1])
+
+            if tol_p != 0. and self.l2_differences[-1] < tol_p:
+                if verbose:
+                    print "Training terminated in %d iterations as tolerance has been met." % (i+1)
+                break
+        return ps
 
 
 class PointProcess(object):
@@ -165,14 +324,11 @@ class PointProcess(object):
         ndata = data.shape[0]
 
         chunksize = min(chunksize, ndata * (ndata - 1) / 2)
-        ## FIXME: this next line will consume vast amount of memory in large datasets.
-        ## switch to a GENERATOR
         idx_i, idx_j = estimation.pairwise_differences_indices(ndata)
         link_i = []
         link_j = []
 
-        ## similarly, generator needed here (xrange?)
-        for k in range(0, len(idx_i), chunksize):
+        for k in xrange(0, len(idx_i), chunksize):
             i = idx_i[k:(k + chunksize)]
             j = idx_j[k:(k + chunksize)]
             t = data[j, 0] - data[i, 0]

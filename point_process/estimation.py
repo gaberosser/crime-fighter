@@ -72,45 +72,6 @@ def pairwise_differences(data, b_iter=False, dtype=None):
     return np.dstack((td, xd, yd)).astype(dtype)
 
 
-def pairwise_differences_indices(n):
-
-    dtypes = [
-        np.uint8,
-        np.uint16,
-        np.uint32,
-        np.uint64,
-    ]
-
-    dtype = None
-    # find appropriate datatype
-    for d in dtypes:
-        if np.iinfo(d).max >= (n - 1):
-            dtype = d
-            break
-
-    if not dtype:
-        raise MemoryError("Unable to index an array this large.")
-
-    idx_i = np.zeros(n* (n - 1) / 2, dtype=dtype)
-    idx_j = np.zeros_like(idx_i)
-
-    tally = 0
-    for i in range(n):
-        idx_i[tally:(tally + n - i - 1)] = np.ones(n - i - 1, dtype=dtype) * i
-        idx_j[tally:(tally + n - i - 1)] = np.arange(i + 1, n, dtype=dtype)
-        tally += n - i - 1
-
-    return idx_i, idx_j
-
-
-def pairwise_differences_v0(data, dtype=None):
-    dtype = dtype or np.float64
-    n = data.shape[0]
-    i, j = pairwise_differences_indices(n)
-    diff = data[j, :] - data[i, :]
-    return diff
-
-
 def initial_guess(data):
 
     N = data.shape[0]
@@ -232,33 +193,3 @@ def find_acceptance_region_interpoints(k, data, tol=0.95):
     # interpolate trigger KDE
     diff_data = data[j, :] - data[i, :]
     return i, j, diff_data
-
-# def evaluate_trigger_kde(k, data, tol=0.95, ngrid=100):
-#     """ Approximate method to evaluate the trigger KDE, designed to work around the very large number of targets
-#         typically requested.
-#         First filter by acceptance region, based on tolerance.
-#         Next, generate a 3D grid of points and use zero-order (nn) interpolation to approximate all data within
-#         acceptance region.
-#     """
-#     i, j, diff_data = find_acceptance_region_interpoints(k, data, tol=tol)
-#     t_max = np.max(diff_data[:, 0])
-#     x_min = np.min(diff_data[:, 1])
-#     x_max = np.max(diff_data[:, 1])
-#     y_min = np.min(diff_data[:, 2])
-#     y_max = np.max(diff_data[:, 2])
-#     tgrid, xgrid, ygrid = np.meshgrid(np.linspace(0, t_max, ngrid), np.linspace(x_min, x_max, ngrid), np.linspace(y_min, y_max, ngrid))
-#     f = k.pdf_interp_fn(tgrid, xgrid, ygrid)
-#
-#     ndata = data.shape[0]
-#     g = np.zeros((ndata, ndata))
-#     g[i, j] = f(diff_data)
-#     return g
-
-
-def evaluate_trigger_kde(k, data, linkage):
-    """ Evaluate trigger KDE at the interpoint distances given by the indices in linkage arrays """
-    ndata = data.shape[0]
-    diff_data = data[linkage[1], :] - data[linkage[0], :]
-    g = np.zeros((ndata, ndata))
-    g[linkage] = k.pdf(diff_data[:, 0], diff_data[:, 1], diff_data[:, 2]) / float(ndata)
-    return g

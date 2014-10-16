@@ -400,7 +400,6 @@ class VariableBandwidthNnKde(VariableBandwidthKde):
             dist, _ = nn_obj.kneighbors(nd)
         except Exception as exc:
             ipdb.set_trace()
-        print "NN computation complete in %f s" % (time() - tic)
 
         self.nn_distances = dist[:, -1]
 
@@ -509,5 +508,9 @@ class FixedBandwidthXValidationKde(FixedBandwidthKde):
 
 
 class SpaceTimeFixedBandwidthKde(FixedBandwidthKde):
-    kernel_class_t = kernels.MultivariateNormal
+    kernel_class = kernels.SpaceTimeNormal
+
+
+class SpaceTimeVariableBandwidthNnKde(SpaceTimeFixedBandwidthKde, VariableBandwidthNnKde):
+    pass
 

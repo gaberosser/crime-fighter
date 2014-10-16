@@ -2,6 +2,8 @@ __author__ = 'gabriel'
 
 import numpy as np
 import math
+from scipy import special
+
 PI = np.pi
 
 # a few helper functions
@@ -10,8 +12,7 @@ def normpdf(x, mu, var):
 
 
 def normcdf(x, mu, var):
-    from scipy.special import erf
-    return 0.5 * (1 + erf((x - mu) / (np.sqrt(2 * var))))
+    return 0.5 * (1 + special.erf((x - mu) / (np.sqrt(2 * var))))
 
 
 class BaseKernel(object):
@@ -100,19 +101,16 @@ class SpaceTimeNormal(MultivariateNormal):
         if dim == 0:
             res[t < 0] = 0.
             res[t >= 0] *= 2.
+        return res
 
     def marginal_cdf(self, x, dim=0):
-        from scipy.special import erf
         t = x if isinstance(x, np.ndarray) else np.array(x, dtype=np.float64)
         if dim == 0:
-            res = erf((x - self.mean[0]) / (math.sqrt(2 * self.vars[0])))
+            res = special.erf((x - self.mean[0]) / (math.sqrt(2 * self.vars[0])))
+            res[t < 0] = 0.
+            return res
         else:
             return super(SpaceTimeNormal, self).marginal_cdf(x, dim=dim)
-
-
-
-
-
 
 
 # class MultivariateNormalScipy():
