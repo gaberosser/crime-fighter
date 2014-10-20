@@ -9,7 +9,8 @@ import numpy as np
 from mock import patch
 from scipy.spatial import KDTree
 import os
-import pickle
+from time import time
+from data.models import EuclideanSpaceTimeData
 
 cd = os.path.dirname(os.path.realpath(__file__))
 DATA_DIR = os.path.join(cd, 'test_data')
@@ -36,10 +37,10 @@ class TestSimulation(unittest.TestCase):
 
 class TestUtils(unittest.TestCase):
 
-    def test_self_linkage(self):
+    def test_self_linkage_array(self):
         data1 = np.random.randn(5000, 3)
         max_t = max_d = 0.5
-        i, j = utils.linkages_euclidean(data1, max_d=max_d, max_t=max_t)
+        i, j = utils.linkages_euclidean_array(data1, max_d=max_d, max_t=max_t)
         # manually test restrictions
         # all time differences positive
         self.assertTrue(np.all(data1[j, 0] > data1[i, 0]))
@@ -49,11 +50,12 @@ class TestUtils(unittest.TestCase):
         d = np.sqrt((data1[j, 1] - data1[i, 1])**2 + (data1[j, 2] - data1[i, 2])**2)
         self.assertTrue(np.all(d <= max_d))
 
-    def test_cross_linkage(self):
+    def test_cross_linkage_array(self):
+        tic = time()
         data_source = np.random.randn(5000, 3)
         data_target = np.random.randn(1000, 3)
         max_t = max_d = 0.5
-        i, j = utils.linkages_euclidean(data_source=data_source, max_d=max_d, max_t=max_t, data_target=data_target)
+        i, j = utils.linkages_euclidean_array(data_source=data_source, max_d=max_d, max_t=max_t, data_target=data_target)
         self.assertTrue(np.all(i < 5000))
         self.assertTrue(np.all(j < 1000))
         # manually test restrictions
@@ -64,6 +66,38 @@ class TestUtils(unittest.TestCase):
         # all distances <= max_d
         d = np.sqrt((data_target[j, 1] - data_source[i, 1])**2 + (data_target[j, 2] - data_source[i, 2])**2)
         self.assertTrue(np.all(d <= max_d))
+        print "test_cross_linkage_array %f s" % (time() - tic)
+
+    def test_self_linkage(self):
+        data1 = EuclideanSpaceTimeData(np.random.randn(5000, 3))
+        max_t = max_d = 0.5
+        i, j = utils.linkages(data1, max_d=max_d, max_t=max_t)
+        # manually test restrictions
+        # all time differences positive
+        self.assertTrue(np.all(data1[j, 0] > data1[i, 0]))
+        # all time diffs less than max_t
+        self.assertTrue(np.all(data1[j, 0] - data1[i, 0] <= max_t))
+        # all distances <= max_d
+        d = np.sqrt((data1[j, 1] - data1[i, 1])**2 + (data1[j, 2] - data1[i, 2])**2)
+        self.assertTrue(np.all(d <= max_d))
+
+    def test_cross_linkage(self):
+        tic = time()
+        data_source = EuclideanSpaceTimeData(np.random.randn(5000, 3))
+        data_target = EuclideanSpaceTimeData(np.random.randn(1000, 3))
+        max_t = max_d = 0.5
+        i, j = utils.linkages(data_source=data_source, max_d=max_d, max_t=max_t, data_target=data_target)
+        self.assertTrue(np.all(i < 5000))
+        self.assertTrue(np.all(j < 1000))
+        # manually test restrictions
+        # all time differences positive
+        self.assertTrue(np.all(data_target[j, 0] > data_source[i, 0]))
+        # all time diffs less than max_t
+        self.assertTrue(np.all(data_target[j, 0] - data_source[i, 0] <= max_t))
+        # all distances <= max_d
+        d = np.sqrt((data_target[j, 1] - data_source[i, 1])**2 + (data_target[j, 2] - data_source[i, 2])**2)
+        self.assertTrue(np.all(d <= max_d))
+        print "test_cross_linkage %f s" % (time() - tic)
 
 
 class TestPointProcessStochasticNn(unittest.TestCase):

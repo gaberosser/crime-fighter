@@ -1,6 +1,6 @@
 __author__ = 'gabriel'
 
-from utils import pairwise_differences_indices
+from utils import linkages
 import estimation
 import ipdb
 from kde import models as pp_kde
@@ -67,7 +67,7 @@ class SepBase(object):
         raise NotImplementedError
 
     def initial_estimate(self, estimator):
-        self.p = estimator(self.data, self.linkage)
+        self.p = estimator(self.data_time, self.data_space, self.linkage)
 
     def set_data(self, data):
         """
@@ -232,6 +232,112 @@ class SepBase(object):
                     print "Training terminated in %d iterations as tolerance has been met." % (i+1)
                 break
         return ps
+
+
+class Sepp(SepBase):
+    """
+    Self-exciting point process class.
+    Data type is EuclideanSpaceTimeData class
+    """
+
+    @property
+    def data_time(self):
+        return self.data.time
+
+    @property
+    def data_space(self):
+        return self.data.space
+
+    def set_linkages(self):
+        # set self.linkage, self.linkage_col, self.interpoint_data
+        self.linkage = linkages(self.data, self.max_delta_t, self.max_delta_d)
+        self.interpoint_data = self.data[self.linkage[1]] - self.data[self.linkage[0]]
+        self.linkage_cols = dict(
+            [(i, np.concatenate((self.linkage[0][self.linkage[1] == i], [i,]))) for i in range(self.ndata)]
+        )
+
+    def target_source_linkages(self, target_data):
+        """
+        Compute the valid linkages between self.data and the supplied data set.
+        :return: Same format as self.linkage, (idx_i array, idx_j array)
+        """
+        return linkages(self.data, self.max_delta_t, self.max_delta_d, data_target=target_data)
+
+    def background_density(self, target_data, spatial_only=False):
+        """
+        Return the (unnormalised) density due to background events
+        :param spatial_only: Boolean switch.  When enabled, only use the spatial component of the background, since
+        using the time component leads to the background 'fading out' when predicting into the future.
+        Integral over all data dimensions should return num_bg
+        """
+        if spatial_only:
+            # estimate mean intensity per unit time
+            T = np.ptp(self.data_time)
+            k = self.num_bg[-1] / float(T * self.ndata)
+            ## FIXME: need a way to specify marginal pdf over all space
+            return k * self.bg_kde.pdf(target_data, normed=False)
+        else:
+            return self.bg_kde.pdf(target_data, normed=True)
+
+    def trigger_density(self, delta_data):
+        """
+        Return the (unnormalised) trigger density
+        Integral over all data dimensions should return num_trig / num_events
+        """
+        return self.trigger_kde.pdf(delta_data, normed=False) / self.ndata
+
+    def trigger_density_in_place(self, target_data, source_data=None):
+        """
+        Return the sum of trigger densities at the points in target_data.
+        Optionally supply new source data to be used, otherwise self.data is used.
+        """
+        if source_data is not None and len(source_data):
+            pass
+        else:
+            source_data = self.data
+
+        link_source, link_target = linkages(source_data, self.max_delta_t, self.max_delta_d, data_target=target_data)
+        trigger = sparse.csr_matrix((source_data.ndata, target_data.ndata))
+
+        if link_source.size:
+            delta_data = target_data[link_target] - source_data[link_source]
+            ## FIXME: used to support a shape, but now we don't the plotting calls will need to change
+            trigger[link_source, link_target] = self.trigger_density(delta_data)
+
+        trigger = np.array(trigger.sum(axis=0))
+        return trigger
+
+    def conditional_intensity(self, target_data, source_data=None, spatial_bg_only=False):
+        """
+        Evaluate the conditional intensity, lambda, at points in target_data.
+        :param data: Optionally provide source data matrix to incorporate new history, affecting triggering,
+         if None then run with training data.
+        :param spatial_bg_only: Boolean.  When True, only the spatial components of the BG density are used.
+        """
+        if source_data is not None and len(source_data):
+            pass
+        else:
+            source_data = self.data
+
+        bg = self.background_density(target_data, spatial_only=spatial_bg_only)
+        trigger = self.trigger_density_in_place(target_data, source_data=source_data)
+
+        return bg + trigger
+
+    def set_kdes(self):
+        # set bg_kde and trigger_kde
+        raise NotImplementedError
+
+
+
+
+
+
+
+
+
+
+
 
 
 class PointProcess(object):
