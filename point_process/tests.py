@@ -10,7 +10,7 @@ from mock import patch
 from scipy.spatial import KDTree
 import os
 from time import time
-from data.models import EuclideanSpaceTimeData
+from data.models import CartesianSpaceTimeData
 
 cd = os.path.dirname(os.path.realpath(__file__))
 DATA_DIR = os.path.join(cd, 'test_data')
@@ -69,7 +69,7 @@ class TestUtils(unittest.TestCase):
         print "test_cross_linkage_array %f s" % (time() - tic)
 
     def test_self_linkage(self):
-        data1 = EuclideanSpaceTimeData(np.random.randn(5000, 3))
+        data1 = CartesianSpaceTimeData(np.random.randn(5000, 3))
         max_t = max_d = 0.5
         i, j = utils.linkages(data1, max_d=max_d, max_t=max_t)
         # manually test restrictions
@@ -83,8 +83,8 @@ class TestUtils(unittest.TestCase):
 
     def test_cross_linkage(self):
         tic = time()
-        data_source = EuclideanSpaceTimeData(np.random.randn(5000, 3))
-        data_target = EuclideanSpaceTimeData(np.random.randn(1000, 3))
+        data_source = CartesianSpaceTimeData(np.random.randn(5000, 3))
+        data_target = CartesianSpaceTimeData(np.random.randn(1000, 3))
         max_t = max_d = 0.5
         i, j = utils.linkages(data_source=data_source, max_d=max_d, max_t=max_t, data_target=data_target)
         self.assertTrue(np.all(i < 5000))

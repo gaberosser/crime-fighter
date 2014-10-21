@@ -8,6 +8,7 @@ import multiprocessing as mp
 from kde import kernels
 from stats.logic import weighted_stdev
 from sklearn.neighbors import NearestNeighbors
+from data.models import Data
 import ipdb  # just in case
 
 def marginal_icdf_optimise(k, y, dim=0, tol=1e-8):
@@ -193,70 +194,61 @@ class KdeBase(object):
             this_bandwidths = self.bandwidths[i:j]
             self.kernel_clusters.append(KernelCluster(this_data, this_bandwidths, ktype=self.kernel_class))
 
-    def _iterative_operation(self, funcstr, *args, **kwargs):
+    def _iterative_operation(self, funcstr, target, *args, **kwargs):
         """
-        Generic interface to call function named in funcstr on the data, handling normalisation and reshaping
+        Generic interface to call function named in funcstr on the target data
         The returned list contains an element for each kernel
         """
-        ## TODO: this is experimental, may be better to return a FLATTENED array and a shape?
-        try:
-            shp = args[0].shape
-        except AttributeError:
-            # inputs not arrays
-            shp = np.array(args[0], dtype=np.float64).shape
-        flat_data = np.vstack([np.array(x, dtype=np.float64).flatten() for x in args]).transpose()
 
         if self.b_shared:
 
             # create ctypes array pointer
             c_double_p = ctypes.POINTER(ctypes.c_double)
-            flat_data_ctypes_p = flat_data.ctypes.data_as(c_double_p)
+            flat_data_ctypes_p = target.ctypes.data_as(c_double_p)
             with closing(
                     mp.Pool(processes=self.ncpu, initializer=shared_process_init,
-                            initargs=(flat_data_ctypes_p, flat_data.shape))
+                            initargs=(flat_data_ctypes_p, target.shape))
             ) as pool:
                 z = pool.map(partial(runner_shared, fstr=funcstr), self.kernel_clusters)
 
         else:
             with closing(mp.Pool(processes=self.ncpu)) as pool:
-                z = pool.map(partial(runner, fstr=funcstr, fd=flat_data), self.kernel_clusters)
+                z = pool.map(partial(runner, fstr=funcstr, fd=target), self.kernel_clusters)
 
-        return reduce(operator.add, [[x.reshape(shp) for x in y] for y in z])
+        return reduce(operator.add, [[y] for y in z])
 
-    def _additive_operation(self, funcstr, *args, **kwargs):
-        """ Generic interface to call function named in funcstr on the data, handling normalisation and reshaping """
-        # store data shape, flatten to N x ndim array then restore
+    def _additive_operation(self, funcstr, target, **kwargs):
+        """ Generic interface to call function named in funcstr on the target data, handling normalisation """
+
         normed = kwargs.pop('normed', True)
-        try:
-            shp = args[0].shape
-        except AttributeError:
-            # inputs not arrays
-            shp = np.array(args[0], dtype=np.float64).shape
-        flat_data = np.vstack([np.array(x, dtype=np.float64).flatten() for x in args]).transpose()
 
         if not self.parallel:
-            z = self.kernel_clusters[0].additive_operation(funcstr, flat_data, **kwargs)
+            z = self.kernel_clusters[0].additive_operation(funcstr, target, **kwargs)
         elif self.b_shared:
             # create ctypes array pointer
             c_double_p = ctypes.POINTER(ctypes.c_double)
-            flat_data_ctypes_p = flat_data.ctypes.data_as(c_double_p)
+            flat_data_ctypes_p = target.ctypes.data_as(c_double_p)
             with closing(
                     mp.Pool(processes=self.ncpu, initializer=shared_process_init,
-                            initargs=(flat_data_ctypes_p, flat_data.shape))
+                            initargs=(flat_data_ctypes_p, target.shape))
             ) as pool:
                 z = sum(pool.map(partial(runner_additive_shared, fstr=funcstr, **kwargs), self.kernel_clusters))
         else:
             with closing(mp.Pool(processes=self.ncpu)) as pool:
-                z = sum(pool.map(partial(runner_additive, fstr=funcstr, fd=flat_data, **kwargs), self.kernel_clusters))
+                z = sum(pool.map(partial(runner_additive, fstr=funcstr, fd=target, **kwargs), self.kernel_clusters))
 
         if normed:
             z /= float(self.ndata)
-        return np.reshape(z, shp)
+        return z
 
-    def pdf(self, *args, **kwargs):
-        if len(args) != self.ndim:
-            raise AttributeError("Incorrect dimensions for input variable")
-        return self._additive_operation('pdf', *args, **kwargs)
+    def pdf(self, target, **kwargs):
+        if isinstance(target, Data):
+            ndim = target.nd
+        else:
+            ndim = target.shape[1]
+        if ndim != self.ndim:
+            raise AttributeError("Target data does not have the correct number of dimensions")
+        return self._additive_operation('pdf', target, **kwargs)
 
     def marginal_pdf(self, x, **kwargs):
         # return the marginal pdf in the dim specified in kwargs (dim=0 default)
@@ -265,6 +257,10 @@ class KdeBase(object):
     def marginal_cdf(self, x, **kwargs):
         """ Return the marginal cdf in the dim specified in kwargs (dim=0 default) """
         return self._additive_operation('marginal_cdf', x, **kwargs)
+
+    def partial_marginal_pdf(self, x, **kwargs):
+        # return the marginal pdf in all dims but the one specified in kwargs (dim=0 by default)
+        return self._additive_operation('partial_marginal_pdf', x, **kwargs)
 
     def marginal_icdf(self, y, *args, **kwargs):
         """ Return value of inverse marginal CDF in specified dim """
@@ -277,6 +273,78 @@ class KdeBase(object):
             print "Failed to optimise marginal icdf"
             raise e
         return xopt
+
+
+class KdeBaseSeparable(KdeBase):
+
+    def __init__(self, data, parallel=True, *args, **kwargs):
+
+        self.data = np.array(data)
+        if self.data.ndim == 1:
+            self.data = self.data.reshape((self.data.size, 1))
+
+        # separable dimension - currently only support one of these.  Default 0 (time)
+        self.separable_dim = kwargs.pop('sepdim', 0)
+
+        self.parallel = parallel
+
+        try:
+            self.ncpu = kwargs.pop('ncpu', mp.cpu_count())
+        except NotImplementedError:
+            self.ncpu = 1
+        self.b_shared = kwargs.pop('sharedmem', False)
+
+        self.kernel_clusters = None
+        self.bandwidths = None
+        self.set_bandwidths(*args, **kwargs)
+        self.set_kernels()
+
+    def _iterative_operation(self, funcstr, target, *args, **kwargs):
+        """
+        Generic interface to call function named in funcstr on the target data
+        The returned list contains an element for each kernel
+        """
+
+        if self.b_shared:
+
+            # create ctypes array pointer
+            c_double_p = ctypes.POINTER(ctypes.c_double)
+            flat_data_ctypes_p = target.ctypes.data_as(c_double_p)
+            with closing(
+                    mp.Pool(processes=self.ncpu, initializer=shared_process_init,
+                            initargs=(flat_data_ctypes_p, target.shape))
+            ) as pool:
+                z = pool.map(partial(runner_shared, fstr=funcstr), self.kernel_clusters)
+
+        else:
+            with closing(mp.Pool(processes=self.ncpu)) as pool:
+                z = pool.map(partial(runner, fstr=funcstr, fd=target), self.kernel_clusters)
+
+        return reduce(operator.add, [[y] for y in z])
+
+    def _additive_operation(self, funcstr, target, **kwargs):
+        """ Generic interface to call function named in funcstr on the target data, handling normalisation """
+
+        normed = kwargs.pop('normed', True)
+
+        if not self.parallel:
+            z = self.kernel_clusters[0].additive_operation(funcstr, target, **kwargs)
+        elif self.b_shared:
+            # create ctypes array pointer
+            c_double_p = ctypes.POINTER(ctypes.c_double)
+            flat_data_ctypes_p = target.ctypes.data_as(c_double_p)
+            with closing(
+                    mp.Pool(processes=self.ncpu, initializer=shared_process_init,
+                            initargs=(flat_data_ctypes_p, target.shape))
+            ) as pool:
+                z = sum(pool.map(partial(runner_additive_shared, fstr=funcstr, **kwargs), self.kernel_clusters))
+        else:
+            with closing(mp.Pool(processes=self.ncpu)) as pool:
+                z = sum(pool.map(partial(runner_additive, fstr=funcstr, fd=target, **kwargs), self.kernel_clusters))
+
+        if normed:
+            z /= float(self.ndata)
+        return z
 
 
 class FixedBandwidthKde(KdeBase):
@@ -313,10 +381,6 @@ class FixedBandwidthKde(KdeBase):
             np.array(self._iterative_operation('marginal_pdf', t, dim=0)).reshape((self.ndata, 1)),
             (1, self.ndim - 1)
         )
-        # z0 = np.tile(
-        #     np.array([m.marginal_pdf(t, dim=0) for m in self.mvns]).reshape((self.ndata, 1)),
-        #     (1, self.ndim - 1)
-        # )
         tdm = np.mean(self.data[:, 1:] * z0, axis=0)
         tdsm = np.mean((self.bandwidths[:, 1:] ** 2 + self.data[:, 1:] ** 2) * z0, axis=0)
         tdv = tdsm - tdm ** 2
@@ -385,8 +449,8 @@ class VariableBandwidthNnKde(VariableBandwidthKde):
             # default nn values
             self.nn = min(100, self.ndata) if self.ndim == 1 else min(15, self.ndata)
 
-        if self.nn <= 1:
-            raise AttributeError("The number of nearest neighbours for variable KDE must be >1")
+        if self.nn < 1:
+            raise AttributeError("The number of nearest neighbours for variable KDE must be >=1")
 
         # compute nn distances on normed data
         nd = self.normed_data

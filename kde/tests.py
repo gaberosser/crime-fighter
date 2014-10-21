@@ -2,10 +2,19 @@ __author__ = 'gabriel'
 import unittest
 import kernels
 from models import VariableBandwidthKde, VariableBandwidthNnKde, FixedBandwidthKde, \
-    WeightedVariableBandwidthNnKde, weighted_stdev
+    WeightedVariableBandwidthNnKde
+from data.models import CartesianSpaceTimeData, CartesianData
 import numpy as np
 from scipy.stats import norm, multivariate_normal
 from scipy.integrate import quad, tplquad
+from functools import partial
+
+
+def quad_pdf_fun(*args, **kwargs):
+    func = kwargs.pop('func')
+    t = np.array(args[::-1])
+    t.shape = (1, len(args))
+    return func(t)
 
 
 class TestHelperFunctions(unittest.TestCase):
@@ -28,13 +37,29 @@ class TestKernelMultivariateNormal(unittest.TestCase):
     def test_mvn1d(self):
         mvn = kernels.MultivariateNormal([0], [1])
         self.assertEqual(mvn.ndim, 1)
-        q = quad(mvn.pdf, -5., 5.)
+
+        # def quad_pdf_fun(x):
+        #     # required because quad calls functions with single datapoint
+        #     t = np.array(x)
+        #     t.shape = (1, 1)
+        #     return mvn.pdf(t)
+
+        q = quad(partial(quad_pdf_fun, func=mvn.pdf), -5., 5.)
         self.assertAlmostEqual(q[0], 1.0, places=5)
-        x = np.linspace(-1, 1, 10)
+
+        # test with absolute values
+        x = np.linspace(-1, 1, 10).reshape(10, 1)
         y = mvn.pdf(x)
         y_expct = norm.pdf(x)
         for y1, y2 in zip(y, y_expct):
             self.assertAlmostEqual(y1, y2)
+
+        # repeat with Data type
+        x = CartesianData(np.linspace(-1, 1, 10))
+        y = mvn.pdf(x)
+        for y1, y2 in zip(y, y_expct):
+            self.assertAlmostEqual(y1, y2)
+
         m = mvn.marginal_pdf(x)
         self.assertListEqual(list(y), list(m))
         c = mvn.marginal_cdf(0.)
@@ -43,13 +68,20 @@ class TestKernelMultivariateNormal(unittest.TestCase):
     def test_mvn3d(self):
         mvn = kernels.MultivariateNormal([0, 0, 0], [1, 1, 1])
         self.assertEqual(mvn.ndim, 3)
-        int_fun = lambda z, y, x: mvn.pdf(np.array([x, y, z]))
-        q = tplquad(int_fun, -5, 5, lambda x:-5, lambda x:5, lambda x,y: -5, lambda x,y: 5)
+
+        q = tplquad(partial(quad_pdf_fun, func=mvn.pdf), -5, 5, lambda x: -5, lambda x: 5, lambda x, y: -5, lambda x, y: 5)
         self.assertAlmostEqual(q[0], 1.0, places=5)
+
+        # test with absolute values
         x = np.meshgrid(*([np.linspace(-1, 1, 10)]*3))
-        x = np.vstack((x[0].flatten(), x[1].flatten(), x[2].flatten())).transpose()
+        x = np.vstack((x[0].flatten(), x[1].flatten(), x[2].flatten())).transpose().reshape(1000, 3)
         y = mvn.pdf(x)
         y_expct = multivariate_normal.pdf(x, mean=[0, 0, 0], cov=np.eye(3))
+        self.assertEqual(np.sum(np.abs((y - y_expct)).flatten()>1e-12), 0) # no single difference > 1e-12
+
+        # repeat with Data type
+        x = CartesianData(x)
+        y = mvn.pdf(x)
         self.assertEqual(np.sum(np.abs((y - y_expct)).flatten()>1e-12), 0) # no single difference > 1e-12
 
 
@@ -61,11 +93,12 @@ class TestFixedBandwidthKde(unittest.TestCase):
 
     def test_kde_1d(self):
         data_1d = np.array([0, 3])
-        bd_1d = [1.] # FIXME: should probably accept a float here
+        bd_1d = [1.]
         kde = FixedBandwidthKde(data_1d, bandwidths=bd_1d)
-        q = quad(kde.pdf, -5., 8.)
+
+        q = quad(partial(quad_pdf_fun, func=kde.pdf), -5., 8.)
         self.assertAlmostEqual(q[0], 1.0, places=5)
-        x = np.linspace(-1, 4, 50)
+        x = np.linspace(-1, 4, 50).reshape(50, 1)
         y = kde.pdf(x)
         self.assertIsInstance(y, np.ndarray)
         y_expct = 0.5 * (norm.pdf(x, loc=0.) + norm.pdf(x, loc=3.))
@@ -80,10 +113,10 @@ class TestFixedBandwidthKde(unittest.TestCase):
         self.assertEqual(kde.ndata, 8)
         x = np.meshgrid(*([np.linspace(-1, 1, 10)]*3))
         xa = np.vstack((x[0].flatten(), x[1].flatten(), x[2].flatten())).transpose()
-        y = kde.pdf(*x)
-        y_expct = np.zeros((10, 10, 10))
+        y = kde.pdf(xa)
+        y_expct = np.zeros_like(y)
         for i in range(kde.ndata):
-            y_expct += multivariate_normal.pdf(xa, mean=data_3d[i, :], cov=np.eye(3)).reshape((10, 10, 10))
+            y_expct += multivariate_normal.pdf(xa, mean=data_3d[i, :], cov=np.eye(3))
         y_expct /= kde.ndata
         self.assertEqual(np.sum(np.abs((y - y_expct)).flatten()>1e-12), 0) # no single difference > 1e-12
 
@@ -100,9 +133,9 @@ class TestVariableBandwidthKde(unittest.TestCase):
         data_1d = np.array([0, 3])
         bd_1d = [1., 2.]
         kde = VariableBandwidthKde(data_1d, bandwidths=bd_1d)
-        q = quad(kde.pdf, -10., 20.)
+        q = quad(partial(quad_pdf_fun, func=kde.pdf), -10., 20.)
         self.assertAlmostEqual(q[0], 1.0, places=5)
-        x = np.linspace(-1, 4, 50)
+        x = np.linspace(-1, 4, 50).reshape(50, 1)
         y = kde.pdf(x)
         self.assertIsInstance(y, np.ndarray)
         y_expct = 0.5 * (norm.pdf(x, loc=0.) + norm.pdf(x, loc=3., scale=2))
@@ -116,20 +149,20 @@ class TestVariableBandwidthKde(unittest.TestCase):
 
     def test_kde_3d(self):
         self.assertEqual(self.kde.ndata, self.data_3d.shape[0])
-        self.assertIsInstance(self.kde.pdf([0., 1.], [0., 1.], [0., 1.]), np.ndarray)
         x = np.meshgrid(*([np.linspace(-1, 1, 10)]*3))
         xa = np.vstack((x[0].flatten(), x[1].flatten(), x[2].flatten())).transpose()
-        y = self.kde.pdf(*x)
-        y_expct = np.zeros((10, 10, 10))
+        y = self.kde.pdf(xa)
+        self.assertIsInstance(y, np.ndarray)
+        y_expct = np.zeros_like(y)
         for i in range(self.kde.ndata):
             y_expct += multivariate_normal.pdf(xa,
                                                mean=self.data_3d[i, :],
-                                               cov=np.eye(3) * self.bd_3d[i, :]**2).reshape((10, 10, 10))
+                                               cov=np.eye(3) * self.bd_3d[i, :]**2)
         y_expct /= self.kde.ndata
         self.assertEqual(np.sum(np.abs((y - y_expct)).flatten()>1e-12), 0) # no single difference > 1e-12
 
         # UNNORMED
-        y = self.kde.pdf(*x, normed=False)
+        y = self.kde.pdf(xa, normed=False)
         y_expct *= self.kde.ndata
         self.assertEqual(np.sum(np.abs((y - y_expct)).flatten()>1e-12), 0) # no single difference > 1e-12
 
@@ -195,8 +228,8 @@ class TestVariableBandwidthKdeNn(unittest.TestCase):
 
     def test_kde_1d(self):
         data = np.linspace(0, 1, 11)
-        kde = VariableBandwidthNnKde(data, nn=2)
-        nndiste = data[1] / np.std(data, ddof=1)
+        kde = VariableBandwidthNnKde(data, nn=1)
+        nndiste = np.diff(data)[0] / np.std(data, ddof=1)
         for n in kde.nn_distances:
             self.assertAlmostEqual(n, nndiste)
 
@@ -217,7 +250,7 @@ class TestWeightedVariableBandwidthKdeNn(unittest.TestCase):
         self.assertListEqual(list(kde.bandwidths), list(kdeu.bandwidths))
 
         # pdf unchanged when weights are all 1
-        self.assertAlmostEqual(kde.pdf(0.134), kdeu.pdf(0.134))
+        x = np.array([[0.134]])
+        self.assertAlmostEqual(kde.pdf(x), kdeu.pdf(x))
 
-    pass
 

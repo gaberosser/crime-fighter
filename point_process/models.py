@@ -11,6 +11,7 @@ from scipy import sparse
 import math
 import operator
 import psutil
+from data import models as data_models
 
 
 class SepBase(object):
@@ -237,7 +238,7 @@ class SepBase(object):
 class Sepp(SepBase):
     """
     Self-exciting point process class.
-    Data type is EuclideanSpaceTimeData class
+    Data type is CartesianSpaceTimeData class
     """
 
     @property
@@ -247,6 +248,12 @@ class Sepp(SepBase):
     @property
     def data_space(self):
         return self.data.space
+
+    def set_data(self, data):
+        """
+        Ensure that data has correct type
+        """
+        self.data = data_models.CartesianSpaceTimeData(data)
 
     def set_linkages(self):
         # set self.linkage, self.linkage_col, self.interpoint_data
@@ -272,10 +279,9 @@ class Sepp(SepBase):
         """
         if spatial_only:
             # estimate mean intensity per unit time
-            T = np.ptp(self.data_time)
-            k = self.num_bg[-1] / float(T * self.ndata)
-            ## FIXME: need a way to specify marginal pdf over all space
-            return k * self.bg_kde.pdf(target_data, normed=False)
+            T = self.data_time.ptp()
+            k = self.p.diagonal().sum() / float(T * self.ndata)
+            return k * self.bg_kde.partial_marginal_pdf(target_data, dim=0, normed=False)
         else:
             return self.bg_kde.pdf(target_data, normed=True)
 
@@ -329,6 +335,46 @@ class Sepp(SepBase):
         raise NotImplementedError
 
 
+class SeppStochastic(Sepp):
+
+    def sample_data(self):
+        """
+        Weighted sampling algorithm by Efraimidis and Spirakis. Weighted random sampling with a reservoir.
+        Information Processing Letters 97 (2006) 181-185
+        """
+        urvs = np.random.random(self.p.nnz)
+        ks_matrix = self.p.copy()
+        ks_matrix.data = np.power(urvs, 1. / self.p.data)
+
+        # find the largest value in each column
+        causes = [self.linkage_cols[n][np.argmax(ks_matrix[:, n].data)] for n in range(self.ndata)]
+        effects = range(self.ndata)
+
+        bg_idx = [x for x, y in zip(causes, effects) if x == y]
+        cause_idx, effect_idx = zip(*[(x, y) for x, y in zip(causes, effects) if x != y])
+
+        return bg_idx, list(cause_idx), list(effect_idx)
+
+    def set_kdes(self):
+        bg_idx, cause_idx, effect_idx = self.sample_data()
+        interpoint = self.data[effect_idx] - self.data[cause_idx]
+
+        self.num_bg.append(len(bg_idx))
+        self.num_trig.append(len(cause_idx))
+
+        # compute KDEs
+        try:
+
+            self.bg_t_kde = pp_kde.FixedBandwidthKde(self.data[bg_idx, 0], bandwidths=self.min_bandwidth[:1],
+                                                     parallel=self.parallel)
+            self.bg_xy_kde = pp_kde.FixedBandwidthKde(self.data[bg_idx, 1:], bandwidths=self.min_bandwidth[1:],
+                                                      parallel=self.parallel)
+            self.trigger_kde = pp_kde.FixedBandwidthKde(interpoint,
+                                                        bandwidths=self.min_bandwidth,
+                                                        parallel=self.parallel)
+        except AttributeError as exc:
+            print "Error.  Num BG: %d, num trigger %d" % (self.num_bg[-1], self.num_trig[-1])
+            raise exc
 
 
 

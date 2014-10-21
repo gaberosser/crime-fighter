@@ -43,19 +43,6 @@ def network_distance(loc1, loc2):
     raise NotImplementedError()
 
 
-def linkages(data_source, max_t, max_d, data_target=None, chunksize=2**16, kind='euclidean'):
-    """
-    Ideally, would put the boilerplate code here and just vary the distance function...
-    """
-
-    if kind == 'euclidean':
-        dist_fun = euclidean_distance
-    elif kind == 'network':
-        dist_fun = network_distance
-    else:
-        raise AttributeError("Unrecognised kind supplied: %s" % kind)
-
-
 def linkages_euclidean_array(data_source, max_t, max_d, data_target=None, chunksize=2**16):
     """
     Compute the indices of datapoints that are within the following tolerances:

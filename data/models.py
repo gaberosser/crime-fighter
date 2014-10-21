@@ -4,7 +4,10 @@ from network.geos import NetworkPoint
 
 
 class Data(object):
-    pass
+
+    @property
+    def nd(self):
+        raise NotImplementedError()
 
 # class TimeData(object):
 #
@@ -79,11 +82,14 @@ class SpaceTimeData(Data):
         raise NotImplementedError()
 
 
-class EuclideanSpaceData(Data, np.ndarray):
+class CartesianData(Data, np.ndarray):
 
     def __new__(cls, input_array):
         # Input array is an already formed ndarray instance
         # We first cast to be our class type
+
+        ## TODO: add support for 3D input array?  where nd is the length of the 3rd dim.
+        ## this allows instantiation (almost) directly from meshgrid
 
         obj = np.asarray(input_array).view(cls)
 
@@ -121,7 +127,7 @@ class EuclideanSpaceData(Data, np.ndarray):
         return np.sqrt(np.sum((self - other) ** 2, axis=1))
 
 
-class EuclideanSpaceTimeData(Data, np.ndarray):
+class CartesianSpaceTimeData(Data, np.ndarray):
 
     def __new__(cls, input_array):
         # Input array is an already formed ndarray instance
@@ -149,7 +155,7 @@ class EuclideanSpaceTimeData(Data, np.ndarray):
     @property
     def space(self):
         # space component of datapoints
-        return EuclideanSpaceData(self[:, 1:])
+        return CartesianData(self[:, 1:])
 
     def distance(self, other):
         # distance between self and other
