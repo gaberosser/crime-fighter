@@ -3,6 +3,9 @@ import numpy as np
 from network.geos import NetworkPoint
 
 
+class Data(object):
+    pass
+
 # class TimeData(object):
 #
 #     def __init__(self, data):
@@ -46,7 +49,7 @@ from network.geos import NetworkPoint
 #         return np.sqrt(np.sum((self.data - other.data) ** 2, axis=1))
 
 
-class NetworkData(object):
+class NetworkData(Data):
 
     def __init__(self, graph, network_points):
         self.graph = graph
@@ -63,7 +66,7 @@ class NetworkData(object):
         return [x.network_distance(y) for (x, y) in zip(self.data, other.data)]
 
 
-class SpaceTimeData(object):
+class SpaceTimeData(Data):
 
     @property
     def time(self):
@@ -76,7 +79,7 @@ class SpaceTimeData(object):
         raise NotImplementedError()
 
 
-class EuclideanSpaceData(np.ndarray):
+class EuclideanSpaceData(Data, np.ndarray):
 
     def __new__(cls, input_array):
         # Input array is an already formed ndarray instance
@@ -118,7 +121,7 @@ class EuclideanSpaceData(np.ndarray):
         return np.sqrt(np.sum((self - other) ** 2, axis=1))
 
 
-class EuclideanSpaceTimeData(np.ndarray):
+class EuclideanSpaceTimeData(Data, np.ndarray):
 
     def __new__(cls, input_array):
         # Input array is an already formed ndarray instance

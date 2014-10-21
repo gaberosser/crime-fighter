@@ -33,39 +33,62 @@ class BaseKernel(object):
     def marginal_cdf(self, x, dim=0):
         raise NotImplementedError()
 
+    def partial_marginal_pdf(self, x, dim=0):
+        raise NotImplementedError()
+
+    def partial_marginal_cdf(self, x, dim=0):
+        raise NotImplementedError()
+
 
 class MultivariateNormal(BaseKernel):
 
     def __init__(self, mean, vars):
-        self.mean = np.array(mean, dtype=float)
-        self.vars = np.array(vars, dtype=float)
+        self.mean = mean
+        self.vars = vars
+        # self.mean = np.array(mean, dtype=float)
+        # self.vars = np.array(vars, dtype=float)
 
     @property
     def ndim(self):
         return self.vars.size
 
-    def pdf(self, x):
-        """ Input is an ndarray of dims N x ndim. """
+    def pdf(self, x, dims=None):
+        """ Input is an ndarray of dims N x ndim.
+            This may be a data class or just a plain array.
+            If dims is specified, it is an array of the dims to include in the calculation """
         try:
-            shp = x.shape
+            ndim = x.nd
         except AttributeError:
-            shp = np.array(x, dtype=np.float64).shape
+            ndim = x.shape[1]
 
-        ax = 1
-        if not shp and self.ndim == 1:
-            # OK - passed a float, 1D implementation
-            return normpdf(x, self.mean[0], self.vars[0])
-        elif len(shp) == 1 and self.ndim == 1:
-            # OK - passed a 1D array, 1D implementation
-            return normpdf(x, self.mean[0], self.vars[0])
-        elif len(shp) == 1:
-            ax = 0
-        elif shp[-1] != self.ndim:
+        if ndim != self.ndim:
             raise AttributeError("Incorrect dimensions for input variable")
 
-        a = np.power(2*PI, -self.ndim * 0.5)
+        if dims:
+            if len(dims) != ndim:
+                raise AttributeError("Incorrect dimensions for input variable")
+        else:
+            dims = range(ndim)
+
+        a = np.power(2*PI, -ndim * 0.5)
         b = np.prod(np.power(self.vars, -0.5))
-        c = np.exp(-np.sum((x - self.mean)**2 / (2 * self.vars), axis=ax))
+
+        if ndim == 1:
+            c = np.exp(-(x - self.mean)**2 / (2 * self.vars))
+        elif ndim == 2:
+            c = np.exp(
+                - (x[:, 0] - self.mean[0])**2 / (2 * self.vars[0])
+                - (x[:, 1] - self.mean[1])**2 / (2 * self.vars[1])
+            )
+        elif ndim == 3:
+            c = np.exp(
+                - (x[:, 0] - self.mean[0])**2 / (2 * self.vars[0])
+                - (x[:, 1] - self.mean[1])**2 / (2 * self.vars[1])
+                - (x[:, 2] - self.mean[2])**2 / (2 * self.vars[2])
+            )
+        else:
+            c = np.exp(-np.sum((x - self.mean)**2 / (2 * self.vars), axis=1))
+
         return a * b * c
 
     def marginal_pdf(self, x, dim=0):
@@ -75,6 +98,11 @@ class MultivariateNormal(BaseKernel):
     def marginal_cdf(self, x, dim=0):
         """ Return value is 1D marginal cdf with specified dim """
         return normcdf(x, self.mean[dim], self.vars[dim])
+
+    def partial_marginal_pdf(self, x, dim=0):
+        """ Return value is 1D partial marginal pdf:
+            full pdf integrated over specified dim """
+        return normpdf(x, self.mean[dim], self.vars[dim])
 
 
 class SpaceTimeNormal(MultivariateNormal):
