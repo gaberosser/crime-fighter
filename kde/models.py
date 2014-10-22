@@ -8,7 +8,7 @@ import multiprocessing as mp
 from kde import kernels
 from stats.logic import weighted_stdev
 from sklearn.neighbors import NearestNeighbors
-from data.models import Data
+from data.models import Data, DataArray, SpaceTimeDataArray, CartesianSpaceTimeData
 import ipdb  # just in case
 
 def marginal_icdf_optimise(k, y, dim=0, tol=1e-8):
@@ -130,12 +130,13 @@ class WeightedKernelCluster(KernelCluster):
 class KdeBase(object):
 
     kernel_class = kernels.BaseKernel
+    data_class = DataArray
 
     def __init__(self, data, parallel=True, *args, **kwargs):
-        # print "KdeBase.__init__"
-        self.data = np.array(data)
-        if self.data.ndim == 1:
-            self.data = self.data.reshape((self.data.size, 1))
+        if isinstance(data, self.data_class):
+            self.data = data
+        else:
+            self.data = self.data_class(data)
 
         self.parallel = parallel
 
@@ -152,11 +153,11 @@ class KdeBase(object):
 
     @property
     def ndim(self):
-        return self.data.shape[1]
+        return self.data.nd
 
     @property
     def ndata(self):
-        return self.data.shape[0]
+        return self.data.ndata
 
     @property
     def raw_std_devs(self):
@@ -241,25 +242,31 @@ class KdeBase(object):
             z /= float(self.ndata)
         return z
 
-    def pdf(self, target, **kwargs):
-        if isinstance(target, Data):
-            ndim = target.nd
-        else:
-            ndim = target.shape[1]
-        if ndim != self.ndim:
+    def check_inputs(self, x, ndim=None, cls=None):
+        ndim = ndim or self.ndim
+        cls = cls or self.data_class
+        if not isinstance(x, cls):
+            x = cls(x)
+        if x.nd != ndim:
             raise AttributeError("Target data does not have the correct number of dimensions")
+
+    def pdf(self, target, **kwargs):
+        self.check_inputs(target, ndim=self.ndim)
         return self._additive_operation('pdf', target, **kwargs)
 
     def marginal_pdf(self, x, **kwargs):
         # return the marginal pdf in the dim specified in kwargs (dim=0 default)
+        self.check_inputs(x, ndim=1, cls=DataArray)
         return self._additive_operation('marginal_pdf', x, **kwargs)
 
     def marginal_cdf(self, x, **kwargs):
         """ Return the marginal cdf in the dim specified in kwargs (dim=0 default) """
+        self.check_inputs(x, ndim=1, cls=DataArray)
         return self._additive_operation('marginal_cdf', x, **kwargs)
 
     def partial_marginal_pdf(self, x, **kwargs):
         # return the marginal pdf in all dims but the one specified in kwargs (dim=0 by default)
+        self.check_inputs(x, ndim=self.ndim - 1, cls=DataArray)
         return self._additive_operation('partial_marginal_pdf', x, **kwargs)
 
     def marginal_icdf(self, y, *args, **kwargs):
@@ -276,75 +283,26 @@ class KdeBase(object):
 
 
 class KdeBaseSeparable(KdeBase):
+    """
+    KDE that is separable in time and space.  Requires the use of SpaceTimeData class to tease apart separable dims
+    """
+    data_class = SpaceTimeDataArray
 
-    def __init__(self, data, parallel=True, *args, **kwargs):
+    def pdf(self, target, **kwargs):
+        self.check_inputs(target, ndim=self.ndim)
 
-        self.data = np.array(data)
-        if self.data.ndim == 1:
-            self.data = self.data.reshape((self.data.size, 1))
+        marg = self.marginal_pdf(target.time)
+        pmarg = self.partial_marginal_pdf(target.space)
 
-        # separable dimension - currently only support one of these.  Default 0 (time)
-        self.separable_dim = kwargs.pop('sepdim', 0)
+        return marg * pmarg
 
-        self.parallel = parallel
-
-        try:
-            self.ncpu = kwargs.pop('ncpu', mp.cpu_count())
-        except NotImplementedError:
-            self.ncpu = 1
-        self.b_shared = kwargs.pop('sharedmem', False)
-
-        self.kernel_clusters = None
-        self.bandwidths = None
-        self.set_bandwidths(*args, **kwargs)
-        self.set_kernels()
-
-    def _iterative_operation(self, funcstr, target, *args, **kwargs):
-        """
-        Generic interface to call function named in funcstr on the target data
-        The returned list contains an element for each kernel
-        """
-
-        if self.b_shared:
-
-            # create ctypes array pointer
-            c_double_p = ctypes.POINTER(ctypes.c_double)
-            flat_data_ctypes_p = target.ctypes.data_as(c_double_p)
-            with closing(
-                    mp.Pool(processes=self.ncpu, initializer=shared_process_init,
-                            initargs=(flat_data_ctypes_p, target.shape))
-            ) as pool:
-                z = pool.map(partial(runner_shared, fstr=funcstr), self.kernel_clusters)
-
-        else:
-            with closing(mp.Pool(processes=self.ncpu)) as pool:
-                z = pool.map(partial(runner, fstr=funcstr, fd=target), self.kernel_clusters)
-
-        return reduce(operator.add, [[y] for y in z])
-
-    def _additive_operation(self, funcstr, target, **kwargs):
-        """ Generic interface to call function named in funcstr on the target data, handling normalisation """
-
-        normed = kwargs.pop('normed', True)
-
-        if not self.parallel:
-            z = self.kernel_clusters[0].additive_operation(funcstr, target, **kwargs)
-        elif self.b_shared:
-            # create ctypes array pointer
-            c_double_p = ctypes.POINTER(ctypes.c_double)
-            flat_data_ctypes_p = target.ctypes.data_as(c_double_p)
-            with closing(
-                    mp.Pool(processes=self.ncpu, initializer=shared_process_init,
-                            initargs=(flat_data_ctypes_p, target.shape))
-            ) as pool:
-                z = sum(pool.map(partial(runner_additive_shared, fstr=funcstr, **kwargs), self.kernel_clusters))
-        else:
-            with closing(mp.Pool(processes=self.ncpu)) as pool:
-                z = sum(pool.map(partial(runner_additive, fstr=funcstr, fd=target, **kwargs), self.kernel_clusters))
-
-        if normed:
-            z /= float(self.ndata)
-        return z
+    def partial_marginal_pdf(self, x, **kwargs):
+        # return the marginal pdf in all dims but the one specified in kwargs (dim=0 by default)
+        self.check_inputs(x, ndim=self.ndim - 1)
+        dim = kwargs.get('dim')
+        if dim and dim != 0:
+            raise AttributeError("Unsupported operation: partial_marginal_pdf with dim != 0")
+        return self._additive_operation('partial_marginal_pdf', x, **kwargs)
 
 
 class FixedBandwidthKde(KdeBase):
@@ -401,6 +359,12 @@ class FixedBandwidthKde(KdeBase):
         if self.ndim == 1:
             raise NotImplementedError("Unable to compute time-dependent variance with ndim=1")
         return self._t_dependent_variance(t)[2]
+
+
+class FixedBandwidthKdeSeparable(FixedBandwidthKde, KdeBaseSeparable):
+    """
+    Combination of fixed bandwidth and separable KDE in time / space.
+    """
 
 
 class VariableBandwidthKde(FixedBandwidthKde):
