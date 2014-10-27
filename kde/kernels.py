@@ -53,7 +53,10 @@ class MultivariateNormal(BaseKernel):
             If dims is specified, it is an array of the dims to include in the calculation """
 
         if not isinstance(x, np.ndarray):
+            getdim = lambda x, dim: x[:, dim]
             x = np.array(x)
+        else:
+            getdim = lambda x, dim: x.getdim(dim)
 
         if dims:
             ndim = len(dims)
@@ -76,26 +79,40 @@ class MultivariateNormal(BaseKernel):
             c = np.exp(-(x - self.mean[dims[0]])**2 / (2 * self.vars[dims[0]]))
         elif ndim == 2:
             c = np.exp(
-                - (x[:, 0] - self.mean[dims[0]])**2 / (2 * self.vars[dims[0]])
-                - (x[:, 1] - self.mean[dims[1]])**2 / (2 * self.vars[dims[1]])
+                - (getdim(x, 0) - self.mean[dims[0]])**2 / (2 * self.vars[dims[0]])
+                - (getdim(x, 1) - self.mean[dims[1]])**2 / (2 * self.vars[dims[1]])
             )
+            # c = np.exp(
+            #     - (x[:, 0] - self.mean[dims[0]])**2 / (2 * self.vars[dims[0]])
+            #     - (x[:, 1] - self.mean[dims[1]])**2 / (2 * self.vars[dims[1]])
+            # )
         elif ndim == 3:
+            # c = np.exp(
+            #     - (x[:, 0] - self.mean[dims[0]])**2 / (2 * self.vars[dims[0]])
+            #     - (x[:, 1] - self.mean[dims[1]])**2 / (2 * self.vars[dims[1]])
+            #     - (x[:, 2] - self.mean[dims[2]])**2 / (2 * self.vars[dims[2]])
+            # )
             c = np.exp(
-                - (x[:, 0] - self.mean[dims[0]])**2 / (2 * self.vars[dims[0]])
-                - (x[:, 1] - self.mean[dims[1]])**2 / (2 * self.vars[dims[1]])
-                - (x[:, 2] - self.mean[dims[2]])**2 / (2 * self.vars[dims[2]])
+                - (getdim(x, 0) - self.mean[dims[0]])**2 / (2 * self.vars[dims[0]])
+                - (getdim(x, 1) - self.mean[dims[1]])**2 / (2 * self.vars[dims[1]])
+                - (getdim(x, 2) - self.mean[dims[2]])**2 / (2 * self.vars[dims[2]])
             )
         else:
             c = np.exp(-np.sum((x - self.mean[dims])**2 / (2 * self.vars[dims]), axis=1))
 
-        return (a * b * c).view(type=np.ndarray)
+        # return (a * b * c).view(type=np.ndarray)
+        return (a * b * c)
 
     def marginal_pdf(self, x, dim=0):
         """ Return value is 1D marginal pdf with specified dim """
+        if not isinstance(x, np.ndarray):
+            x = np.array(x)
         return normpdf(x.flatten(), self.mean[dim], self.vars[dim]).view(type=np.ndarray)
 
     def marginal_cdf(self, x, dim=0):
         """ Return value is 1D marginal cdf with specified dim """
+        if not isinstance(x, np.ndarray):
+            x = np.array(x)
         return normcdf(x.flatten(), self.mean[dim], self.vars[dim]).view(type=np.ndarray)
 
     def partial_marginal_pdf(self, x, dim=0):

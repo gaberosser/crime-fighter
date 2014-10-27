@@ -12,6 +12,7 @@ from data.models import Data, DataArray, SpaceTimeDataArray, CartesianSpaceTimeD
 import ipdb  # just in case
 
 def marginal_icdf_optimise(k, y, dim=0, tol=1e-8):
+
     n = 100
     max_iter = 50
     f = lambda x: np.abs(k.marginal_cdf(x, dim=dim) - y)
@@ -24,7 +25,7 @@ def marginal_icdf_optimise(k, y, dim=0, tol=1e-8):
     while err > tol:
         if niter > max_iter:
             raise Exception("Failed to converge to optimum after %u iterations", max_iter)
-        xe = np.linspace(minx, maxx, n)
+        xe = k.data_class(np.linspace(minx, maxx, n))
         ye = f(xe)
         idx = np.argmin(ye)
         if idx == 0:
@@ -39,7 +40,7 @@ def marginal_icdf_optimise(k, y, dim=0, tol=1e-8):
         minx = xe[idx - 1]
         maxx = xe[idx + 1]
         niter += 1
-    return x0
+    return float(x0)
 
 
 # A few helper functions required for parallel processing
@@ -247,6 +248,7 @@ class KdeBase(object):
         cls = cls or self.data_class
         if not isinstance(x, cls):
             x = cls(x)
+
         if x.nd != ndim:
             raise AttributeError("Target data does not have the correct number of dimensions")
 
@@ -301,7 +303,7 @@ class KdeBaseSeparable(KdeBase):
         self.check_inputs(x, ndim=self.ndim - 1)
         dim = kwargs.get('dim')
         if dim and dim != 0:
-            raise AttributeError("Unsupported operation: partial_marginal_pdf with dim != 0")
+            raise NotImplementedError("Unsupported operation: partial_marginal_pdf with dim != 0")
         return self._additive_operation('partial_marginal_pdf', x, **kwargs)
 
 

@@ -2,6 +2,7 @@ __author__ = 'gabriel'
 from django.test import SimpleTestCase
 import models
 import numpy as np
+import ipdb
 
 
 class TestDataArray(SimpleTestCase):
@@ -39,12 +40,58 @@ class TestDataArray(SimpleTestCase):
         self.assertTrue(np.all(data[:, 1] == x[:, 1]))
 
     def test_instantiation_nd(self):
+        # 3D
+        x = np.meshgrid(np.linspace(0, 1, 10), np.linspace(1, 2, 10), np.linspace(2, 3, 10))
+        data = models.DataArray(np.concatenate([t[..., np.newaxis] for t in x], axis=3))
+        self.assertTrue(isinstance(data, models.Data))
+        self.assertEqual(data.nd, 3)
+        self.assertEqual(data.ndata, 1000)
+        self.assertTrue(np.all(data[:, 2] == x[2].flatten('F')))
+
+        # 5D
         x = np.linspace(0, 1, 500).reshape(10, 10, 5)
         data = models.DataArray(x)
         self.assertTrue(isinstance(data, models.Data))
         self.assertEqual(data.nd, 5)
         self.assertEqual(data.ndata, 100)
         self.assertTrue(np.all(data[:, 3] == x[..., 3].flatten('F')))
+
+    def test_separate(self):
+
+        # 2D, no original shape
+        x = np.random.rand(50, 2)
+        data = models.DataArray(x)
+        self.assertTrue(data.original_shape is None)
+        a, b = data.separate
+        # a and b should be an np.ndarray instance
+        self.assertIsInstance(a, np.ndarray)
+        # ... and NOT a datatype any more
+        self.assertFalse(isinstance(a, models.Data))
+        self.assertTrue(np.all(a == x[:, 0]))
+        self.assertTrue(np.all(b == x[:, 1]))
+
+        # 5D with original shape
+        x = np.linspace(0, 1, 500).reshape(10, 10, 5)
+        data = models.DataArray(x)
+        self.assertTupleEqual(data.original_shape, (10, 10))
+        res = data.separate
+        self.assertEqual(len(res), 5)
+        for i in range(5):
+            self.assertTupleEqual(res[i].shape, (10, 10))
+            self.assertTrue(np.all(res[i] == x[:, :, i]))
+
+
+        x = np.meshgrid(np.linspace(0, 1, 10), np.linspace(1, 2, 10), np.linspace(2, 3, 10))
+        data = models.DataArray(np.concatenate([t[..., np.newaxis] for t in x], axis=3))
+        self.assertTupleEqual(data.original_shape, (10, 10, 10))
+        res = data.separate
+        for i in range(3):
+            self.assertTrue(np.all(res[i] == x[i]))
+            self.assertIsInstance(res[i], np.ndarray)
+            self.assertFalse(isinstance(res[i], models.Data))
+
+
+
 
 
 class TestSpaceTimeDataArray(SimpleTestCase):
@@ -58,7 +105,7 @@ class TestSpaceTimeDataArray(SimpleTestCase):
         self.assertTrue(isinstance(data, models.Data))
         self.assertEqual(data.nd, 2)
         self.assertEqual(data.ndata, 3)
-        self.assertTrue(np.all(data[:, 0] == data.time))
+        self.assertTrue(np.all(data.getdim(0) == data.time))
         self.assertTrue(np.all(data[:, 0] == np.array([1, 3, 5])))
 
         self.assertTrue(isinstance(data.space, models.DataArray))
@@ -69,13 +116,11 @@ class TestSpaceTimeDataArray(SimpleTestCase):
         data = models.SpaceTimeDataArray(x)
         self.assertEqual(data.nd, 5)
         self.assertEqual(data.ndata, 100)
-        self.assertTrue(np.all(data.time == x[..., 0].flatten('F')))
+        self.assertTrue(np.all(data.time.flat == x[..., 0].flatten('F')))
 
         self.assertTrue(isinstance(data.space, models.DataArray))
         self.assertTrue(np.all(data.space[:, 0] == x[..., 1].flatten('F')))
         self.assertTrue(np.all(data.space[:, 3] == x[..., 4].flatten('F')))
-
-
 
 
 class TestCartesianData(SimpleTestCase):

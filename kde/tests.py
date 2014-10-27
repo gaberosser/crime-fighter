@@ -2,12 +2,13 @@ __author__ = 'gabriel'
 import unittest
 import kernels
 from models import VariableBandwidthKde, VariableBandwidthNnKde, FixedBandwidthKde, \
-    WeightedVariableBandwidthNnKde
-from data.models import CartesianSpaceTimeData, CartesianData
+    WeightedVariableBandwidthNnKde, FixedBandwidthKdeSeparable
+from data.models import DataArray, SpaceTimeDataArray
 import numpy as np
 from scipy.stats import norm, multivariate_normal
 from scipy.integrate import quad, tplquad
 from functools import partial
+import ipdb
 
 
 def quad_pdf_fun(*args, **kwargs):
@@ -55,14 +56,14 @@ class TestKernelMultivariateNormal(unittest.TestCase):
             self.assertAlmostEqual(y1, y2)
 
         # repeat with Data type
-        x = CartesianData(np.linspace(-1, 1, 10))
+        x = DataArray(np.linspace(-1, 1, 10))
         y = mvn.pdf(x)
         for y1, y2 in zip(y, y_expct):
             self.assertAlmostEqual(y1, y2)
 
         m = mvn.marginal_pdf(x)
         self.assertListEqual(list(y), list(m))
-        c = mvn.marginal_cdf(0.)
+        c = mvn.marginal_cdf(np.array(0.))
         self.assertAlmostEqual(c, 0.5)
 
     def test_mvn3d(self):
@@ -80,7 +81,7 @@ class TestKernelMultivariateNormal(unittest.TestCase):
         self.assertEqual(np.sum(np.abs((y - y_expct)).flatten()>1e-12), 0) # no single difference > 1e-12
 
         # repeat with Data type
-        x = CartesianData(x)
+        x = DataArray(x)
         y = mvn.pdf(x)
         self.assertEqual(np.sum(np.abs((y - y_expct)).flatten()>1e-12), 0) # no single difference > 1e-12
 
@@ -252,5 +253,39 @@ class TestWeightedVariableBandwidthKdeNn(unittest.TestCase):
         # pdf unchanged when weights are all 1
         x = np.array([[0.134]])
         self.assertAlmostEqual(kde.pdf(x), kdeu.pdf(x))
+
+
+class TestFixedBandwidthSeparableKde(unittest.TestCase):
+
+    def test_kde_3d(self):
+        x = np.random.rand(10, 3)
+        data = SpaceTimeDataArray(x)  # first col is now time
+        ks = FixedBandwidthKdeSeparable(data, bandwidths=[1., 2., 3.])
+
+        arr = np.meshgrid(np.ones(10), np.linspace(0, 1, 10), np.linspace(0, 1, 10))
+        txy = SpaceTimeDataArray(np.concatenate([t[..., np.newaxis] for t in arr], axis=3))
+
+        mp_time = ks.marginal_pdf(txy.time, dim=0)
+        pp_space = ks.partial_marginal_pdf(txy.space, dim=0)
+        p = ks.pdf(txy)
+
+        self.assertTupleEqual(p.shape, (1000,))
+        self.assertTupleEqual(mp_time.shape, (1000,))
+        self.assertTupleEqual(pp_space.shape, (1000,))
+
+        # build expected output
+        mpdf_time_expct = np.zeros_like(txy.time)
+        ppdf_space_expct = np.zeros_like(txy.time)
+        for row in x:
+            mpdf_time_expct += norm.pdf(txy.time, loc=row[0], scale=1.)
+            ppdf_space_expct += norm.pdf(txy.getdim(1), loc=row[1], scale=2.) * \
+                                norm.pdf(txy.getdim(2), loc=row[2], scale=3.)
+
+        pdf_expct = mpdf_time_expct * ppdf_space_expct
+
+
+
+
+
 
 

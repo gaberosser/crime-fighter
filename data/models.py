@@ -76,12 +76,17 @@ class DataArray(Data, np.ndarray):
         # We first cast to be our class type
 
         obj = np.asarray(input_array).view(cls)
+        obj.original_shape = None
 
         # check dimensions
         if obj.ndim == 0:
-            raise AttributeError("Input array has no data")
+            # input is either empty or a single value
+            try:
+                obj = obj.reshape(1, 1)
+            except ValueError:
+                raise AttributeError("Input array has no data")
 
-        if obj.ndim == 1:
+        elif obj.ndim == 1:
             obj = obj.reshape((obj.size, 1))
 
         elif obj.ndim > 2:
@@ -90,13 +95,47 @@ class DataArray(Data, np.ndarray):
             # that is used by the 'flat' iterator
             nd = obj.shape[-1]
             ndata = obj[..., 0].size
+            # record original shape for later rebuilding
+            obj.original_shape = obj[..., 0].shape
             obj = obj.reshape((ndata, nd), order='F')
 
         # Finally, we must return the newly created object:
         return obj
 
+    def __array_finalize__(self, obj):
+        # ``self`` is a new object resulting from
+        # ndarray.__new__(InfoArray, ...), therefore it only has
+        # attributes that the ndarray.__new__ constructor gave it -
+        # i.e. those of a standard ndarray.
+        #
+        # We could have got to the ndarray.__new__ call in 3 ways:
+        # From an explicit constructor - e.g. InfoArray():
+        #    obj is None
+        #    (we're in the middle of the InfoArray.__new__
+        #    constructor, and self.info will be set when we return to
+        #    InfoArray.__new__)
+        if obj is None:
+            return
+        # From view casting - e.g arr.view(InfoArray):
+        #    obj is arr
+        #    (type(obj) can be InfoArray)
+        # From new-from-template - e.g infoarr[:3]
+        #    type(obj) is InfoArray
+        #
+        # Note that it is here, rather than in the __new__ method,
+        # that we set the default value for 'info', because this
+        # method sees all creation of default objects - with the
+        # InfoArray.__new__ constructor, but also with
+        # arr.view(InfoArray).
+        self.original_shape = getattr(obj, 'original_shape', None)
+        # We do not need to return anything
+
     def getdim(self, dim):
-        return DataArray(self[:, dim])
+        # extract required dimension
+        obj = DataArray(self[:, dim])
+        # set original shape manually
+        obj.original_shape = self.original_shape
+        return obj
 
     @property
     def nd(self):
@@ -105,6 +144,15 @@ class DataArray(Data, np.ndarray):
     @property
     def ndata(self):
         return self.shape[0]
+
+    @property
+    def separate(self):
+        if self.original_shape:
+            return tuple(
+                (self.getdim(i).reshape(self.original_shape, order='F').view(np.ndarray) for i in range(self.nd))
+            )
+        else:
+            return tuple((self.getdim(i).flatten().view(np.ndarray) for i in range(self.nd)))
 
 
 class SpaceTimeDataArray(DataArray):
