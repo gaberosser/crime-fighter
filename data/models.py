@@ -130,6 +130,20 @@ class DataArray(Data, np.ndarray):
         self.original_shape = getattr(obj, 'original_shape', None)
         # We do not need to return anything
 
+    def __reduce__(self):
+        # required for pickling.
+        # call parent reduce method first
+        recon, initargs, state = super(DataArray, self).__reduce__()
+        # add any extra attributes
+        state += (self.__dict__,)
+        return recon, initargs, state
+
+    def __setstate__(self, state):
+        # called upon unpickling
+        self.__dict__ = state[-1]
+        # call parent setstate
+        super(DataArray, self).__setstate__(state[:-1])
+
     def getdim(self, dim):
         # extract required dimension
         obj = DataArray(self[:, dim])
@@ -147,12 +161,19 @@ class DataArray(Data, np.ndarray):
 
     @property
     def separate(self):
+        return tuple(self.toarray(i) for i in range(self.nd))
+
+    def toarray(self, dim):
+        # return an np.ndarray object with the same shape as the original
+        # dim is a non-optional input argument detailing which dimension is required, unless self.nd=1 in which case
+        # dim=0 is assumed.  If all dimensions are required, use separate instead
+        if dim > (self.nd - 1):
+            raise AttributeError("Requested dim %d but this array has nd %d" % (dim, self.nd))
         if self.original_shape:
-            return tuple(
-                (self.getdim(i).reshape(self.original_shape, order='F').view(np.ndarray) for i in range(self.nd))
-            )
+            return self.getdim(dim).reshape(self.original_shape, order='F').view(np.ndarray)
         else:
-            return tuple((self.getdim(i).flatten().view(np.ndarray) for i in range(self.nd)))
+            return self.getdim(dim).squeeze().view(np.ndarray)
+
 
 
 class SpaceTimeDataArray(DataArray):
@@ -173,12 +194,16 @@ class SpaceTimeDataArray(DataArray):
     @property
     def time(self):
         # time component of datapoints
-        return DataArray(self[:, 0])
+        res = DataArray(self[:, 0])
+        res.original_shape = self.original_shape
+        return res
 
     @property
     def space(self):
         # space component of datapoints
-        return DataArray(self[:, 1:])
+        res = DataArray(self[:, 1:])
+        res.original_shape = self.original_shape
+        return res
 
 
 class CartesianData(DataArray):

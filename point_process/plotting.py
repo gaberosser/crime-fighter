@@ -231,15 +231,18 @@ def multiplots(ppobj, simobj=None, maxes=None):
     else:
         t_max = x_max = y_max = None
 
+    niter = len(ppobj.num_bg)
+    iterx = range(1, niter + 1)
+
     fig = plt.figure()
     ax = fig.add_subplot(111)
     h = []
-    h.append(ax.plot(range(ppobj.niter), ppobj.num_bg, 'k-'))
-    h.append(ax.plot(range(ppobj.niter), ppobj.num_trig, 'r-'))
+    h.append(ax.plot(iterx, ppobj.num_bg, 'k-'))
+    h.append(ax.plot(iterx, ppobj.num_trig, 'r-'))
     ymax = max(max(ppobj.num_bg), max(ppobj.num_trig))
     if simobj:
-        h.append(ax.plot(range(ppobj.niter), simobj.number_bg * np.ones(ppobj.niter), 'k--'))
-        h.append(ax.plot(range(ppobj.niter), simobj.number_aftershocks * np.ones(ppobj.niter), 'r--'))
+        h.append(ax.plot(iterx, simobj.number_bg * np.ones(niter), 'k--'))
+        h.append(ax.plot(iterx, simobj.number_aftershocks * np.ones(niter), 'r--'))
         ymax = max(ymax, simobj.number_bg, simobj.number_aftershocks)
     ax.set_ylim([0, 1.05 * ymax])
     ax.set_xlabel('Number iterations')

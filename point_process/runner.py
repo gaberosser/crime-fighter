@@ -55,14 +55,22 @@ if __name__ == '__main__':
 
     num_iter = 1
     parallel = True
-    t_total = 6000
+    t_total = 1000
     c, data = initial_simulation(t_total=t_total)
     ndata = data.shape[0]
 
     # set estimation seed for consistency
     models.estimation.set_seed(42)
+
+    kde_kwargs = {
+        'min_bandwidth': [1., .05, .05],
+    }
+    r = models.SeppStochasticNn(data=data, max_delta_d=0.75, max_delta_t=80, kde_kwargs=kde_kwargs)
+    p = estimation.estimator_bowers(data, r.linkage)
+    r.p = p
+
     # r = models.PointProcessStochastic(max_trigger_d=0.75, max_trigger_t=80, min_bandwidth=[1., .05, .05])
-    r = models.PointProcessStochasticNn(max_trigger_d=0.75, max_trigger_t=80, parallel=parallel, sharedmem=True)
+    # r = models.PointProcessStochasticNn(max_trigger_d=0.75, max_trigger_t=80, parallel=parallel, sharedmem=True)
     # r = models.PointProcessStochasticNn(max_trigger_d=1.5, max_trigger_t=100, parallel=parallel, sharedmem=True)
     # r = models.PointProcessDeterministicNn(max_trigger_d=0.75, max_trigger_t=80)
     # r = models.PointProcessDeterministicFixedBandwidth(max_trigger_d=0.75, max_trigger_t=80, min_bandwidth=[1., .05, .05])

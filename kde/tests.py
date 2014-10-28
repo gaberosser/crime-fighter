@@ -6,7 +6,7 @@ from models import VariableBandwidthKde, VariableBandwidthNnKde, FixedBandwidthK
 from data.models import DataArray, SpaceTimeDataArray
 import numpy as np
 from scipy.stats import norm, multivariate_normal
-from scipy.integrate import quad, tplquad
+from scipy.integrate import quad, dblquad, tplquad
 from functools import partial
 import ipdb
 
@@ -15,7 +15,7 @@ def quad_pdf_fun(*args, **kwargs):
     func = kwargs.pop('func')
     t = np.array(args[::-1])
     t.shape = (1, len(args))
-    return func(t)
+    return func(t, **kwargs)
 
 
 class TestHelperFunctions(unittest.TestCase):
@@ -229,7 +229,7 @@ class TestVariableBandwidthKdeNn(unittest.TestCase):
 
     def test_kde_1d(self):
         data = np.linspace(0, 1, 11)
-        kde = VariableBandwidthNnKde(data, nn=1)
+        kde = VariableBandwidthNnKde(data, number_nn=1)
         nndiste = np.diff(data)[0] / np.std(data, ddof=1)
         for n in kde.nn_distances:
             self.assertAlmostEqual(n, nndiste)
@@ -241,12 +241,12 @@ class TestWeightedVariableBandwidthKdeNn(unittest.TestCase):
 
     def test_kde_1d(self):
         data = np.linspace(0, 1, 11)
-        kde = WeightedVariableBandwidthNnKde(data, weights=np.ones_like(data), nn=2)
+        kde = WeightedVariableBandwidthNnKde(data, weights=np.ones_like(data), number_nn=2)
 
         self.assertTrue(np.all(kde.weights == 1.))
 
         # nn distances and bandwidths calculated as before
-        kdeu = VariableBandwidthNnKde(data, nn=2)
+        kdeu = VariableBandwidthNnKde(data, number_nn=2)
         self.assertListEqual(list(kde.nn_distances), list(kdeu.nn_distances))
         self.assertListEqual(list(kde.bandwidths), list(kdeu.bandwidths))
 
@@ -255,7 +255,29 @@ class TestWeightedVariableBandwidthKdeNn(unittest.TestCase):
         self.assertAlmostEqual(kde.pdf(x), kdeu.pdf(x))
 
 
+
+def quad_pdf_fun_st(*args, **kwargs):
+    func = kwargs.pop('func')
+    t = SpaceTimeDataArray([args[::-1]])
+    return func(t, **kwargs)
+
+
 class TestFixedBandwidthSeparableKde(unittest.TestCase):
+
+    def test_equivalence(self):
+        # check that KDE is equivalent to the non-separable version when only one target is present
+        x = np.random.rand(1, 3)
+        data = SpaceTimeDataArray(x)
+        ks = FixedBandwidthKdeSeparable(data, bandwidths=[1., 2., 3.])
+        k = FixedBandwidthKde(data, bandwidths=[1., 2., 3.])
+
+        arr = np.meshgrid(np.ones(10), np.linspace(0, 1, 10), np.linspace(0, 1, 10))
+        txy = SpaceTimeDataArray(np.concatenate([t[..., np.newaxis] for t in arr], axis=3))
+
+        ps = ks.pdf(txy)
+        p = k.pdf(txy)
+
+        self.assertTrue(np.all(np.abs(ps - p) < 1e-16))
 
     def test_kde_3d(self):
         x = np.random.rand(10, 3)
@@ -269,21 +291,44 @@ class TestFixedBandwidthSeparableKde(unittest.TestCase):
         pp_space = ks.partial_marginal_pdf(txy.space, dim=0)
         p = ks.pdf(txy)
 
-        self.assertTupleEqual(p.shape, (1000,))
-        self.assertTupleEqual(mp_time.shape, (1000,))
-        self.assertTupleEqual(pp_space.shape, (1000,))
+        self.assertTupleEqual(p.shape, (10, 10, 10,))
+        self.assertTupleEqual(mp_time.shape, (10, 10, 10,))
+        self.assertTupleEqual(pp_space.shape, (10, 10, 10,))
 
         # build expected output
-        mpdf_time_expct = np.zeros_like(txy.time)
-        ppdf_space_expct = np.zeros_like(txy.time)
+        mpdf_time_expct = np.zeros_like(txy.time.toarray(0))
+        ppdf_space_expct = np.zeros_like(txy.time.toarray(0))
         for row in x:
-            mpdf_time_expct += norm.pdf(txy.time, loc=row[0], scale=1.)
-            ppdf_space_expct += norm.pdf(txy.getdim(1), loc=row[1], scale=2.) * \
-                                norm.pdf(txy.getdim(2), loc=row[2], scale=3.)
+            mpdf_time_expct += norm.pdf(txy.time.toarray(0), loc=row[0], scale=1.) / x.shape[0]
+            ppdf_space_expct += norm.pdf(txy.getdim(1).toarray(0), loc=row[1], scale=2.) * \
+                                norm.pdf(txy.getdim(2).toarray(0), loc=row[2], scale=3.) / x.shape[0]
 
         pdf_expct = mpdf_time_expct * ppdf_space_expct
+        tol = 1e-14
+        self.assertFalse(np.any(np.abs(mpdf_time_expct - mp_time) > tol))
+        self.assertFalse(np.any(np.abs(ppdf_space_expct - pp_space) > tol))
+        self.assertFalse(np.any(np.abs(pdf_expct - p) > tol))
 
+    def test_norming(self):
+        data = SpaceTimeDataArray(np.random.rand(10, 3))
+        ks = FixedBandwidthKdeSeparable(data, bandwidths=[1., 2., 3.])
 
+        # normed
+
+        q = quad(partial(quad_pdf_fun, func=ks.marginal_pdf, dim=0), -5, 6)
+        self.assertAlmostEqual(q[0], 1.0, places=4)
+        q = quad(partial(quad_pdf_fun, func=ks.marginal_pdf, dim=1), -10, 10)
+        self.assertAlmostEqual(q[0], 1.0, places=4)
+        q = quad(partial(quad_pdf_fun, func=ks.marginal_pdf, dim=2), -15, 15)
+        self.assertAlmostEqual(q[0], 1.0, places=4)
+
+        # unnormed
+        q = quad(partial(quad_pdf_fun, func=ks.marginal_pdf, dim=0, normed=False), -5, 6)
+        self.assertAlmostEqual(q[0], 10.0, places=4)
+        q = quad(partial(quad_pdf_fun, func=ks.marginal_pdf, dim=1, normed=False), -10, 10)
+        self.assertAlmostEqual(q[0], 10.0, places=4)
+        q = quad(partial(quad_pdf_fun, func=ks.marginal_pdf, dim=2, normed=False), -15, 15)
+        self.assertAlmostEqual(q[0], 10.0, places=4)
 
 
 

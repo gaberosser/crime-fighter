@@ -51,7 +51,6 @@ class TestUtils(unittest.TestCase):
         self.assertTrue(np.all(d <= max_d))
 
     def test_cross_linkage_array(self):
-        tic = time()
         data_source = np.random.randn(5000, 3)
         data_target = np.random.randn(1000, 3)
         max_t = max_d = 0.5
@@ -66,7 +65,6 @@ class TestUtils(unittest.TestCase):
         # all distances <= max_d
         d = np.sqrt((data_target[j, 1] - data_source[i, 1])**2 + (data_target[j, 2] - data_source[i, 2])**2)
         self.assertTrue(np.all(d <= max_d))
-        print "test_cross_linkage_array %f s" % (time() - tic)
 
     def test_self_linkage(self):
         data1 = CartesianSpaceTimeData(np.random.randn(5000, 3))
@@ -82,7 +80,6 @@ class TestUtils(unittest.TestCase):
         self.assertTrue(np.all(d <= max_d))
 
     def test_cross_linkage(self):
-        tic = time()
         data_source = CartesianSpaceTimeData(np.random.randn(5000, 3))
         data_target = CartesianSpaceTimeData(np.random.randn(1000, 3))
         max_t = max_d = 0.5
@@ -97,7 +94,6 @@ class TestUtils(unittest.TestCase):
         # all distances <= max_d
         d = np.sqrt((data_target[j, 1] - data_source[i, 1])**2 + (data_target[j, 2] - data_source[i, 2])**2)
         self.assertTrue(np.all(d <= max_d))
-        print "test_cross_linkage %f s" % (time() - tic)
 
 
 class TestPointProcessStochasticNn(unittest.TestCase):

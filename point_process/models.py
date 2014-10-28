@@ -25,7 +25,7 @@ class SepBase(object):
 
         self.p = p
         self.data = None
-        if data:
+        if len(data):
             self.set_data(data)
         self.parallel = parallel
 
@@ -46,16 +46,30 @@ class SepBase(object):
         self.num_bg = []
         self.num_trig = []
         self.l2_differences = []
+        self.run_times = []
+
+        self.__init_extra__()
+
+    def __init_extra__(self):
+        """
+        Function that gets called immediately after __init__
+        Use this if any tweaks / defaults need to be applied at this stage
+        """
 
     @property
     def ndata(self):
         return len(self.data)
+
+    @property
+    def ndim(self):
+        raise NotImplementedError
 
     def reset(self):
         # reset storage containers
         self.num_bg = []
         self.num_trig = []
         self.l2_differences = []
+        self.run_times = []
         self.bg_kde = None
         self.trigger_kde = None
 
@@ -206,7 +220,7 @@ class SepBase(object):
         self.reset()
 
         # initial estimate for p if required
-        if not self.pset:
+        if self.p is None:
             self.p = self.estimator(self.data, self.linkage)
 
         ps = []
@@ -249,6 +263,9 @@ class Sepp(SepBase):
     def data_space(self):
         return self.data.space
 
+    def ndim(self):
+        return self.data.nd
+
     def set_data(self, data):
         """
         Ensure that data has correct type
@@ -281,8 +298,10 @@ class Sepp(SepBase):
             # estimate mean intensity per unit time
             T = self.data_time.ptp()
             k = self.p.diagonal().sum() / float(T * self.ndata)
+            print "Sepp background_density spatial_only"
             return k * self.bg_kde.partial_marginal_pdf(target_data, dim=0, normed=False)
         else:
+            print "Sepp background_density"
             return self.bg_kde.pdf(target_data, normed=True)
 
     def trigger_density(self, delta_data):
@@ -290,6 +309,7 @@ class Sepp(SepBase):
         Return the (unnormalised) trigger density
         Integral over all data dimensions should return num_trig / num_events
         """
+        print "Sepp trigger_kde"
         return self.trigger_kde.pdf(delta_data, normed=False) / self.ndata
 
     def trigger_density_in_place(self, target_data, source_data=None):
@@ -364,26 +384,36 @@ class SeppStochastic(Sepp):
 
         # compute KDEs
         try:
+            self.bg_kde = pp_kde.FixedBandwidthKdeSeparable(self.data[bg_idx], **self.kde_kwargs)
+            self.trigger_kde = pp_kde.FixedBandwidthKde(interpoint, **self.kde_kwargs)
 
-            self.bg_t_kde = pp_kde.FixedBandwidthKde(self.data[bg_idx, 0], bandwidths=self.min_bandwidth[:1],
-                                                     parallel=self.parallel)
-            self.bg_xy_kde = pp_kde.FixedBandwidthKde(self.data[bg_idx, 1:], bandwidths=self.min_bandwidth[1:],
-                                                      parallel=self.parallel)
-            self.trigger_kde = pp_kde.FixedBandwidthKde(interpoint,
-                                                        bandwidths=self.min_bandwidth,
-                                                        parallel=self.parallel)
         except AttributeError as exc:
             print "Error.  Num BG: %d, num trigger %d" % (self.num_bg[-1], self.num_trig[-1])
             raise exc
 
 
+class SeppStochasticNn(SeppStochastic):
 
+    def __init_extra__(self):
+        if 'number_nn' not in self.kde_kwargs:
+            self.kde_kwargs['number_nn'] = 100 if self.ndim == 1 else 15
 
+    def set_kdes(self):
+        bg_idx, cause_idx, effect_idx = self.sample_data()
+        interpoint = self.data[effect_idx] - self.data[cause_idx]
 
+        self.num_bg.append(len(bg_idx))
+        self.num_trig.append(len(cause_idx))
 
+        # compute KDEs
+        try:
+            self.bg_kde = pp_kde.VariableBandwidthNnKdeSeparable(self.data[bg_idx], number_nn=[100, 15])
+            self.trigger_kde = pp_kde.VariableBandwidthNnKde(interpoint, **self.kde_kwargs)  ## FIXME: allow proper specification
 
-
-
+        except AttributeError as exc:
+            ipdb.set_trace()
+            print "Error.  Num BG: %d, num trigger %d" % (self.num_bg[-1], self.num_trig[-1])
+            raise exc
 
 
 class PointProcess(object):

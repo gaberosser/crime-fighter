@@ -11,6 +11,8 @@ from sklearn.neighbors import NearestNeighbors
 from data.models import Data, DataArray, SpaceTimeDataArray, CartesianSpaceTimeData
 import ipdb  # just in case
 
+# some utility functions
+
 def marginal_icdf_optimise(k, y, dim=0, tol=1e-8):
 
     n = 100
@@ -25,7 +27,7 @@ def marginal_icdf_optimise(k, y, dim=0, tol=1e-8):
     while err > tol:
         if niter > max_iter:
             raise Exception("Failed to converge to optimum after %u iterations", max_iter)
-        xe = k.data_class(np.linspace(minx, maxx, n))
+        xe = DataArray(np.linspace(minx, maxx, n))
         ye = f(xe)
         idx = np.argmin(ye)
         if idx == 0:
@@ -42,6 +44,49 @@ def marginal_icdf_optimise(k, y, dim=0, tol=1e-8):
         niter += 1
     return float(x0)
 
+
+def set_nn_bandwidths(normed_data, raw_stdevs, num_nn, **kwargs):
+    tol = 1e-12
+
+    min_bandwidth = kwargs.get('min_bandwidth', None)
+
+    # compute nn distances on normed data
+
+    # increment NN by one since first result is always self-match
+    from time import time
+    tic = time()
+    try:
+        nn_obj = NearestNeighbors(num_nn + 1).fit(normed_data)
+        dist, _ = nn_obj.kneighbors(normed_data)
+    except Exception as exc:
+        ipdb.set_trace()
+        raise
+
+    nn_distances = dist[:, -1]
+
+    if np.any(np.isinf(nn_distances)):
+        raise AttributeError("Encountered np.inf values in NN distances")
+
+    # check for NN distances below tolerance
+    intol_idx = np.where(nn_distances < tol)[0]
+    if len(intol_idx):
+        intol_data = normed_data[intol_idx]
+        nn_obj.n_neighbors = normed_data.ndata
+        dist, _ = nn_obj.kneighbors(intol_data)
+        # for each point, perform a NN distance lookup on ALL valid NNs and use the first one above tol
+        for i, j in enumerate(intol_idx):
+            d = dist[i][num_nn + 1:]
+            nn_distances[j] = d[d > tol][0]
+
+    nn_distances = nn_distances.reshape((normed_data.ndata, 1))
+    bandwidths = raw_stdevs * nn_distances
+
+    # apply minimum bandwidth constraint if required
+    if min_bandwidth is not None and np.any(bandwidths < min_bandwidth):
+        fix_idx = np.where(bandwidths < min_bandwidth)
+        bandwidths[fix_idx] = np.array(min_bandwidth)[fix_idx[1]]
+
+    return nn_distances, bandwidths
 
 # A few helper functions required for parallel processing
 
@@ -252,23 +297,25 @@ class KdeBase(object):
         if x.nd != ndim:
             raise AttributeError("Target data does not have the correct number of dimensions")
 
+        return x
+
     def pdf(self, target, **kwargs):
-        self.check_inputs(target, ndim=self.ndim)
+        target = self.check_inputs(target, ndim=self.ndim)
         return self._additive_operation('pdf', target, **kwargs)
 
     def marginal_pdf(self, x, **kwargs):
         # return the marginal pdf in the dim specified in kwargs (dim=0 default)
-        self.check_inputs(x, ndim=1, cls=DataArray)
+        x = self.check_inputs(x, ndim=1, cls=DataArray)
         return self._additive_operation('marginal_pdf', x, **kwargs)
 
     def marginal_cdf(self, x, **kwargs):
         """ Return the marginal cdf in the dim specified in kwargs (dim=0 default) """
-        self.check_inputs(x, ndim=1, cls=DataArray)
+        x = self.check_inputs(x, ndim=1, cls=DataArray)
         return self._additive_operation('marginal_cdf', x, **kwargs)
 
     def partial_marginal_pdf(self, x, **kwargs):
         # return the marginal pdf in all dims but the one specified in kwargs (dim=0 by default)
-        self.check_inputs(x, ndim=self.ndim - 1, cls=DataArray)
+        x = self.check_inputs(x, ndim=self.ndim - 1, cls=DataArray)
         return self._additive_operation('partial_marginal_pdf', x, **kwargs)
 
     def marginal_icdf(self, y, *args, **kwargs):
@@ -293,8 +340,10 @@ class KdeBaseSeparable(KdeBase):
     def pdf(self, target, **kwargs):
         self.check_inputs(target, ndim=self.ndim)
 
-        marg = self.marginal_pdf(target.time)
-        pmarg = self.partial_marginal_pdf(target.space)
+        print kwargs
+        marg = self.marginal_pdf(target.time, **kwargs)
+        print kwargs
+        pmarg = self.partial_marginal_pdf(target.space, **kwargs)
 
         return marg * pmarg
 
@@ -394,11 +443,11 @@ class VariableBandwidthKde(FixedBandwidthKde):
 class VariableBandwidthNnKde(VariableBandwidthKde):
 
     def __init__(self, data, *args, **kwargs):
-        # print "VariableBandwidthNnKde.__init__"
-        # print args
-        # print kwargs
 
-        self.nn = kwargs.pop('nn', None)
+        self.nn = kwargs.pop('number_nn')
+        if self.nn < 1:
+            raise AttributeError("The number of nearest neighbours for variable KDE must be >=1")
+
         self.nn_distances = []
         super(VariableBandwidthNnKde, self).__init__(data, *args, **kwargs)
         # check requested number NN if supplied.
@@ -407,53 +456,8 @@ class VariableBandwidthNnKde(VariableBandwidthKde):
                                  % (self.nn, self.ndata))
 
     def set_bandwidths(self, *args, **kwargs):
-        tol = 1e-12
 
-        default_distance = kwargs.pop('nn_default_distance', None)
-        min_bandwidth = kwargs.pop('min_bandwidth', None)
-        if not self.nn:
-            # default nn values
-            self.nn = min(100, self.ndata) if self.ndim == 1 else min(15, self.ndata)
-
-        if self.nn < 1:
-            raise AttributeError("The number of nearest neighbours for variable KDE must be >=1")
-
-        # compute nn distances on normed data
-        nd = self.normed_data
-        std = self.raw_std_devs
-
-        # increment NN by one since first result is always self-match
-        from time import time
-        tic = time()
-        try:
-            nn_obj = NearestNeighbors(self.nn + 1).fit(nd)
-            dist, _ = nn_obj.kneighbors(nd)
-        except Exception as exc:
-            ipdb.set_trace()
-
-        self.nn_distances = dist[:, -1]
-
-        if np.any(np.isinf(self.nn_distances)):
-            raise AttributeError("Encountered np.inf values in NN distances")
-
-        # check for NN distances below tolerance
-        intol_idx = np.where(self.nn_distances < tol)[0]
-        if len(intol_idx):
-            intol_data = nd[intol_idx]
-            nn_obj.n_neighbors = self.ndata
-            dist, _ = nn_obj.kneighbors(intol_data)
-            # for each point, perform a NN distance lookup on ALL valid NNs and use the first one above tol
-            for i, j in enumerate(intol_idx):
-                d = dist[i][self.nn + 1:]
-                self.nn_distances[j] = d[d > tol][0]
-
-        self.nn_distances = self.nn_distances.reshape((self.ndata, 1))
-        self.bandwidths = std * self.nn_distances
-
-        # apply minimum bandwidth constraint if required
-        if min_bandwidth is not None and np.any(self.bandwidths < min_bandwidth):
-            fix_idx = np.where(self.bandwidths < min_bandwidth)
-            self.bandwidths[fix_idx] = np.array(min_bandwidth)[fix_idx[1]]
+        self.nn_distances, self.bandwidths = set_nn_bandwidths(self.normed_data, self.raw_std_devs, self.nn, **kwargs)
 
 
 class WeightedFixedBandwidthKde(FixedBandwidthKde):
@@ -535,6 +539,44 @@ class FixedBandwidthXValidationKde(FixedBandwidthKde):
             self.bandwidths = np.tile(self.raw_std_devs * res.x, (self.ndata, 1))
         else:
             raise ValueError("Unable to find max likelihood bandwidth")
+
+
+class VariableBandwidthNnKdeSeparable(FixedBandwidthKde, KdeBaseSeparable):
+
+    def __init__(self, data, *args, **kwargs):
+
+        self.nn = kwargs.pop('number_nn')
+        if not hasattr(self.nn, '__iter__'):
+            self.nn = [self.nn, self.nn]
+        super(VariableBandwidthNnKdeSeparable, self).__init__(data, *args, **kwargs)
+
+        if len(self.nn) != 2:
+            raise AttributeError("Separable KDE accepts TWO nearest neighbour numbers")
+
+        for n in self.nn:
+            if n < 1:
+                raise AttributeError("The number of nearest neighbours for variable KDE must be >=1")
+            if n > (self.ndata - 1):
+                raise AttributeError(
+                    "Requested number of NNs (%d) is too large for the size of the dataset (%d)" % (n, self.ndata)
+                )
+
+        self.nn_distances = []
+
+
+    def set_bandwidths(self, *args, **kwargs):
+        # set bandwidths separately in the separable dimensions
+        # time
+        nn_distances_t, bandwidths_t = set_nn_bandwidths(self.data.time / self.raw_std_devs[0],
+                                                         self.raw_std_devs[0],
+                                                         self.nn[0], **kwargs)
+        nn_distances_s, bandwidths_s = set_nn_bandwidths(self.data.space / self.raw_std_devs[1:],
+                                                         self.raw_std_devs[1:],
+                                                         self.nn[1], **kwargs)
+        self.bandwidths = np.hstack((bandwidths_t, bandwidths_s))
+
+
+
 
 
 class SpaceTimeFixedBandwidthKde(FixedBandwidthKde):

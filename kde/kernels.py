@@ -3,6 +3,7 @@ __author__ = 'gabriel'
 import numpy as np
 import math
 from scipy import special
+from data.models import DataArray, Data
 
 PI = np.pi
 
@@ -47,16 +48,19 @@ class MultivariateNormal(BaseKernel):
     def ndim(self):
         return self.vars.size
 
+    def prep_input(self, x):
+        ## TODO: test the effect this has on speed by profiling
+        ## if necessary, can ASSUME a DataArray and implement at a higher level
+        if not isinstance(x, Data):
+            x = DataArray(x)
+        return x
+
     def pdf(self, x, dims=None):
         """ Input is an ndarray of dims N x ndim.
             This may be a data class or just a plain array.
             If dims is specified, it is an array of the dims to include in the calculation """
 
-        if not isinstance(x, np.ndarray):
-            getdim = lambda x, dim: x[:, dim]
-            x = np.array(x)
-        else:
-            getdim = lambda x, dim: x.getdim(dim)
+        x = self.prep_input(x)
 
         if dims:
             ndim = len(dims)
@@ -64,12 +68,7 @@ class MultivariateNormal(BaseKernel):
             dims = range(self.ndim)
             ndim = self.ndim
 
-        try:
-            nd = x.nd
-        except AttributeError:
-            nd = x.shape[1]
-
-        if ndim != nd:
+        if ndim != x.nd:
             raise AttributeError("Incorrect dimensions for input variable")
 
         a = np.power(2*PI, -ndim * 0.5)
@@ -79,48 +78,40 @@ class MultivariateNormal(BaseKernel):
             c = np.exp(-(x - self.mean[dims[0]])**2 / (2 * self.vars[dims[0]]))
         elif ndim == 2:
             c = np.exp(
-                - (getdim(x, 0) - self.mean[dims[0]])**2 / (2 * self.vars[dims[0]])
-                - (getdim(x, 1) - self.mean[dims[1]])**2 / (2 * self.vars[dims[1]])
+                - (x.getdim(0) - self.mean[dims[0]])**2 / (2 * self.vars[dims[0]])
+                - (x.getdim(1) - self.mean[dims[1]])**2 / (2 * self.vars[dims[1]])
             )
-            # c = np.exp(
-            #     - (x[:, 0] - self.mean[dims[0]])**2 / (2 * self.vars[dims[0]])
-            #     - (x[:, 1] - self.mean[dims[1]])**2 / (2 * self.vars[dims[1]])
-            # )
         elif ndim == 3:
-            # c = np.exp(
-            #     - (x[:, 0] - self.mean[dims[0]])**2 / (2 * self.vars[dims[0]])
-            #     - (x[:, 1] - self.mean[dims[1]])**2 / (2 * self.vars[dims[1]])
-            #     - (x[:, 2] - self.mean[dims[2]])**2 / (2 * self.vars[dims[2]])
-            # )
             c = np.exp(
-                - (getdim(x, 0) - self.mean[dims[0]])**2 / (2 * self.vars[dims[0]])
-                - (getdim(x, 1) - self.mean[dims[1]])**2 / (2 * self.vars[dims[1]])
-                - (getdim(x, 2) - self.mean[dims[2]])**2 / (2 * self.vars[dims[2]])
+                - (x.getdim(0) - self.mean[dims[0]])**2 / (2 * self.vars[dims[0]])
+                - (x.getdim(1) - self.mean[dims[1]])**2 / (2 * self.vars[dims[1]])
+                - (x.getdim(2) - self.mean[dims[2]])**2 / (2 * self.vars[dims[2]])
             )
         else:
             c = np.exp(-np.sum((x - self.mean[dims])**2 / (2 * self.vars[dims]), axis=1))
 
-        # return (a * b * c).view(type=np.ndarray)
-        return (a * b * c)
+        return (a * b * c).toarray(0)
 
     def marginal_pdf(self, x, dim=0):
         """ Return value is 1D marginal pdf with specified dim """
-        if not isinstance(x, np.ndarray):
-            x = np.array(x)
-        return normpdf(x.flatten(), self.mean[dim], self.vars[dim]).view(type=np.ndarray)
+        x = self.prep_input(x)
+        if x.nd != 1:
+            raise AttributeError("marginal_pdf called with data array of dimensionality > 1")
+        return normpdf(x, self.mean[dim], self.vars[dim]).toarray(0)
 
     def marginal_cdf(self, x, dim=0):
         """ Return value is 1D marginal cdf with specified dim """
-        if not isinstance(x, np.ndarray):
-            x = np.array(x)
-        return normcdf(x.flatten(), self.mean[dim], self.vars[dim]).view(type=np.ndarray)
+        x = self.prep_input(x)
+        if x.nd != 1:
+            raise AttributeError("marginal_cdf called with data array of dimensionality > 1")
+        return normcdf(x, self.mean[dim], self.vars[dim]).toarray(0)
 
     def partial_marginal_pdf(self, x, dim=0):
         """ Return value is 1D partial marginal pdf:
             full pdf integrated over specified dim """
         dims = range(self.ndim)
         dims.remove(dim)
-        return self.pdf(x, dims=dims).view(type=np.ndarray)
+        return self.pdf(x, dims=dims)
 
 
 class SpaceTimeNormal(MultivariateNormal):
