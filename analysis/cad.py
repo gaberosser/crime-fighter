@@ -278,25 +278,41 @@ def apply_point_process(nicl_type=3,
                         niter=15,
                         num_nn=None,
                         min_bandwidth=None,
-                        jiggle_scale=None):
+                        jiggle_scale=None,
+                        max_delta_t=60, # days
+                        max_delta_d=500 # metres
+                        ):
 
-    max_trigger_t = 30 # units days
-    max_trigger_d = 500 # units metres
-    # if min_bandwidth is None:
-    #     min_bandwidth = np.array([0.3, 5., 5.])
+    if min_bandwidth is None:
+        min_bandwidth = np.array([0.3, 5., 5.])
 
     # get data
     res, t0 = get_crimes_by_type(nicl_type=nicl_type, only_new=only_new, jiggle_scale=jiggle_scale)
 
     # define initial estimator
-    est = lambda x, y: estimation.estimator_bowers(x, y, ct=1, cd=0.02)
+    # est = lambda x, y: estimation.estimator_bowers(x, y, ct=1, cd=0.02)
 
+    ## FIXME: use supplied num_nn instead of hardcoding
 
-    r = pp_models.PointProcessStochasticNn(estimator=est, max_trigger_t=max_trigger_t, max_trigger_d=max_trigger_d,
-                            min_bandwidth=min_bandwidth, num_nn=num_nn)
+    bg_kde_kwargs = {
+        'number_nn': [101, 16],
+    }
+
+    trigger_kde_kwargs = {
+        'min_bandwidth': min_bandwidth,
+        'number_nn': 15,
+    }
+
+    r = pp_models.SeppStochasticNn(data=res, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
+                                bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
+    p = estimation.estimator_bowers(res, r.linkage, ct=1, cd=0.02)
+    r.p = p
+
+    # r = pp_models.PointProcessStochasticNn(estimator=est, max_trigger_t=max_trigger_t, max_trigger_d=max_trigger_d,
+    #                         min_bandwidth=min_bandwidth, num_nn=num_nn)
 
     # train on all data
-    ps = r.train(data=res, niter=niter, tol_p=5e-5)
+    ps = r.train(data=res, niter=niter, tol_p=1e-5)
     return r, ps
 
 

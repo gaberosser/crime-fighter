@@ -393,10 +393,12 @@ if __name__ == '__main__':
     # A little demo
 
     #Just build the network as usual
-    TestData=itn.read_gml(ITNFILE)
-    CurrentNet=itn.ITNStreetNet()
-    CurrentNet.load_from_data(TestData)
-    x_grid,y_grid,edge_locator=CurrentNet.bin_edges(530850,531900,174550,175500,50)
+    itndata = itn.read_gml(ITNFILE)
+    CurrentNet = itn.ITNStreetNet()
+    CurrentNet.load_from_data(itndata)
+
+    xmin, ymin, xmax, ymax = CurrentNet.extent
+    x_grid,y_grid,edge_locator=CurrentNet.bin_edges(xmin, xmax, ymin, ymax, 50)
 
 
     #Four test points - 1 and 3 on same segment, 2 on neighbouring segment, 4 long way away.

@@ -262,7 +262,7 @@ class KdeBase(object):
             with closing(mp.Pool(processes=self.ncpu)) as pool:
                 z = pool.map(partial(runner, fstr=funcstr, fd=target), self.kernel_clusters)
 
-        return reduce(operator.add, [[y] for y in z])
+        return reduce(operator.add, z)
 
     def _additive_operation(self, funcstr, target, **kwargs):
         """ Generic interface to call function named in funcstr on the target data, handling normalisation """
@@ -340,9 +340,13 @@ class KdeBaseSeparable(KdeBase):
     def pdf(self, target, **kwargs):
         self.check_inputs(target, ndim=self.ndim)
 
-        print kwargs
+        # normed kwarg is treated as a special case here
+        # if True, BOTH parts need norming
+        # if False, ONE part needs norming
+        # in practice, best just to ALWAYS norm the spatial component
+
         marg = self.marginal_pdf(target.time, **kwargs)
-        print kwargs
+        kwargs['normed'] = True
         pmarg = self.partial_marginal_pdf(target.space, **kwargs)
 
         return marg * pmarg
@@ -464,10 +468,6 @@ class WeightedFixedBandwidthKde(FixedBandwidthKde):
     def __init__(self, data, weights, *args, **kwargs):
         self.weights = np.array(weights)
         super(WeightedFixedBandwidthKde, self).__init__(data, *args, **kwargs)
-        # print "WeightedFixedBandwidthKde.__init__"
-        # print weights
-        # print args
-        # print kwargs
 
     def set_kernels(self):
         self.kernel_clusters = []
@@ -548,6 +548,9 @@ class VariableBandwidthNnKdeSeparable(FixedBandwidthKde, KdeBaseSeparable):
         self.nn = kwargs.pop('number_nn')
         if not hasattr(self.nn, '__iter__'):
             self.nn = [self.nn, self.nn]
+        self.nn_distances_t = []
+        self.nn_distances_s = []
+
         super(VariableBandwidthNnKdeSeparable, self).__init__(data, *args, **kwargs)
 
         if len(self.nn) != 2:
@@ -561,22 +564,18 @@ class VariableBandwidthNnKdeSeparable(FixedBandwidthKde, KdeBaseSeparable):
                     "Requested number of NNs (%d) is too large for the size of the dataset (%d)" % (n, self.ndata)
                 )
 
-        self.nn_distances = []
-
-
     def set_bandwidths(self, *args, **kwargs):
         # set bandwidths separately in the separable dimensions
+
         # time
-        nn_distances_t, bandwidths_t = set_nn_bandwidths(self.data.time / self.raw_std_devs[0],
+        self.nn_distances_t, bandwidths_t = set_nn_bandwidths(self.data.time / self.raw_std_devs[0],
                                                          self.raw_std_devs[0],
                                                          self.nn[0], **kwargs)
-        nn_distances_s, bandwidths_s = set_nn_bandwidths(self.data.space / self.raw_std_devs[1:],
+        # space
+        self.nn_distances_s, bandwidths_s = set_nn_bandwidths(self.data.space / self.raw_std_devs[1:],
                                                          self.raw_std_devs[1:],
                                                          self.nn[1], **kwargs)
         self.bandwidths = np.hstack((bandwidths_t, bandwidths_s))
-
-
-
 
 
 class SpaceTimeFixedBandwidthKde(FixedBandwidthKde):
@@ -586,3 +585,6 @@ class SpaceTimeFixedBandwidthKde(FixedBandwidthKde):
 class SpaceTimeVariableBandwidthNnKde(SpaceTimeFixedBandwidthKde, VariableBandwidthNnKde):
     pass
 
+
+class SpaceTimeExponentialVariableBandwidthNnKde(VariableBandwidthNnKde):
+    kernel_class = kernels.SpaceNormalTimeExponential

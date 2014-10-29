@@ -20,7 +20,8 @@ class SepBase(object):
                  p=None,
                  max_delta_t=None,
                  max_delta_d=None,
-                 kde_kwargs=None,
+                 bg_kde_kwargs=None,
+                 trigger_kde_kwargs=None,
                  parallel=True):
 
         self.p = p
@@ -41,7 +42,8 @@ class SepBase(object):
 
         self.bg_kde = None
         self.trigger_kde = None
-        self.kde_kwargs = kde_kwargs or {}
+        self.bg_kde_kwargs = bg_kde_kwargs or {}
+        self.trigger_kde_kwargs = trigger_kde_kwargs or {}
 
         self.num_bg = []
         self.num_trig = []
@@ -254,6 +256,7 @@ class Sepp(SepBase):
     Self-exciting point process class.
     Data type is CartesianSpaceTimeData class
     """
+    data_class = data_models.CartesianSpaceTimeData
 
     @property
     def data_time(self):
@@ -270,7 +273,7 @@ class Sepp(SepBase):
         """
         Ensure that data has correct type
         """
-        self.data = data_models.CartesianSpaceTimeData(data)
+        self.data = self.data_class(data)
 
     def set_linkages(self):
         # set self.linkage, self.linkage_col, self.interpoint_data
@@ -294,22 +297,23 @@ class Sepp(SepBase):
         using the time component leads to the background 'fading out' when predicting into the future.
         Integral over all data dimensions should return num_bg
         """
+
+        num_bg = self.p.diagonal().sum()
+
         if spatial_only:
+            ## FIXME: check norming here
             # estimate mean intensity per unit time
             T = self.data_time.ptp()
-            k = self.p.diagonal().sum() / float(T * self.ndata)
-            print "Sepp background_density spatial_only"
-            return k * self.bg_kde.partial_marginal_pdf(target_data, dim=0, normed=False)
+            k = num_bg / float(T)
+            return k * self.bg_kde.partial_marginal_pdf(target_data.space, dim=0, normed=True)
         else:
-            print "Sepp background_density"
-            return self.bg_kde.pdf(target_data, normed=True)
+            return self.bg_kde.pdf(target_data, normed=False)
 
     def trigger_density(self, delta_data):
         """
         Return the (unnormalised) trigger density
         Integral over all data dimensions should return num_trig / num_events
         """
-        print "Sepp trigger_kde"
         return self.trigger_kde.pdf(delta_data, normed=False) / self.ndata
 
     def trigger_density_in_place(self, target_data, source_data=None):
@@ -327,7 +331,6 @@ class Sepp(SepBase):
 
         if link_source.size:
             delta_data = target_data[link_target] - source_data[link_source]
-            ## FIXME: used to support a shape, but now we don't the plotting calls will need to change
             trigger[link_source, link_target] = self.trigger_density(delta_data)
 
         trigger = np.array(trigger.sum(axis=0))
@@ -357,12 +360,23 @@ class Sepp(SepBase):
 
 class SeppStochastic(Sepp):
 
+    bg_kde_class = pp_kde.FixedBandwidthKdeSeparable
+    trigger_kde_class = pp_kde.FixedBandwidthKde
+
+
+    def __init_extra__(self):
+        super(SeppStochastic, self).__init_extra__()
+        self.rng = np.random.RandomState()
+
+    def set_seed(self, seed):
+        self.rng.seed(seed)
+
     def sample_data(self):
         """
         Weighted sampling algorithm by Efraimidis and Spirakis. Weighted random sampling with a reservoir.
         Information Processing Letters 97 (2006) 181-185
         """
-        urvs = np.random.random(self.p.nnz)
+        urvs = self.rng.rand(self.p.nnz)
         ks_matrix = self.p.copy()
         ks_matrix.data = np.power(urvs, 1. / self.p.data)
 
@@ -376,6 +390,7 @@ class SeppStochastic(Sepp):
         return bg_idx, list(cause_idx), list(effect_idx)
 
     def set_kdes(self):
+        # bg_idx, cause_idx, effect_idx = self.sample_data()
         bg_idx, cause_idx, effect_idx = self.sample_data()
         interpoint = self.data[effect_idx] - self.data[cause_idx]
 
@@ -384,8 +399,8 @@ class SeppStochastic(Sepp):
 
         # compute KDEs
         try:
-            self.bg_kde = pp_kde.FixedBandwidthKdeSeparable(self.data[bg_idx], **self.kde_kwargs)
-            self.trigger_kde = pp_kde.FixedBandwidthKde(interpoint, **self.kde_kwargs)
+            self.bg_kde = self.bg_kde_class(self.data[bg_idx], **self.bg_kde_kwargs)
+            self.trigger_kde = self.trigger_kde_class(interpoint, **self.trigger_kde_kwargs)
 
         except AttributeError as exc:
             print "Error.  Num BG: %d, num trigger %d" % (self.num_bg[-1], self.num_trig[-1])
@@ -394,26 +409,41 @@ class SeppStochastic(Sepp):
 
 class SeppStochasticNn(SeppStochastic):
 
+    bg_kde_class = pp_kde.VariableBandwidthNnKdeSeparable
+    trigger_kde_class = pp_kde.VariableBandwidthNnKde
+
     def __init_extra__(self):
-        if 'number_nn' not in self.kde_kwargs:
-            self.kde_kwargs['number_nn'] = 100 if self.ndim == 1 else 15
+        super(SeppStochastic, self).__init_extra__()
+        self.rng = np.random.RandomState()
+        if 'number_nn' not in self.trigger_kde_kwargs:
+            self.trigger_kde_kwargs['number_nn'] = 100 if self.ndim == 1 else 15
+        if 'number_nn' not in self.bg_kde_kwargs:
+            self.bg_kde_kwargs['number_nn'] = [100, 15]
+        else:
+            if len(self.bg_kde_kwargs['number_nn']) != 2:
+                raise AttributeError("Kwarg 'number_nn' in bg_kde_kwargs must have length 2")
 
-    def set_kdes(self):
-        bg_idx, cause_idx, effect_idx = self.sample_data()
-        interpoint = self.data[effect_idx] - self.data[cause_idx]
 
-        self.num_bg.append(len(bg_idx))
-        self.num_trig.append(len(cause_idx))
+class SeppStochasticNnSt(SeppStochasticNn):
 
-        # compute KDEs
-        try:
-            self.bg_kde = pp_kde.VariableBandwidthNnKdeSeparable(self.data[bg_idx], number_nn=[100, 15])
-            self.trigger_kde = pp_kde.VariableBandwidthNnKde(interpoint, **self.kde_kwargs)  ## FIXME: allow proper specification
+    trigger_kde_class = pp_kde.SpaceTimeVariableBandwidthNnKde
 
-        except AttributeError as exc:
-            ipdb.set_trace()
-            print "Error.  Num BG: %d, num trigger %d" % (self.num_bg[-1], self.num_trig[-1])
-            raise exc
+
+class SeppStochasticNnStExp(SeppStochasticNn):
+    trigger_kde_class = pp_kde.SpaceTimeExponentialVariableBandwidthNnKde
+
+
+##################################################################################
+##################################################################################
+##################################################################################
+##################################################################################
+##################################################################################
+##################################################################################
+##################################################################################
+##################################################################################
+##################################################################################
+##################################################################################
+
 
 
 class PointProcess(object):

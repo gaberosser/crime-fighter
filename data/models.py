@@ -1,6 +1,7 @@
 __author__ = 'gabriel'
 import numpy as np
 from network.geos import NetworkPoint
+from warnings import warn
 
 
 class Data(object):
@@ -8,48 +9,6 @@ class Data(object):
     @property
     def nd(self):
         raise NotImplementedError()
-
-# class TimeData(object):
-#
-#     def __init__(self, data):
-#         self.data = np.array(data)
-#         if self.data.ndim != 1:
-#             raise AttributeError("Time data must be one-dimensional")
-#
-#     @property
-#     def ndata(self):
-#         return self.data.size
-#
-#
-# class SpaceData(object):
-#
-#     def __init__(self, *args):
-#         if not len(args):
-#             raise AttributeError("Must provide some initial data")
-#         ndim = len(args)
-#         ndata = len(args[0])
-#         if ndim == 1:
-#             self.data = np.array(args).reshape((ndata, 1))
-#         else:
-#             self.data = np.array(args).transpose()
-#
-#     @property
-#     def ndata(self):
-#         return self.data.shape[0]
-#
-#     @property
-#     def ndim(self):
-#         return self.data.shape[1]
-#
-#     def distance(self, other):
-#         # distance between self and other
-#         if not isinstance(other, SpaceData):
-#             raise AttributeError("Cannot find distance between type %s and type %s" % (self.__class__, other.__class))
-#         if other.ndim != self.ndim:
-#             raise AttributeError("Incompatible dimensions")
-#         if other.ndata != self.ndata:
-#             raise AttributeError("Incompatible number of datapoints")
-#         return np.sqrt(np.sum((self.data - other.data) ** 2, axis=1))
 
 
 class NetworkData(Data):
@@ -150,6 +109,20 @@ class DataArray(Data, np.ndarray):
         # set original shape manually
         obj.original_shape = self.original_shape
         return obj
+
+    def adddim(self, obj, strict=True):
+        obj = DataArray(obj)
+        if obj.ndata != self.ndata:
+            raise AttributeError("Cannot add dimension because ndata does not match")
+        if strict:
+            # check shape
+            if obj.original_shape is None and self.original_shape:
+                warn("Adding data with no original shape - it will be coerced into the existing shape")
+            if obj.original_shape != self.original_shape and self.original_shape is not None:
+                raise AttributeError("Attempting to add data with incompatible original shape.  Set strict=False to bypass this check.")
+        new_obj = DataArray(np.hstack((self, obj)))
+        new_obj.original_shape = self.original_shape
+        return new_obj
 
     @property
     def nd(self):

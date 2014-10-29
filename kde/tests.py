@@ -32,18 +32,17 @@ class TestHelperFunctions(unittest.TestCase):
         self.assertAlmostEqual(kernels.normcdf(10., 0., 1.), 1.0)
         self.assertAlmostEqual(kernels.normcdf(0., 0., 10.), 0.5)
 
+        x = np.linspace(-1, 1, 50)
+        kc = kernels.normcdf(x, 0.1, 0.5)
+        kc_expct = norm.cdf(x, loc=0.1, scale=np.sqrt(0.5))
+        self.assertTrue(np.all(np.abs(kc - kc_expct) < 1e-14))
+
 
 class TestKernelMultivariateNormal(unittest.TestCase):
 
     def test_mvn1d(self):
         mvn = kernels.MultivariateNormal([0], [1])
         self.assertEqual(mvn.ndim, 1)
-
-        # def quad_pdf_fun(x):
-        #     # required because quad calls functions with single datapoint
-        #     t = np.array(x)
-        #     t.shape = (1, 1)
-        #     return mvn.pdf(t)
 
         q = quad(partial(quad_pdf_fun, func=mvn.pdf), -5., 5.)
         self.assertAlmostEqual(q[0], 1.0, places=5)
@@ -84,6 +83,41 @@ class TestKernelMultivariateNormal(unittest.TestCase):
         x = DataArray(x)
         y = mvn.pdf(x)
         self.assertEqual(np.sum(np.abs((y - y_expct)).flatten()>1e-12), 0) # no single difference > 1e-12
+
+    def test_marginals(self):
+        mvn = kernels.MultivariateNormal([0, 0, 0], [1, 2, 3])
+        x = np.linspace(-15, 15, 500)
+        p = mvn.marginal_pdf(x, dim=0)
+        p_expct = norm.pdf(x, loc=0., scale=1.)
+        self.assertTrue(np.all(np.abs(p - p_expct) < 1e-14))
+        p = mvn.marginal_pdf(x, dim=1)
+        p_expct = norm.pdf(x, loc=0., scale=np.sqrt(2.))
+        self.assertTrue(np.all(np.abs(p - p_expct) < 1e-14))
+        p = mvn.marginal_pdf(x, dim=2)
+        p_expct = norm.pdf(x, loc=0., scale=np.sqrt(3.))
+        self.assertTrue(np.all(np.abs(p - p_expct) < 1e-14))
+
+    def test_partials(self):
+        mvn = kernels.MultivariateNormal([0, 0, 0], [1, 2, 3])
+        arr = np.meshgrid(np.linspace(-15, 15, 20), np.linspace(-15, 15, 20))
+        xy = DataArray(np.concatenate([t[..., np.newaxis] for t in arr], axis=2))
+
+        # attempt to call with data of too few dims
+        with self.assertRaises(AttributeError):
+            p = mvn.partial_marginal_pdf(xy.getdim(0), dim=0)
+
+        p = mvn.partial_marginal_pdf(xy, dim=0)  # should be marginal in 2nd and 3rd dims
+        p_expct = mvn.pdf(xy, dims=[1, 2])
+        self.assertTrue(np.all(np.abs(p - p_expct) < 1e-14))
+        p_expct = mvn.marginal_pdf(xy.getdim(0), dim=1) * mvn.marginal_pdf(xy.getdim(1), dim=2)
+        self.assertTrue(np.all(np.abs(p - p_expct) < 1e-14))
+
+        p = mvn.partial_marginal_pdf(xy, dim=1)  # should be marginal in 1st and 3rd dims
+        p_expct = mvn.pdf(xy, dims=[0, 2])
+        self.assertTrue(np.all(np.abs(p - p_expct) < 1e-14))
+        # test directly
+        p_expct = mvn.marginal_pdf(xy.getdim(0), dim=0) * mvn.marginal_pdf(xy.getdim(1), dim=2)
+        self.assertTrue(np.all(np.abs(p - p_expct) < 1e-14))
 
 
 class TestKernelLinear(unittest.TestCase):
@@ -279,6 +313,34 @@ class TestFixedBandwidthSeparableKde(unittest.TestCase):
 
         self.assertTrue(np.all(np.abs(ps - p) < 1e-16))
 
+    def test_equivalence2(self):
+        # separable kde should be equivalent to product of two separate KDEs
+        data = SpaceTimeDataArray(np.random.rand(10, 3))
+        ks = FixedBandwidthKdeSeparable(data, bandwidths=[1., 2., 3.])
+
+        kt = FixedBandwidthKde(data.time, bandwidths=[1.])
+        kxy = FixedBandwidthKde(data.space, bandwidths=[2., 3.])
+
+        arr = np.meshgrid(np.ones(10), np.linspace(0, 1, 10), np.linspace(0, 1, 10))
+        txy = SpaceTimeDataArray(np.concatenate([t[..., np.newaxis] for t in arr], axis=3))
+
+        # norming True
+        p = ks.pdf(txy, normed=True)
+        pt = kt.pdf(txy.time, normed=True)
+        pxy = kxy.pdf(txy.space, normed=True)
+        p_comb = pt * pxy
+
+        self.assertFalse(np.any(np.abs(p - p_comb) > 1e-14))
+
+        # norming False
+        # this is important - should be equivalent to norming one component and not the other
+        p = ks.pdf(txy, normed=False)
+        pt = kt.pdf(txy.time, normed=False)
+        pxy = kxy.pdf(txy.space, normed=True)
+        p_comb = pt * pxy
+
+        self.assertFalse(np.any(np.abs(p - p_comb) > 1e-14))
+
     def test_kde_3d(self):
         x = np.random.rand(10, 3)
         data = SpaceTimeDataArray(x)  # first col is now time
@@ -329,8 +391,3 @@ class TestFixedBandwidthSeparableKde(unittest.TestCase):
         self.assertAlmostEqual(q[0], 10.0, places=4)
         q = quad(partial(quad_pdf_fun, func=ks.marginal_pdf, dim=2, normed=False), -15, 15)
         self.assertAlmostEqual(q[0], 10.0, places=4)
-
-
-
-
-
