@@ -8,7 +8,7 @@ import multiprocessing as mp
 from kde import kernels
 from stats.logic import weighted_stdev
 from sklearn.neighbors import NearestNeighbors
-from data.models import Data, DataArray, SpaceTimeDataArray, CartesianSpaceTimeData
+from data.models import Data, DataArray, SpaceTimeDataArray, CartesianSpaceTimeData, negative_time_dimension
 import ipdb  # just in case
 
 # some utility functions
@@ -579,7 +579,7 @@ class VariableBandwidthNnKdeSeparable(FixedBandwidthKde, KdeBaseSeparable):
 
 
 class SpaceTimeFixedBandwidthKde(FixedBandwidthKde):
-    kernel_class = kernels.SpaceTimeNormal
+    kernel_class = kernels.SpaceTimeNormalOneSided
 
 
 class SpaceTimeVariableBandwidthNnKde(SpaceTimeFixedBandwidthKde, VariableBandwidthNnKde):
@@ -588,3 +588,96 @@ class SpaceTimeVariableBandwidthNnKde(SpaceTimeFixedBandwidthKde, VariableBandwi
 
 class SpaceTimeExponentialVariableBandwidthNnKde(VariableBandwidthNnKde):
     kernel_class = kernels.SpaceNormalTimeExponential
+
+
+class SpaceTimeVariableBandwidthNnTimeAsymmetricKde(VariableBandwidthNnKde):
+
+    data_class = SpaceTimeDataArray
+
+    @staticmethod
+    def time_reversed_array(arr):
+        arr = arr.copy()
+        try:
+            t = arr.time.toarray(0).copy()
+            arr.time *= -1.0
+        except AttributeError:
+            t = arr[:, 0].copy()
+            arr[:, 0] *= -1.0
+        return t, arr
+
+    def pdf(self, target, **kwargs):
+        t, new_target = self.time_reversed_array(target)
+        res = super(SpaceTimeVariableBandwidthNnTimeAsymmetricKde, self).pdf(target, **kwargs)
+        resn = super(SpaceTimeVariableBandwidthNnTimeAsymmetricKde, self).pdf(new_target, **kwargs)
+        res += resn
+        res[t < 0] = 0.
+        return res
+
+    def marginal_pdf(self, x, **kwargs):
+        # return the marginal pdf in the dim specified in kwargs (dim=0 default)
+        res = super(SpaceTimeVariableBandwidthNnTimeAsymmetricKde, self).marginal_pdf(x, **kwargs)
+        if kwargs.get('dim', 0) == 0:
+            xn = -x[:]
+            resn = super(SpaceTimeVariableBandwidthNnTimeAsymmetricKde, self).marginal_pdf(xn, **kwargs)
+            res += resn
+            res[x < 0] = 0.
+        return res
+
+    def marginal_cdf(self, x, **kwargs):
+        """ Return the marginal cdf in the dim specified in kwargs (dim=0 default) """
+        res = super(SpaceTimeVariableBandwidthNnTimeAsymmetricKde, self).marginal_cdf(x, **kwargs)
+        if kwargs.get('dim', 0) == 0:
+            pass
+        raise NotImplementedError()
+
+    def partial_marginal_pdf(self, x, **kwargs):
+        # return the marginal pdf in all dims but the one specified in kwargs (dim=0 by default)
+        raise NotImplementedError()
+
+    def marginal_icdf(self, y, *args, **kwargs):
+        """ Return value of inverse marginal CDF in specified dim """
+        if not 0. < y < 1.:
+            raise AttributeError("Input variable y must lie in range (0, 1)")
+        dim = kwargs.pop('dim', 0)
+        try:
+            xopt = marginal_icdf_optimise(self, y, dim=dim, tol=1e-12)
+        except Exception as e:
+            print "Failed to optimise marginal icdf"
+            raise e
+        return xopt
+
+    #
+    # def _iterative_operation(self, funcstr, target, *args, **kwargs):
+    #     """
+    #     Generic interface to call function named in funcstr on the target data
+    #     The returned list contains an element for each kernel
+    #     """
+    #     res = super(SpaceTimeVariableBandwidthNnTimeAsymmetricKde, self)._iterative_operation(
+    #         funcstr, target, *args, **kwargs)
+    #     # reverse around t=0
+    #     t, new_target = self.time_reversed_array(target)
+    #     res2 = super(SpaceTimeVariableBandwidthNnTimeAsymmetricKde, self)._iterative_operation(
+    #         funcstr, new_target, *args, **kwargs)
+    #     res3 = []
+    #     for x, y in zip(res, res2):
+    #         this_res = x + y
+    #         this_res[t < 0] = 0.
+    #         res3.append(this_res)
+    #
+    #     return res3
+    #
+    # def _additive_operation(self, funcstr, target, **kwargs):
+    #     """ Generic interface to call function named in funcstr on the target data, handling normalisation """
+    #     res = super(SpaceTimeVariableBandwidthNnTimeAsymmetricKde, self)._additive_operation(
+    #         funcstr, target, **kwargs
+    #     )
+    #     # reverse around t=0
+    #     t, new_target = self.time_reversed_array(target)
+    #     res2 = super(SpaceTimeVariableBandwidthNnTimeAsymmetricKde, self)._additive_operation(
+    #         funcstr, new_target, **kwargs
+    #     )
+    #
+    #     res += res2
+    #     res[t < 0] = 0.
+    #
+    #     return res

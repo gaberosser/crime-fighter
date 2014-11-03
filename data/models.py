@@ -4,6 +4,19 @@ from network.geos import NetworkPoint
 from warnings import warn
 
 
+def negative_time_dimension(data_array):
+    """
+    Return a copy of the input array with the time dimension taking negative values
+    :param data_array:
+    :return:
+    """
+    # copy
+    new_data = data_array[:]
+    # reverse time dimension
+    new_data[:, 0] *= -1.0
+    return new_data
+
+
 class Data(object):
 
     @property
@@ -171,12 +184,20 @@ class SpaceTimeDataArray(DataArray):
         res.original_shape = self.original_shape
         return res
 
+    @time.setter
+    def time(self, time):
+        self[:, 0:1] = time
+
     @property
     def space(self):
         # space component of datapoints
         res = DataArray(self[:, 1:])
         res.original_shape = self.original_shape
         return res
+
+    @space.setter
+    def space(self, space):
+        self[:, 1:] = DataArray(space)
 
 
 class CartesianData(DataArray):

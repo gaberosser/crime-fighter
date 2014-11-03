@@ -120,6 +120,10 @@ class TestKernelMultivariateNormal(unittest.TestCase):
         self.assertTrue(np.all(np.abs(p - p_expct) < 1e-14))
 
 
+class TestSpaceTimeNormalKernel(unittest.TestCase):
+    ## TODO: test me
+    pass
+
 class TestKernelLinear(unittest.TestCase):
     ## TODO: some trivial tests
     pass
