@@ -118,38 +118,6 @@ class MultivariateNormal(BaseKernel):
         return self.pdf(x, dims=dims)
 
 
-class SpaceTimeNormalOneSided(MultivariateNormal):
-    """
-    Variant of the n-dimensional Gaussian kernel, but first dim is ONE-SIDED - useful for space-time purposes.
-    The mean here has the usual definition for dims > 1, but for the first dim it gives the EQUIVALENT (i.e. the first
-    non-zero point of the distribution).
-    The vars have the usual definition for dims > 1 and for the first dim it is the equivalent one-sided variance.
-    """
-    def pdf(self, x, dims=None):
-        x = self.prep_input(x)
-        if dims is None:
-            dims = range(self.ndim)
-        res = super(SpaceTimeNormalOneSided, self).pdf(x, dims=dims)
-        # test whether temporal dimension was included
-        if 0 in dims:
-            t_idx = dims.index(0)
-            t0 = x.toarray(t_idx) < self.mean[t_idx]
-            t1 = x.toarray(t_idx) >= self.mean[t_idx]
-            res[t0] = 0.
-            res[t1] *= 2
-        return res
-
-    def marginal_cdf(self, x, dim=0):
-        x = self.prep_input(x)
-        if dim == 0:
-            res = special.erf((x - self.mean[0]) / (math.sqrt(2 * self.vars[0])))
-            t0 = x.toarray(0) < self.mean[0]
-            res[t0] = 0.
-            return res
-        else:
-            return super(SpaceTimeNormalOneSided, self).marginal_cdf(x, dim=dim)
-
-
 class SpaceNormalTimeExponential(BaseKernel):
 
     def __init__(self, mean, vars):
@@ -216,7 +184,7 @@ class SpaceNormalTimeExponential(BaseKernel):
         raise NotImplementedError()
 
 
-class SpaceTimeNormalReflective(MultivariateNormal):
+class SpaceTimeNormalOneSided(MultivariateNormal):
     """
     Variant of the n-dimensional Gaussian kernel, but first dim is ONE-SIDED - useful for space-time purposes.
     The mean here has the usual definition for dims > 1, but for the first dim it gives the EQUIVALENT (i.e. the first
@@ -225,12 +193,13 @@ class SpaceTimeNormalReflective(MultivariateNormal):
     """
     def pdf(self, x, dims=None):
         x = self.prep_input(x)
-        res = super(SpaceTimeNormalReflective, self).pdf(x, dims=dims)
+        if dims is None:
+            dims = range(self.ndim)
+        res = super(SpaceTimeNormalOneSided, self).pdf(x, dims=dims)
         # test whether temporal dimension was included
-        if dims and 0 in dims:
-            t_idx = dims.index(0)
-            t0 = x.toarray(t_idx) < 0
-            t1 = x.toarray(t_idx) >= 0
+        if 0 in dims:
+            t0 = x.toarray(0) < self.mean[0]
+            t1 = x.toarray(0) >= self.mean[0]
             res[t0] = 0.
             res[t1] *= 2
         return res
@@ -239,9 +208,48 @@ class SpaceTimeNormalReflective(MultivariateNormal):
         x = self.prep_input(x)
         if dim == 0:
             res = special.erf((x - self.mean[0]) / (math.sqrt(2 * self.vars[0])))
-            t0 = x.toarray(0) < 0
+            t0 = x.toarray(0) < self.mean[0]
             res[t0] = 0.
             return res
+        else:
+            return super(SpaceTimeNormalOneSided, self).marginal_cdf(x, dim=dim)
+
+
+class SpaceTimeNormalReflective(MultivariateNormal):
+    """
+    Variant of the n-dimensional Gaussian kernel, but first dim is REFLECTED at t=0 - useful for space-time purposes.
+    The mean here has the usual definition for dims > 1, but for the first dim it gives the EQUIVALENT (i.e. the first
+    non-zero point of the distribution).
+    The vars have the usual definition for dims > 1 and for the first dim it is the equivalent one-sided variance.
+    """
+    @staticmethod
+    def time_reversed_array(arr):
+        arr = arr.copy()
+        try:
+            t = arr.time.toarray(0).copy()
+            arr.time *= -1.0
+        except AttributeError:
+            t = arr[:, 0].copy()
+            arr[:, 0] *= -1.0
+        return arr
+
+    def pdf(self, x, dims=None):
+        x = self.prep_input(x)
+        res = super(SpaceTimeNormalReflective, self).pdf(x, dims=dims)
+        # test whether temporal dimension was included
+        if dims and 0 in dims:
+            new_x = self.time_reversed_array(x)
+            res += super(SpaceTimeNormalReflective, self).pdf(new_x, dims=dims)
+            res[x.toarray(0) < 0] = 0.
+        return res
+
+    def marginal_cdf(self, x, dim=0):
+        x = self.prep_input(x)
+        if dim == 0:
+            res = special.erf((x - self.mean[0]) / (math.sqrt(2 * self.vars[0])))
+            res -= special.erf((-x - self.mean[0]) / (math.sqrt(2 * self.vars[0])))
+            res[x.toarray(0) < 0] = 0.
+            return 0.5 * res
         else:
             return super(SpaceTimeNormalReflective, self).marginal_cdf(x, dim=dim)
 

@@ -13,6 +13,7 @@ import os
 from django.contrib.gis.gdal import DataSource
 from django.db import connection
 from matplotlib import pyplot as plt
+import dill
 
 CHICAGO_DATA_DIR = os.path.join(settings.DATA_DIR, 'chicago')
 SRID = 2028
@@ -61,6 +62,7 @@ def get_crimes_by_type(crime_type='burglary', start_date=None, end_date=None, do
     t0 = min(t)
     t = [(x - t0).total_seconds() / float(60 * 60 * 24) for x in t]
     res = np.array([(t[i], res[i][1], res[i][2]) for i in range(len(res))])
+    res = res[np.argsort(res[:, 0])]
     return res, t0
 
 
@@ -100,8 +102,11 @@ def apply_point_process(start_date=datetime.datetime(2010, 3, 1, 0),
                         domain=None,
                         niter=15,
                         min_bandwidth=None,
-                        max_trigger_t=40,
-                        max_trigger_d=300):
+                        max_delta_t=40,
+                        max_delta_d=300,
+                        num_nn=None,
+                        estimate_kwargs=None,
+                        pp_class=pp_models.SeppStochasticNnReflected):
 
     res, t0 = get_crimes_by_type(
         crime_type='burglary',
@@ -110,17 +115,46 @@ def apply_point_process(start_date=datetime.datetime(2010, 3, 1, 0),
         domain=domain
     )
 
-    # NB t is in units of days, space is in units of metres
-    # a starting point for min_bandwidth = np.array([0.3, 5., 5.])
 
-    # define initial estimator
-    est = lambda x, y: estimation.estimator_bowers(x, y, ct=1, cd=0.02)
 
-    # instantiate SEPP model
-    r = pp_models.PointProcessStochasticNn(estimator=est, max_trigger_t=max_trigger_t, max_trigger_d=max_trigger_d,
-                            min_bandwidth=min_bandwidth)
-    # r = pp_models.PointProcessStochastic(estimator=est, max_trigger_t=max_trigger_t, max_trigger_d=max_trigger_d,
-    #                         min_bandwidth=[1., 5., 5.])
+    if min_bandwidth is None:
+        min_bandwidth = np.array([0.3, 5., 5.])
+
+    if num_nn is not None:
+        if len(num_nn) != 2:
+            raise AttributeError("Must supply two num_nn values: [1D case, 2/3D case]")
+        num_nn_bg = num_nn
+        num_nn_trig = num_nn[1]
+    else:
+        num_nn_bg = [101, 16]
+        num_nn_trig = 15
+
+    bg_kde_kwargs = {
+        'number_nn': num_nn_bg,
+    }
+
+    trigger_kde_kwargs = {
+        'min_bandwidth': min_bandwidth,
+        'number_nn': num_nn_trig,
+    }
+
+    if not estimate_kwargs:
+        estimate_kwargs = {
+            'ct': 1,
+            'cd': 0.02
+        }
+
+    r = pp_class(data=res, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
+                                bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
+
+    # r = pp_models.SeppStochasticNn(data=res, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
+    #                             bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
+    # r = pp_models.SeppStochasticNnReflected(data=res, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
+    #                             bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
+    # r = pp_models.SeppStochasticNnOneSided(data=res, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
+    #                             bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
+    p = estimation.estimator_bowers(res, r.linkage, **estimate_kwargs)
+    r.p = p
 
     # train on ALL data
     ps = r.train(data=res, niter=niter, tol_p=1e-5)
@@ -303,6 +337,39 @@ def validate_historic_kernel_multi(start_date=datetime.datetime(2001, 3, 1, 0),
     for n in range(nslices):
         res.append(vb.run(dt=1, t_upper=previous_n_days + n_iter + n * dt))
         vb.set_t_cutoff(previous_n_days + (n + 1) * dt)
+
+    return res
+
+
+# implementation script
+# test the effect of delta_t and delta_d on the output
+def implement_delta_effect(outfile):
+
+    dts = [10, 20, 30, 40, 50, 60, 90]
+    dds = [20, 50, 100, 200, 300, 500, 1000, 5000]
+
+    start_date = datetime.datetime(2010, 1, 1, 0)
+    end_date = datetime.datetime(2010, 7, 1, 0)
+    niter = 15
+
+    dt_grid, dd_grid = np.meshgrid(dts, dds)
+
+    res = []
+
+    with open(outfile, 'w') as f:
+
+        for dt, dd in zip(dt_grid.flat, dd_grid.flat):
+
+            r, p = apply_point_process(
+                start_date=start_date,
+                end_date=end_date,
+                niter=niter,
+                max_delta_t=dt,
+                max_delta_d=dd,
+            )
+            res.append((dt, dd, r))
+
+        dill.dump(f, res)
 
     return res
 

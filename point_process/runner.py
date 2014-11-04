@@ -77,7 +77,9 @@ if __name__ == '__main__':
     #                             bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
     # r = models.SeppStochasticNnSt(data=data, max_delta_d=0.75, max_delta_t=80,
     #                             bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
-    r = models.SeppStochasticNnAsymmetric(data=data, max_delta_d=0.75, max_delta_t=80,
+    # r = models.SeppStochasticNnReflected(data=data, max_delta_d=0.75, max_delta_t=80,
+    #                                     bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
+    r = models.SeppStochasticNnOneSided(data=data, max_delta_d=0.75, max_delta_t=80,
                                         bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
 
 

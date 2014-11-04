@@ -90,7 +90,7 @@ def linkages(data_source, max_t, max_d, data_target=None, chunksize=2**16):
     interpoint distance less than max_d
     time difference greater than zero, less than max_t
     The sign convention is (target - source).  Distances are euclidean.
-    :param data_source: EuclideanSpaceTimeData array of source data.
+    :param data_source: EuclideanSpaceTimeData array of source data.  Must be sorted by time ascending.
     :param max_t: maximum time difference (minimum is always zero)
     :param max_d: maximum spatial distance
     :param data_target: optional EuclideanSpaceTimeData array.  If supplied, the linkage indices are between
@@ -98,7 +98,6 @@ def linkages(data_source, max_t, max_d, data_target=None, chunksize=2**16):
     :param chunksize: The size of an iteration chunk.
     :return: tuple (idx_array_source, idx_array_target),
     """
-
     ndata_source = data_source.ndata
     if data_target is not None:
         ndata_target = data_target.ndata

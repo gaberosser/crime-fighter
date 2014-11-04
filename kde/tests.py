@@ -40,6 +40,46 @@ class TestHelperFunctions(unittest.TestCase):
 
 class TestKernelMultivariateNormal(unittest.TestCase):
 
+    kernel_class = kernels.MultivariateNormal
+    location = [0.5, 1.0, 1.5]
+    scale = [1.0, 2.0, 3.0]
+    min_nd = 1
+
+    def setUp(self):
+        self.kernels = []
+        for i in range(self.min_nd, 4):
+            self.kernels.append(self.kernel_class(self.location[:i], self.scale[:i]))
+
+    def test_norming(self):
+        # 1D
+        if self.min_nd < 2:
+            q = quad(partial(quad_pdf_fun, func=self.kernels[0].pdf),
+                     -5. * self.scale[0], 5. * self.scale[0])
+            self.assertAlmostEqual(q[0], 1.0, places=5)
+
+
+        # 2D
+        if self.min_nd < 3:
+            q = dblquad(partial(quad_pdf_fun, func=self.kernels[1].pdf),
+                        -5. * self.scale[0], 5. * self.scale[0],
+                        lambda x: -5. * self.scale[0], lambda x: 5. * self.scale[0],
+                        )
+            self.assertAlmostEqual(q[0], 1.0, places=5)
+
+        # 3D
+        q = tplquad(partial(quad_pdf_fun, func=self.kernels[2].pdf),
+                    -5. * self.scale[0], 5. * self.scale[0],
+                    lambda x: -5. * self.scale[0], lambda x: 5. * self.scale[0],
+                    lambda x, y: -5. * self.scale[0], lambda x, y: 5. * self.scale[0],
+                    )
+        self.assertAlmostEqual(q[0], 1.0, places=5)
+
+
+
+
+
+class TestKernelMultivariateNormal2(unittest.TestCase):
+
     def test_mvn1d(self):
         mvn = kernels.MultivariateNormal([0], [1])
         self.assertEqual(mvn.ndim, 1)
@@ -120,8 +160,9 @@ class TestKernelMultivariateNormal(unittest.TestCase):
         self.assertTrue(np.all(np.abs(p - p_expct) < 1e-14))
 
 
-class TestSpaceTimeNormalKernel(unittest.TestCase):
-    ## TODO: test me
+class TestSpaceTimeNormalOneSided(unittest.TestCase):
+
+
     pass
 
 class TestKernelLinear(unittest.TestCase):

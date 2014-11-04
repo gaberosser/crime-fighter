@@ -312,7 +312,7 @@ def apply_point_process(nicl_type=3,
 
     # r = pp_models.SeppStochasticNn(data=res, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
     #                             bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
-    r = pp_models.SeppStochasticNnAsymmetric(data=res, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
+    r = pp_models.SeppStochasticNnReflected(data=res, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
                                 bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
     p = estimation.estimator_bowers(res, r.linkage, ct=1, cd=0.02)
     r.p = p

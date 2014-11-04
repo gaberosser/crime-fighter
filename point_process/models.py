@@ -424,26 +424,18 @@ class SeppStochasticNn(SeppStochastic):
                 raise AttributeError("Kwarg 'number_nn' in bg_kde_kwargs must have length 2")
 
 
-class SeppStochasticNnAsymmetric(SeppStochasticNn):
+class SeppStochasticNnReflected(SeppStochasticNn):
     """
     As for parent class, except that the trigger KDE is manually reflected in the first dim about t=0.
     """
+    trigger_kde_class = pp_kde.SpaceTimeVariableBandwidthNnTimeReflected
 
-    trigger_kde_class = pp_kde.SpaceTimeVariableBandwidthNnTimeAsymmetricKde
 
-    # def trigger_density(self, delta_data):
-    #     """
-    #     Return the (unnormalised) trigger density
-    #     Integral over all data dimensions should return num_trig / num_events
-    #     """
-    #     res = self.trigger_kde.pdf(delta_data, normed=False) / self.ndata
-    #     delta_date_neg = -delta_data.time[:]
-    #     delta_date_neg = delta_date_neg.adddim(delta_data.getdim(1))
-    #     delta_date_neg = delta_date_neg.adddim(delta_data.getdim(2))
-    #     res_neg = self.trigger_kde.pdf(delta_date_neg, normed=False) / self.ndata
-    #     res += res_neg
-    #     res[delta_data.toarray(0) < 0] = 0.
-    #     return res
+class SeppStochasticNnOneSided(SeppStochasticNn):
+    """
+    As for parent class, except that the trigger KDE is one sided (positive side of mean) in the first dim.
+    """
+    trigger_kde_class = pp_kde.SpaceTimeVariableBandwidthNnTimeOneSided
 
 
 class SeppStochasticNnSt(SeppStochasticNn):
