@@ -215,9 +215,6 @@ class SepBase(object):
         # compute linkage indices
         self.set_linkages()
 
-        # set tolerance if not specified
-        tol_p = tol_p or 0.1 / float(self.ndata)
-
         # reset all other storage containers
         self.reset()
 
@@ -244,7 +241,7 @@ class SepBase(object):
             if verbose:
                 print "Completed %d / %d iterations in %f s.  L2 norm = %e" % (i+1, niter, self.run_times[-1], self.l2_differences[-1])
 
-            if tol_p != 0. and self.l2_differences[-1] < tol_p:
+            if tol_p is not None and self.l2_differences[-1] < tol_p:
                 if verbose:
                     print "Training terminated in %d iterations as tolerance has been met." % (i+1)
                 break
@@ -385,12 +382,16 @@ class SeppStochastic(Sepp):
         effects = range(self.ndata)
 
         bg_idx = [x for x, y in zip(causes, effects) if x == y]
-        cause_idx, effect_idx = zip(*[(x, y) for x, y in zip(causes, effects) if x != y])
+        if not len(bg_idx):
+            raise ValueError("No BG events remaining")
+        cause_effect = zip(*[(x, y) for x, y in zip(causes, effects) if x != y])
+        if not len(cause_effect):
+            raise ValueError("No trigger events remaining")
+        cause_idx, effect_idx = cause_effect
 
         return bg_idx, list(cause_idx), list(effect_idx)
 
     def set_kdes(self):
-        # bg_idx, cause_idx, effect_idx = self.sample_data()
         bg_idx, cause_idx, effect_idx = self.sample_data()
         interpoint = self.data[effect_idx] - self.data[cause_idx]
 
@@ -436,11 +437,6 @@ class SeppStochasticNnOneSided(SeppStochasticNn):
     As for parent class, except that the trigger KDE is one sided (positive side of mean) in the first dim.
     """
     trigger_kde_class = pp_kde.SpaceTimeVariableBandwidthNnTimeOneSided
-
-
-class SeppStochasticNnSt(SeppStochasticNn):
-
-    trigger_kde_class = pp_kde.SpaceTimeVariableBandwidthNnKde
 
 
 class SeppStochasticNnStExp(SeppStochasticNn):

@@ -10,6 +10,7 @@ from stats.logic import weighted_stdev
 from sklearn.neighbors import NearestNeighbors
 from data.models import Data, DataArray, SpaceTimeDataArray, CartesianSpaceTimeData, negative_time_dimension
 import ipdb  # just in case
+import warnings
 
 # some utility functions
 
@@ -52,15 +53,17 @@ def set_nn_bandwidths(normed_data, raw_stdevs, num_nn, **kwargs):
 
     # compute nn distances on normed data
 
-    # increment NN by one since first result is always self-match
     from time import time
     tic = time()
     try:
-        nn_obj = NearestNeighbors(num_nn + 1).fit(normed_data)
+        nn_obj = NearestNeighbors(num_nn).fit(normed_data)
+        dist, _ = nn_obj.kneighbors(normed_data)
+    except ValueError as exc:
+        warnings.warn("Insufficient data, reducing number of nns to %d" % normed_data.ndata)
+        nn_obj = NearestNeighbors(normed_data.ndata).fit(normed_data)
         dist, _ = nn_obj.kneighbors(normed_data)
     except Exception as exc:
         ipdb.set_trace()
-        raise
 
     nn_distances = dist[:, -1]
 
@@ -454,13 +457,17 @@ class VariableBandwidthNnKde(VariableBandwidthKde):
 
         self.nn_distances = []
         super(VariableBandwidthNnKde, self).__init__(data, *args, **kwargs)
+
         # check requested number NN if supplied.
         if (self.nn is not None) and (self.nn > (self.ndata - 1)):
-            raise AttributeError("Requested number of NNs (%d) is too large for the size of the dataset (%d)"
+            warnings.warn("Requested number of NNs (%d) is too large for the size of the dataset (%d)"
                                  % (self.nn, self.ndata))
+            self.nn = self.ndata - 1
 
     def set_bandwidths(self, *args, **kwargs):
-
+        # check number of datapoints > 1
+        if self.ndata <= 1:
+            raise AttributeError("2 or more datapoints required for variable bandwidth KDE")
         self.nn_distances, self.bandwidths = set_nn_bandwidths(self.normed_data, self.raw_std_devs, self.nn, **kwargs)
 
 

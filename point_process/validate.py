@@ -92,10 +92,16 @@ def compute_lineage_matrix(linkage_col):
 
 class PpValidation(validation.ValidationBase):
 
-    pp_class = models.PointProcessStochasticNn # model class
-
-    def __init__(self, data, spatial_domain=None, grid_length=None, cutoff_t=None, model_args=None, model_kwargs=None):
+    def __init__(self,
+                 data,
+                 spatial_domain=None,
+                 grid_length=None,
+                 cutoff_t=None,
+                 model_args=None,
+                 model_kwargs=None,
+                 pp_class=models.SeppStochasticNn):
         """ Thin wrapper for parent's init method, but pp model class is set """
+        self.pp_class = pp_class or models.SeppStochasticNn
         super(PpValidation, self).__init__(data, self.pp_class, spatial_domain=spatial_domain, grid_length=grid_length,
                                            cutoff_t=cutoff_t, model_args=model_args, model_kwargs=model_kwargs)
 

@@ -33,6 +33,37 @@ def compute_chicago_region(fill_in=True):
     return mpoly
 
 
+def compute_chicago_marine_section():
+    mpoly = compute_chicago_region()
+    xmin, ymin, xmax, ymax = mpoly.extent
+    a = [(x, y) for (x, y) in mpoly.coords[0] if x == xmax]
+    b = [(x, y) for (x, y) in mpoly.coords[0] if y == ymax]
+    new_poly = Polygon([
+        (b[0][0], ymax),
+        (xmax, ymax),
+        (xmax, a[0][1]),
+        (b[0][0], a[0][1]),
+        (b[0][0], ymax),
+    ])
+    return new_poly.difference(mpoly)
+
+
+def compute_chicago_land_buffer():
+    mpoly = compute_chicago_region()
+    xmin, ymin, xmax, ymax = mpoly.extent
+    a = [(x, y) for (x, y) in mpoly.coords[0] if x == xmax]
+    b = [(x, y) for (x, y) in mpoly.coords[0] if y == ymax]
+    new_poly = Polygon([
+        (b[0][0], ymax),
+        (xmin, ymax),
+        (xmin, ymin),
+        (xmax, ymin),
+        mpoly.centroid.coords,
+        (b[0][0], ymax),
+    ])
+    return new_poly.difference(mpoly)
+
+
 def get_crimes_by_type(crime_type='burglary', start_date=None, end_date=None, domain=None, **where_strs):
     """
     Get all matching crimes from the Chicago dataset
@@ -106,7 +137,8 @@ def apply_point_process(start_date=datetime.datetime(2010, 3, 1, 0),
                         max_delta_d=300,
                         num_nn=None,
                         estimate_kwargs=None,
-                        pp_class=pp_models.SeppStochasticNnReflected):
+                        pp_class=pp_models.SeppStochasticNnReflected,
+                        tol_p=None):
 
     res, t0 = get_crimes_by_type(
         crime_type='burglary',
@@ -145,7 +177,7 @@ def apply_point_process(start_date=datetime.datetime(2010, 3, 1, 0),
         }
 
     r = pp_class(data=res, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
-                                bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
+                 bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
 
     # r = pp_models.SeppStochasticNn(data=res, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
     #                             bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
@@ -157,7 +189,7 @@ def apply_point_process(start_date=datetime.datetime(2010, 3, 1, 0),
     r.p = p
 
     # train on ALL data
-    ps = r.train(data=res, niter=niter, tol_p=1e-5)
+    ps = r.train(data=res, niter=niter, tol_p=tol_p)
     return r, ps
 
 
@@ -168,7 +200,17 @@ def validate_point_process(
         num_pp_iter=20,
         grid=500,
         prediction_dt=1, true_dt_plus=1,
-        domain=None):
+        domain=None,
+        model_kwargs=None):
+
+    if not model_kwargs:
+        model_kwargs = {
+            'max_delta_t': 30,
+            'max_delta_d': 200,
+            'bg_kde_kwargs': {'number_nn': [101, 16]},
+            'trigger_kde_kwargs': {'number_nn': 15,
+                                   'min_bandwidth': [0.3, 5, 5]}
+        }
 
     if not training_size:
         # use all possible days before start_date as training
@@ -193,11 +235,7 @@ def validate_point_process(
         end_date=end_date,
         domain=domain,
     )
-    vb = validate.PpValidation(res, spatial_domain=domain, model_kwargs={
-        'max_trigger_t': 30,
-        'max_trigger_d': 200,
-        'estimator': lambda x, y: estimation.estimator_bowers(x, y, ct=1, cd=0.02),
-    })
+    vb = validate.PpValidation(res, spatial_domain=domain, **model_kwargs)
     vb.set_grid(grid)
     vb.set_t_cutoff(training_size, b_train=False)
 
@@ -357,19 +395,76 @@ def implement_delta_effect(outfile):
     res = []
 
     with open(outfile, 'w') as f:
-
         for dt, dd in zip(dt_grid.flat, dd_grid.flat):
+            try:
+                r, p = apply_point_process(
+                    start_date=start_date,
+                    end_date=end_date,
+                    niter=niter,
+                    max_delta_t=dt,
+                    max_delta_d=dd,
+                )
+                res.append((dt, dd, r))
 
-            r, p = apply_point_process(
-                start_date=start_date,
-                end_date=end_date,
-                niter=niter,
-                max_delta_t=dt,
-                max_delta_d=dd,
-            )
-            res.append((dt, dd, r))
+                dill.dump((dt, dd, r), f)
 
-        dill.dump(f, res)
+            except Exception:
+                pass
+
+    return res
+
+
+# implementation script
+# test the effect of spatial and temporal domain on the triggering function
+def implement_spatial_temporal_domain_effect():
+
+    niter = 35
+
+    start_date_1 = datetime.datetime(2010, 1, 1, 0)
+    start_date_2 = datetime.datetime(2010, 1, 7, 0)
+    end_date_1 = datetime.datetime(2010, 7, 1, 0)
+    end_date_2 = datetime.datetime(2011, 1, 1, 0)
+
+    centroid_1 = Point((445250, 4628000))
+    domain_m = centroid_1.buffer(5000)
+    domain_l = centroid_1.buffer(8000)
+
+    centroid_2 = Point((448000, 4621500))
+    domain_2 = centroid_2.buffer(5000)
+
+    res = {}
+
+    # spatial translation
+    res['base'], ps = apply_point_process(start_date=start_date_1,
+                                         end_date=end_date_1,
+                                         domain=domain_m,
+                                         niter=niter)
+
+    res['spatial_translation'], ps = apply_point_process(start_date=start_date_1,
+                                                         end_date=end_date_1,
+                                                         domain=domain_2,
+                                                         niter=niter)
+
+    # spatial enlargement
+
+    res['spatial_enlargement'], ps = apply_point_process(start_date=start_date_1,
+                                                         end_date=end_date_1,
+                                                         domain=domain_l,
+                                                         niter=niter)
+
+    # temporal translation
+
+    res['temporal_translation'], ps = apply_point_process(start_date=start_date_2,
+                                                          end_date=end_date_2,
+                                                          domain=domain_m,
+                                                          niter=niter)
+
+    # temporal enlargement
+
+    res['temporal_enlargement'], ps = apply_point_process(start_date=start_date_1,
+                                                          end_date=end_date_2,
+                                                          domain=domain_m,
+                                                          niter=niter)
 
     return res
 

@@ -285,6 +285,7 @@ class SpaceTimeNormalReflective(MultivariateNormal):
 #
 #         return it.operands[self.ndim]
 
+
 class LinearKernel(BaseKernel):
 
     """
@@ -303,3 +304,44 @@ class LinearKernel(BaseKernel):
             return (self.h - x) / self.h ** 2
         else:
             return 0.
+
+
+def illustrate_kernels():
+    from matplotlib import pyplot as plt
+    from analysis import plotting
+    means = [1.0, 1.0]
+    vars = [1.0, 1.0]
+
+    kernels = []
+
+    kernels.append(MultivariateNormal(means, vars))
+    kernels.append(SpaceTimeNormalOneSided(means, vars))
+    kernels.append(SpaceTimeNormalReflective(means, vars))
+
+    x = np.linspace(-5, 5, 500)
+    ymax = 0.
+    fig, axs = plt.subplots(1, 3, sharey=True, sharex=True)
+
+    for k, ax in zip(kernels, axs):
+        p = k.marginal_pdf(x, dim=0)
+        ymax = max(ymax, max(p))
+        ax.plot(x, p)
+        ax.set_xlabel('Time (t)', fontsize=18)
+        ax.set_xlim([-3, 5])
+
+    ymax *= 1.02
+
+    for ax in axs:
+        ax.set_ylim([0., ymax])
+        ax.plot([0, 0], [0, ymax], '--', color='gray')
+
+    # particular additions
+    axs[0].set_ylabel('Density', fontsize=18)
+    axs[0].fill_between(x[x < 0], 0, kernels[0].marginal_pdf(x, dim=0)[x < 0], edgecolor='none', facecolor='gray')
+    p = kernels[0].marginal_pdf(x, dim=0)
+    pn = p[x < 0][::-1]
+    xn = -x[x < 0][::-1]
+    axs[2].plot(x, p, 'k--')
+    axs[2].plot(xn, pn, 'k--')
+
+    plt.tight_layout()
