@@ -12,8 +12,17 @@ import json
 from analysis.spatial import is_clockwise, bounding_box_grid
 
 
+def centre_axes(ax=None):
+    if ax is None:
+        ax = plt.gca()
+
+    ax.spines['left'].set_position(('data', 0.))
+    ax.spines['bottom'].set_position(('data', 0.))
+
+
 def geos_poly_to_shapely(poly):
     return shapely_geometry.Polygon(poly.coords[0], poly.coords[1:])
+
 
 def geodjango_to_shapely(shapes, c=ccrs.OSGB()):
     """ Convert geodjango geometry to shapely for plotting etc
