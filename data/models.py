@@ -137,6 +137,11 @@ class DataArray(Data, np.ndarray):
         new_obj.original_shape = self.original_shape
         return new_obj
 
+    def getrows(self, idx):
+        res = self[idx]
+        res.original_shape = None
+        return res
+
     @property
     def nd(self):
         return self.shape[1]
@@ -166,6 +171,9 @@ class SpaceTimeDataArray(DataArray):
     """
     DataArray in which the first dimension is assumed to represent time and the remainder space
     """
+    time_class = DataArray
+    space_class = DataArray
+
     def __new__(cls, input_array):
         # Input array is an already formed ndarray instance
         # We first cast to be our class type
@@ -180,7 +188,7 @@ class SpaceTimeDataArray(DataArray):
     @property
     def time(self):
         # time component of datapoints
-        res = DataArray(self[:, 0])
+        res = self.time_class(self[:, 0])
         res.original_shape = self.original_shape
         return res
 
@@ -191,7 +199,7 @@ class SpaceTimeDataArray(DataArray):
     @property
     def space(self):
         # space component of datapoints
-        res = DataArray(self[:, 1:])
+        res = self.space_class(self[:, 1:])
         res.original_shape = self.original_shape
         return res
 
@@ -234,9 +242,7 @@ class CartesianSpaceTimeData(SpaceTimeDataArray, CartesianData):
     SpaceTime data, where the distance function is defined in the same way as for Cartesian data
     As for SpaceTimeDataArray, the first dimension refers to time
     """
-    @property
-    def space(self):
-        # space component of datapoints
-        return CartesianData(self[:, 1:])
+    space_class = CartesianData
+
 
 

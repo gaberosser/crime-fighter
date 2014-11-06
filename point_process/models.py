@@ -327,10 +327,16 @@ class Sepp(SepBase):
         trigger = sparse.csr_matrix((source_data.ndata, target_data.ndata))
 
         if link_source.size:
-            delta_data = target_data[link_target] - source_data[link_source]
+            delta_data = target_data.getrows(link_target) - source_data.getrows(link_source)
             trigger[link_source, link_target] = self.trigger_density(delta_data)
 
         trigger = np.array(trigger.sum(axis=0))
+        # reshape if target_data has a shape
+        if target_data.original_shape:
+            trigger = trigger.reshape(target_data.original_shape)
+        # else flatten
+        else:
+            trigger = trigger.flatten()
         return trigger
 
     def conditional_intensity(self, target_data, source_data=None, spatial_bg_only=False):
@@ -345,8 +351,10 @@ class Sepp(SepBase):
         else:
             source_data = self.data
 
+
         bg = self.background_density(target_data, spatial_only=spatial_bg_only)
         trigger = self.trigger_density_in_place(target_data, source_data=source_data)
+
 
         return bg + trigger
 

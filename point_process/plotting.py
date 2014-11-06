@@ -334,21 +334,23 @@ def prediction_heatmap(sepp, t, poly=None, kind=None, **kwargs):
         r = roc.RocSpatial(sepp.data[:, 1:])
         _poly = r.generate_bounding_poly()
 
+    arr_fun = lambda x, y: txy_to_cartesian_data_array(np.ones_like(x) * t, x, y)
+
     if kind is None or kind == "" or kind == "dynamic":
         # full prediction (BG and trigger), BG is time-dependent
-        pred_fun = lambda x, y: sepp.predict(txy_to_cartesian_data_array(np.ones_like(x) * t, x, y))
+        pred_fun = lambda x, y: sepp.predict(arr_fun(x, y))
     elif kind == "static":
         # full prediction (BG and trigger), BG is spatial-only
-        pred_fun = lambda x, y: sepp.predict_fixed_background(np.ones_like(x) * t, x, y)
+        pred_fun = lambda x, y: sepp.predict_fixed_background(arr_fun(x, y))
     elif kind == "trigger":
         # trigger only prediction
-        pred_fun = lambda x, y: sepp.trigger_density_in_place(np.ones_like(x) * t, x, y)
+        pred_fun = lambda x, y: sepp.trigger_density_in_place(arr_fun(x, y))
     elif kind == "bg":
         # BG only prediction, BG is time-dependent
-        pred_fun = lambda x, y: sepp.background_density(np.ones_like(x) * t, x, y, spatial_only=False)
+        pred_fun = lambda x, y: sepp.background_density(arr_fun(x, y), spatial_only=False)
     elif kind == "bgstatic":
         # BG only prediction, BG is spatial-only
-        pred_fun = lambda x, y: sepp.background_density(np.ones_like(x) * t, x, y, spatial_only=True)
+        pred_fun = lambda x, y: sepp.background_density(arr_fun(x, y), spatial_only=True)
     else:
         raise AttributeError("Supplied kind %s is not recognised", kind)
 
