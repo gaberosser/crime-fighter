@@ -6,6 +6,7 @@ import datetime
 import os
 from analysis import roc
 from analysis.plotting import plot_surface_on_polygon
+from data.models import CartesianSpaceTimeData
 
 
 def plot_t_kde(k, max_t=50):
@@ -68,7 +69,7 @@ def plot_txy_kde(k, max_x, max_y, npt_1d=50, tpt=None, **kwargs):
 
 def _plot_marginals(k, dim, norm=1.0, data_min=None, data_max=None, **kwargs):
     style = kwargs.pop('style', 'k-')
-    npt = kwargs.pop('npt', 200)  # number of points
+    npt = kwargs.pop('npt', 500)  # number of points
     symm = kwargs.pop('symm', True)  # toggles whether x axes are symmetric
     perc = kwargs.pop('percentile', 0.01)  # lower percentile to use for cutoff
 
@@ -219,6 +220,7 @@ def multiplots(ppobj, simobj=None, maxes=None):
     Convenience function.  Provided with an object of type PP model, produce various useful plots.  Optionally provide
     a simulation object with 'ground truth' information.
     """
+    npt = 500
     ci = 0.99
     fig_kwargs = {
         'figsize': (8, 6),
@@ -251,10 +253,10 @@ def multiplots(ppobj, simobj=None, maxes=None):
 
     # fig A2
     t_max = t_max or ppobj.trigger_kde.marginal_icdf(ci, dim=0)
-    fig = plot_txy_t_marginals(ppobj.trigger_kde, norm=ppobj.ndata, t_max=t_max)
+    fig = plot_txy_t_marginals(ppobj.trigger_kde, norm=ppobj.ndata, t_max=t_max, npt=npt)
     ax = fig.gca()
     if simobj:
-        t = np.linspace(0, t_max, 200)
+        t = np.linspace(0, t_max, npt)
         w = simobj.off_omega
         th = simobj.off_theta
         zt = th * w * np.exp(-w * t)
@@ -264,10 +266,10 @@ def multiplots(ppobj, simobj=None, maxes=None):
     ax.set_xlim([0, t_max])
 
     x_max = x_max or ppobj.trigger_kde.marginal_icdf(ci, dim=1)
-    fig = plot_txy_x_marginals(ppobj.trigger_kde, norm=ppobj.ndata, x_max=x_max)
+    fig = plot_txy_x_marginals(ppobj.trigger_kde, norm=ppobj.ndata, x_max=x_max, npt=npt)
     ax = fig.gca()
     if simobj:
-        x = np.linspace(-x_max, x_max, 200)
+        x = np.linspace(-x_max, x_max, npt)
         sx = simobj.off_sigma_x
         zx = th / (np.sqrt(2 * np.pi) * sx) * np.exp(-(x**2) / (2 * sx**2))
         plt.plot(x, zx, 'k--')
@@ -276,12 +278,12 @@ def multiplots(ppobj, simobj=None, maxes=None):
     ax.set_xlim([-x_max, x_max])
 
     y_max = y_max or ppobj.trigger_kde.marginal_icdf(ci, dim=2)
-    fig = plot_txy_y_marginals(ppobj.trigger_kde, norm=ppobj.ndata, y_max=y_max)
+    fig = plot_txy_y_marginals(ppobj.trigger_kde, norm=ppobj.ndata, y_max=y_max, npt=npt)
     ax = fig.gca()
     line = ax.get_lines()[0]
     zmax_infer = max(line.get_ydata())
     if simobj:
-        y = np.linspace(-y_max, y_max, 200)
+        y = np.linspace(-y_max, y_max, npt)
         sy = simobj.off_sigma_y
         zy = th/(np.sqrt(2 * np.pi) * sy) * np.exp(-(y**2) / (2 * sy**2))
         plt.plot(y, zy, 'k--')
@@ -309,6 +311,20 @@ def plot_trigger_marginals(trigger_kde, percentile=0.01):
     plt.tight_layout()
 
 
+def txy_to_cartesian_data_array(t, x, y):
+    ndim = t.ndim
+    if x.ndim != ndim or y.ndim != ndim:
+        raise AttributeError("Ndim does not match")
+
+    shape = t.shape
+    if x.shape != shape or y.shape != shape:
+        raise AttributeError("Shape does not match")
+
+    return CartesianSpaceTimeData(np.concatenate(
+        (t[..., np.newaxis], x[..., np.newaxis], y[..., np.newaxis]),
+        axis=ndim))
+
+
 def prediction_heatmap(sepp, t, poly=None, kind=None, **kwargs):
 
     if poly:
@@ -320,7 +336,7 @@ def prediction_heatmap(sepp, t, poly=None, kind=None, **kwargs):
 
     if kind is None or kind == "" or kind == "dynamic":
         # full prediction (BG and trigger), BG is time-dependent
-        pred_fun = lambda x, y: sepp.predict(np.ones_like(x) * t, x, y)
+        pred_fun = lambda x, y: sepp.predict(txy_to_cartesian_data_array(np.ones_like(x) * t, x, y))
     elif kind == "static":
         # full prediction (BG and trigger), BG is spatial-only
         pred_fun = lambda x, y: sepp.predict_fixed_background(np.ones_like(x) * t, x, y)
