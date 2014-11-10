@@ -59,6 +59,8 @@ def set_nn_bandwidths(normed_data, raw_stdevs, num_nn, **kwargs):
         nn_obj = NearestNeighbors(num_nn).fit(normed_data)
         dist, _ = nn_obj.kneighbors(normed_data)
     except ValueError as exc:
+        ## should never end up here as num_nn is set at instantiation
+        ipdb.set_trace()
         warnings.warn("Insufficient data, reducing number of nns to %d" % normed_data.ndata)
         nn_obj = NearestNeighbors(normed_data.ndata).fit(normed_data)
         dist, _ = nn_obj.kneighbors(normed_data)
@@ -273,7 +275,8 @@ class KdeBase(object):
         normed = kwargs.pop('normed', True)
 
         if not self.parallel:
-            z = self.kernel_clusters[0].additive_operation(funcstr, target, **kwargs)
+            z = sum([x.additive_operation(funcstr, target, **kwargs) for x in self.kernel_clusters])
+            # z = self.kernel_clusters[0].additive_operation(funcstr, target, **kwargs)
         elif self.b_shared:
             # create ctypes array pointer
             c_double_p = ctypes.POINTER(ctypes.c_double)
@@ -459,10 +462,10 @@ class VariableBandwidthNnKde(VariableBandwidthKde):
         super(VariableBandwidthNnKde, self).__init__(data, *args, **kwargs)
 
         # check requested number NN if supplied.
-        if (self.nn is not None) and (self.nn > (self.ndata - 1)):
+        if (self.nn is not None) and (self.nn > self.ndata):
             warnings.warn("Requested number of NNs (%d) is too large for the size of the dataset (%d)"
                                  % (self.nn, self.ndata))
-            self.nn = self.ndata - 1
+            self.nn = self.ndata
 
     def set_bandwidths(self, *args, **kwargs):
         # check number of datapoints > 1

@@ -100,13 +100,11 @@ class TestSpaceTimeDataArray(SimpleTestCase):
         with self.assertRaises(AttributeError):
             data = models.SpaceTimeDataArray([1, 2, 3])
 
-    def test_data_class(self):
+    def test_instantiation(self):
         data = models.SpaceTimeDataArray([[1, 2], [3, 4], [5, 6]])
         self.assertTrue(isinstance(data, models.Data))
         self.assertEqual(data.nd, 2)
         self.assertEqual(data.ndata, 3)
-        self.assertTrue(np.all(data.getdim(0) == data.time))
-        self.assertTrue(np.all(data[:, 0] == np.array([1, 3, 5])))
 
         self.assertTrue(isinstance(data.space, models.DataArray))
         self.assertTrue(np.all(data[:, 1] == data.space[:, 0]))
@@ -116,11 +114,39 @@ class TestSpaceTimeDataArray(SimpleTestCase):
         data = models.SpaceTimeDataArray(x)
         self.assertEqual(data.nd, 5)
         self.assertEqual(data.ndata, 100)
-        self.assertTrue(np.all(data.time.flat == x[..., 0].flatten('F')))
 
         self.assertTrue(isinstance(data.space, models.DataArray))
+
+    def test_slicing_etc(self):
+        data = models.SpaceTimeDataArray([[1, 2], [3, 4], [5, 6]])
+
+        self.assertTrue(data.getdim(0) == data.time)
+        self.assertTrue(np.all(data[:, 0] == np.array([1, 3, 5])))
+
+        x = np.linspace(0, 1, 500).reshape(10, 10, 5)
+        data = models.SpaceTimeDataArray(x)
+
+        self.assertTrue(data.time == models.DataArray(x[..., 0].flatten('F')))
+
         self.assertTrue(np.all(data.space[:, 0] == x[..., 1].flatten('F')))
         self.assertTrue(np.all(data.space[:, 3] == x[..., 4].flatten('F')))
+
+    def test_set_get(self):
+
+        data = models.SpaceTimeDataArray([[1, 2], [3, 4], [5, 6]])
+        # get time /space
+        self.assertTrue(np.all(data.getdim(0) == data.time))
+        self.assertTrue(np.all(data.getdim(1) == data.space))
+        t = models.DataArray([3, 6, 9])
+        data.time = t
+        self.assertTrue(data.getdim(0) == t)
+        s = models.DataArray([4, 8, 12])
+        data.space = s
+        self.assertTrue(data.getdim(1) == s)
+
+
+
+
 
 
 class TestCartesianData(SimpleTestCase):

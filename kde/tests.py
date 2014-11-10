@@ -44,38 +44,58 @@ class TestKernelMultivariateNormal(unittest.TestCase):
     location = [0.5, 1.0, 1.5]
     scale = [1.0, 2.0, 3.0]
     min_nd = 1
+    tol_places = 5
+
+    def limits(self, n):
+        if n == 1:
+            return -5. * self.scale[0], 5. * self.scale[0]
+        if n == 2:
+            return self.limits(1) + (lambda x: -5. * self.scale[1], lambda x: 5. * self.scale[1])
+        if n == 3:
+            return self.limits(2) + (lambda x, y: -5. * self.scale[2], lambda x, y: 5. * self.scale[2])
 
     def setUp(self):
-        self.kernels = []
+        self.kernels = {}
         for i in range(self.min_nd, 4):
-            self.kernels.append(self.kernel_class(self.location[:i], self.scale[:i]))
+            self.kernels[i] = self.kernel_class(self.location[:i], self.scale[:i])
 
     def test_norming(self):
         # 1D
         if self.min_nd < 2:
-            q = quad(partial(quad_pdf_fun, func=self.kernels[0].pdf),
-                     -5. * self.scale[0], 5. * self.scale[0])
-            self.assertAlmostEqual(q[0], 1.0, places=5)
+            q = quad(partial(quad_pdf_fun, func=self.kernels[1].pdf),
+                     *self.limits(1))
+            self.assertAlmostEqual(q[0], 1.0, places=self.tol_places)
 
 
         # 2D
         if self.min_nd < 3:
-            q = dblquad(partial(quad_pdf_fun, func=self.kernels[1].pdf),
-                        -5. * self.scale[0], 5. * self.scale[0],
-                        lambda x: -5. * self.scale[0], lambda x: 5. * self.scale[0],
+            q = dblquad(partial(quad_pdf_fun, func=self.kernels[2].pdf),
+                        *self.limits(2)
                         )
-            self.assertAlmostEqual(q[0], 1.0, places=5)
+            self.assertAlmostEqual(q[0], 1.0, places=self.tol_places)
 
         # 3D
-        q = tplquad(partial(quad_pdf_fun, func=self.kernels[2].pdf),
-                    -5. * self.scale[0], 5. * self.scale[0],
-                    lambda x: -5. * self.scale[0], lambda x: 5. * self.scale[0],
-                    lambda x, y: -5. * self.scale[0], lambda x, y: 5. * self.scale[0],
+        q = tplquad(partial(quad_pdf_fun, func=self.kernels[3].pdf),
+                    *self.limits(3)
                     )
-        self.assertAlmostEqual(q[0], 1.0, places=5)
+        self.assertAlmostEqual(q[0], 1.0, places=self.tol_places)
 
 
+class TestKernelOneSided(TestKernelMultivariateNormal):
 
+    kernel_class = kernels.SpaceTimeNormalOneSided
+    tol_places = 4
+
+    def limits(self, n):
+        if n == 1:
+            return 0., 5. * self.scale[0]
+        else:
+            return super(TestKernelOneSided, self).limits(n)
+
+
+class TestKernelReflective(TestKernelOneSided):
+
+    kernel_class = kernels.SpaceTimeNormalReflective
 
 
 class TestKernelMultivariateNormal2(unittest.TestCase):
@@ -308,7 +328,7 @@ class TestVariableBandwidthKdeNn(unittest.TestCase):
 
     def test_kde_1d(self):
         data = np.linspace(0, 1, 11)
-        kde = VariableBandwidthNnKde(data, number_nn=1)
+        kde = VariableBandwidthNnKde(data, number_nn=2)
         nndiste = np.diff(data)[0] / np.std(data, ddof=1)
         for n in kde.nn_distances:
             self.assertAlmostEqual(n, nndiste)

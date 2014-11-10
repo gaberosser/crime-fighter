@@ -17,6 +17,12 @@ def negative_time_dimension(data_array):
     return new_data
 
 
+def exp(data_array):
+    res = data_array.__class__(np.exp(data_array.data))
+    res.original_shape = data_array.original_shape
+    return res
+
+
 class Data(object):
 
     @property
@@ -41,7 +47,125 @@ class NetworkData(Data):
         return [x.network_distance(y) for (x, y) in zip(self.data, other.data)]
 
 
-class DataArray(Data, np.ndarray):
+class DataArray(Data):
+
+    def __init__(self, obj):
+        self.original_shape = None
+
+        if isinstance(obj, DataArray):
+            self.data = obj.data.copy()
+            self.original_shape = obj.original_shape
+            return
+
+
+        if not isinstance(obj, np.ndarray):
+            obj = np.array(obj)
+
+        # check dimensions
+        if obj.ndim == 0:
+            # input is either empty or a single value
+            try:
+                self.data = obj.reshape(1, 1)
+            except ValueError:
+                raise AttributeError("Input array has no data")
+
+        elif obj.ndim == 1:
+            self.data = obj.reshape((obj.size, 1))
+
+        elif obj.ndim == 2:
+            self.data = obj
+
+        elif obj.ndim > 2:
+            # separate by last dimension, flattening all other dimensions
+            # NB: the order of unravelling here is 'F', which is different to numpy's default 'C' method
+            # that is used by the 'flat' iterator
+            nd = obj.shape[-1]
+            ndata = obj[..., 0].size
+            # record original shape for later rebuilding
+            self.original_shape = obj[..., 0].shape
+            self.data = obj.reshape((ndata, nd), order='F')
+
+    def __builtin__(self, other, func):
+        if isinstance(other, DataArray):
+            return self.__class__(func(other.data))
+        else:
+            return self.__class__(func(other))
+
+    def __eq__(self, other):
+        return np.all(self.__builtin__(other, self.data.__eq__))
+
+    def __add__(self, other):
+        return self.__class__(self.__builtin__(other, self.data.__add__))
+
+    def __sub__(self, other):
+        return self.__class__(self.__builtin__(other, self.data.__sub__))
+
+    def __div__(self, other):
+        return self.__class__(self.__builtin__(other, self.data.__div__))
+
+    def __mul__(self, other):
+        return self.__class__(self.__builtin__(other, self.data.__mul__))
+
+    def __neg__(self):
+        return self.__class__(self.data.__neg__())
+
+    def __pow__(self, power, modulo=None):
+        return self.__class__(self.data.__pow__(power, modulo))
+
+    def __getitem__(self, item):
+        return self.data.__getitem__(item)
+
+    def getdim(self, dim):
+        # extract required dimension
+        obj = DataArray(self.data[:, dim])
+        # set original shape manually
+        obj.original_shape = self.original_shape
+        return obj
+
+    def adddim(self, obj, strict=True):
+        obj = DataArray(obj)
+        if obj.ndata != self.ndata:
+            raise AttributeError("Cannot add dimension because ndata does not match")
+        if strict:
+            # check shape
+            if obj.original_shape is None and self.original_shape:
+                warn("Adding data with no original shape - it will be coerced into the existing shape")
+            if obj.original_shape != self.original_shape and self.original_shape is not None:
+                raise AttributeError("Attempting to add data with incompatible original shape.  Set strict=False to bypass this check.")
+        new_obj = DataArray(np.hstack((self.data, obj)))
+        new_obj.original_shape = self.original_shape
+        return new_obj
+
+    def getrows(self, idx):
+        res = self.data[idx]
+        res.original_shape = None
+        return res
+
+    @property
+    def nd(self):
+        return self.data.shape[1]
+
+    @property
+    def ndata(self):
+        return self.data.shape[0]
+
+    @property
+    def separate(self):
+        return tuple(self.toarray(i) for i in range(self.nd))
+
+    def toarray(self, dim):
+        # return an np.ndarray object with the same shape as the original
+        # dim is a non-optional input argument detailing which dimension is required
+        # if all dimensions are required, use separate instead
+        if dim > (self.nd - 1):
+            raise AttributeError("Requested dim %d but this array has nd %d" % (dim, self.nd))
+        if self.original_shape:
+            return self.data[:, dim].reshape(self.original_shape, order='F')
+        else:
+            return self.data[:, dim].squeeze()
+
+
+class DataArray2(Data, np.ndarray):
 
     def __new__(cls, input_array):
         # Input array is an already formed ndarray instance
@@ -174,16 +298,10 @@ class SpaceTimeDataArray(DataArray):
     time_class = DataArray
     space_class = DataArray
 
-    def __new__(cls, input_array):
-        # Input array is an already formed ndarray instance
-        # We first cast to be our class type
-
-        obj = super(SpaceTimeDataArray, cls).__new__(cls, input_array)
-
-        if obj.nd < 2:
+    def __init__(self, obj):
+        super(SpaceTimeDataArray, self).__init__(obj)
+        if self.nd < 2:
             raise AttributeError("Must have >= 2 dimensions for ST data")
-
-        return obj
 
     @property
     def time(self):
@@ -194,7 +312,7 @@ class SpaceTimeDataArray(DataArray):
 
     @time.setter
     def time(self, time):
-        self[:, 0:1] = time
+        self.data[:, 0:1] = DataArray(time).data
 
     @property
     def space(self):
@@ -205,7 +323,7 @@ class SpaceTimeDataArray(DataArray):
 
     @space.setter
     def space(self, space):
-        self[:, 1:] = DataArray(space)
+        self.data[:, 1:] = DataArray(space).data
 
 
 class CartesianData(DataArray):

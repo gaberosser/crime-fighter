@@ -3,7 +3,7 @@ __author__ = 'gabriel'
 import numpy as np
 import math
 from scipy import special
-from data.models import DataArray, Data
+from data.models import DataArray, Data, exp
 
 PI = np.pi
 
@@ -60,6 +60,7 @@ class MultivariateNormal(BaseKernel):
         if not isinstance(x, Data):
             x = DataArray(x)
         if expctd_dims and x.nd != expctd_dims:
+            import ipdb; ipdb.set_trace()
             raise AttributeError("Incorrect dimensions for input variable")
 
         return x
@@ -81,25 +82,26 @@ class MultivariateNormal(BaseKernel):
 
         if ndim == 1:
             b = 1. / np.sqrt(self.vars[dims[0]])
-            c = np.exp(-(x - self.mean[dims[0]])**2 / (2 * self.vars[dims[0]]))
+            c = exp(-(x - self.mean[dims[0]])**2 / (2 * self.vars[dims[0]]))
         elif ndim == 2:
             b = 1. / np.sqrt(self.vars[dims[0]] * self.vars[dims[1]])
-            c = np.exp(
+            c = exp(
                 - (x.getdim(0) - self.mean[dims[0]])**2 / (2 * self.vars[dims[0]])
                 - (x.getdim(1) - self.mean[dims[1]])**2 / (2 * self.vars[dims[1]])
             )
         elif ndim == 3:
             b = 1. / np.sqrt(self.vars[dims[0]] * self.vars[dims[1]] * self.vars[dims[2]])
-            c = np.exp(
+            c = exp(
                 - (x.getdim(0) - self.mean[dims[0]])**2 / (2 * self.vars[dims[0]])
                 - (x.getdim(1) - self.mean[dims[1]])**2 / (2 * self.vars[dims[1]])
                 - (x.getdim(2) - self.mean[dims[2]])**2 / (2 * self.vars[dims[2]])
             )
         else:
             b = np.prod(np.power(self.vars[dims], -0.5))
+            ## TODO: fix this next line to use new data object
             c = np.exp(-np.sum((x - self.mean[dims])**2 / (2 * self.vars[dims]), axis=1))
 
-        return (a * b * c).toarray(0)
+        return (c * b * a).toarray(0)
 
     def marginal_pdf(self, x, dim=0):
         """ Return value is 1D marginal pdf with specified dim """
