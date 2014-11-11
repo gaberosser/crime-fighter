@@ -90,6 +90,34 @@ class TestDataArray(SimpleTestCase):
             self.assertIsInstance(res[i], np.ndarray)
             self.assertFalse(isinstance(res[i], models.Data))
 
+    def test_instantiate_from_meshgrid(self):
+        mg = np.meshgrid(np.linspace(0, 1, 5), np.linspace(2, 3, 10), np.linspace(4, 5, 15))
+        data = models.DataArray.from_meshgrid(*mg)
+        self.assertTupleEqual(data.original_shape, (10, 5, 15))
+        self.assertTrue(np.all(data.getdim(0) == mg[0]))
+        self.assertTrue(np.all(data[:, 2] == mg[2].flatten('F')))
+
+    def test_builtins(self):
+        x = np.random.rand(10, 20, 4)
+        data = models.DataArray(x)
+
+        self.assertIsInstance(data + 1.0, models.DataArray)
+        self.assertIsInstance(data - 1.0, models.DataArray)
+        self.assertIsInstance(data * 2.0, models.DataArray)
+        self.assertIsInstance(-data, models.DataArray)
+        self.assertIsInstance(data ** 2, models.DataArray)
+
+        self.assertTupleEqual((data + 1.0).original_shape, data.original_shape)
+        self.assertTupleEqual((data - 1.0).original_shape, data.original_shape)
+        self.assertTupleEqual((data * 2.0).original_shape, data.original_shape)
+        self.assertTupleEqual((-data).original_shape, data.original_shape)
+
+        xf = x.flatten('F')
+        self.assertTrue(np.all(data + 1.0 == xf + 1.0))
+        self.assertTrue(np.all(data - 1.0 == xf - 1.0))
+        self.assertTrue(np.all(data * 2.0 == xf * 2.0))
+        self.assertTrue(np.all(-data == -xf))
+        self.assertTrue(np.all(data ** -2 == xf ** -2))
 
 
 

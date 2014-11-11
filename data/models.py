@@ -2,6 +2,7 @@ __author__ = 'gabriel'
 import numpy as np
 from network.geos import NetworkPoint
 from warnings import warn
+import ipdb
 
 
 def negative_time_dimension(data_array):
@@ -85,35 +86,69 @@ class DataArray(Data):
             self.original_shape = obj[..., 0].shape
             self.data = obj.reshape((ndata, nd), order='F')
 
-    def __builtin__(self, other, func):
+    def copy(self):
+        return self.__class__(self)
+
+    @staticmethod
+    def from_meshgrid(*args):
+        # create an instance from the output of meshgrid
+        data = np.concatenate([t[..., np.newaxis] for t in args], axis=len(args))
+        return DataArray(data)
+
+    def __repr__(self):
+        return "{0}({1})".format(self.__class__.__name__, self.data.__str__())
+
+    def __builtin_combine__(self, other, func):
         if isinstance(other, DataArray):
-            return self.__class__(func(other.data))
+            res = self.__class__(func(other.data))
         else:
-            return self.__class__(func(other))
+            res = self.__class__(func(other))
+        res.original_shape = self.original_shape
+        return res
+
+    def __builtin_unary__(self, func, *args, **kwargs):
+        res = self.__class__(func(*args, **kwargs))
+        res.original_shape = self.original_shape
+        return res
 
     def __eq__(self, other):
-        return np.all(self.__builtin__(other, self.data.__eq__))
+        return np.all(self.__builtin_combine__(other, self.data.__eq__))
 
     def __add__(self, other):
-        return self.__class__(self.__builtin__(other, self.data.__add__))
+        return self.__builtin_combine__(other, self.data.__add__)
 
     def __sub__(self, other):
-        return self.__class__(self.__builtin__(other, self.data.__sub__))
+        return self.__builtin_combine__(other, self.data.__sub__)
 
     def __div__(self, other):
-        return self.__class__(self.__builtin__(other, self.data.__div__))
+        return self.__builtin_combine__(other, self.data.__div__)
 
     def __mul__(self, other):
-        return self.__class__(self.__builtin__(other, self.data.__mul__))
+        return self.__builtin_combine__(other, self.data.__mul__)
 
     def __neg__(self):
-        return self.__class__(self.data.__neg__())
+        return self.__builtin_unary__(self.data.__neg__)
 
     def __pow__(self, power, modulo=None):
-        return self.__class__(self.data.__pow__(power, modulo))
+        return self.__builtin_unary__(self.data.__pow__, power, modulo)
+
+    def __len__(self):
+        return self.ndata
 
     def __getitem__(self, item):
+        ## TODO: ideally we should be returning a similar type here, IF that makes sense
+        ## obj[0], obj[[0, 4, 7]] : return similar type
+        ## obj[:, 0] : don't?
         return self.data.__getitem__(item)
+
+    def __setitem__(self, i, value):
+        self.data.__setitem__(i, value)
+
+    def sumdim(self):
+        # sums over dimensions, returning a class type with a single dimension and same original_shape
+        res = self.__class__(self.data.sum(axis=1))
+        res.original_shape = self.original_shape
+        return res
 
     def getdim(self, dim):
         # extract required dimension
@@ -137,8 +172,12 @@ class DataArray(Data):
         return new_obj
 
     def getrows(self, idx):
-        res = self.data[idx]
-        res.original_shape = None
+        if hasattr(idx, '__iter__'):
+            new_data = self.data[idx]
+        else:
+            new_data = self.data[np.newaxis, idx]
+        res = self.__class__(new_data)
+        # NB cannot restore original shape here, so leave as None
         return res
 
     @property
@@ -163,132 +202,6 @@ class DataArray(Data):
             return self.data[:, dim].reshape(self.original_shape, order='F')
         else:
             return self.data[:, dim].squeeze()
-
-
-class DataArray2(Data, np.ndarray):
-
-    def __new__(cls, input_array):
-        # Input array is an already formed ndarray instance
-        # We first cast to be our class type
-
-        obj = np.asarray(input_array).view(cls)
-        obj.original_shape = None
-
-        # check dimensions
-        if obj.ndim == 0:
-            # input is either empty or a single value
-            try:
-                obj = obj.reshape(1, 1)
-            except ValueError:
-                raise AttributeError("Input array has no data")
-
-        elif obj.ndim == 1:
-            obj = obj.reshape((obj.size, 1))
-
-        elif obj.ndim > 2:
-            # separate by last dimension, flattening all other dimensions
-            # NB: the order of unravelling here is 'F', which is different to numpy's default 'C' method
-            # that is used by the 'flat' iterator
-            nd = obj.shape[-1]
-            ndata = obj[..., 0].size
-            # record original shape for later rebuilding
-            obj.original_shape = obj[..., 0].shape
-            obj = obj.reshape((ndata, nd), order='F')
-
-        # Finally, we must return the newly created object:
-        return obj
-
-    def __array_finalize__(self, obj):
-        # ``self`` is a new object resulting from
-        # ndarray.__new__(InfoArray, ...), therefore it only has
-        # attributes that the ndarray.__new__ constructor gave it -
-        # i.e. those of a standard ndarray.
-        #
-        # We could have got to the ndarray.__new__ call in 3 ways:
-        # From an explicit constructor - e.g. InfoArray():
-        #    obj is None
-        #    (we're in the middle of the InfoArray.__new__
-        #    constructor, and self.info will be set when we return to
-        #    InfoArray.__new__)
-        if obj is None:
-            return
-        # From view casting - e.g arr.view(InfoArray):
-        #    obj is arr
-        #    (type(obj) can be InfoArray)
-        # From new-from-template - e.g infoarr[:3]
-        #    type(obj) is InfoArray
-        #
-        # Note that it is here, rather than in the __new__ method,
-        # that we set the default value for 'info', because this
-        # method sees all creation of default objects - with the
-        # InfoArray.__new__ constructor, but also with
-        # arr.view(InfoArray).
-        self.original_shape = getattr(obj, 'original_shape', None)
-        # We do not need to return anything
-
-    def __reduce__(self):
-        # required for pickling.
-        # call parent reduce method first
-        recon, initargs, state = super(DataArray, self).__reduce__()
-        # add any extra attributes
-        state += (self.__dict__,)
-        return recon, initargs, state
-
-    def __setstate__(self, state):
-        # called upon unpickling
-        self.__dict__ = state[-1]
-        # call parent setstate
-        super(DataArray, self).__setstate__(state[:-1])
-
-    def getdim(self, dim):
-        # extract required dimension
-        obj = DataArray(self[:, dim])
-        # set original shape manually
-        obj.original_shape = self.original_shape
-        return obj
-
-    def adddim(self, obj, strict=True):
-        obj = DataArray(obj)
-        if obj.ndata != self.ndata:
-            raise AttributeError("Cannot add dimension because ndata does not match")
-        if strict:
-            # check shape
-            if obj.original_shape is None and self.original_shape:
-                warn("Adding data with no original shape - it will be coerced into the existing shape")
-            if obj.original_shape != self.original_shape and self.original_shape is not None:
-                raise AttributeError("Attempting to add data with incompatible original shape.  Set strict=False to bypass this check.")
-        new_obj = DataArray(np.hstack((self, obj)))
-        new_obj.original_shape = self.original_shape
-        return new_obj
-
-    def getrows(self, idx):
-        res = self[idx]
-        res.original_shape = None
-        return res
-
-    @property
-    def nd(self):
-        return self.shape[1]
-
-    @property
-    def ndata(self):
-        return self.shape[0]
-
-    @property
-    def separate(self):
-        return tuple(self.toarray(i) for i in range(self.nd))
-
-    def toarray(self, dim):
-        # return an np.ndarray object with the same shape as the original
-        # dim is a non-optional input argument detailing which dimension is required, unless self.nd=1 in which case
-        # dim=0 is assumed.  If all dimensions are required, use separate instead
-        if dim > (self.nd - 1):
-            raise AttributeError("Requested dim %d but this array has nd %d" % (dim, self.nd))
-        if self.original_shape:
-            return self.getdim(dim).reshape(self.original_shape, order='F').view(np.ndarray)
-        else:
-            return self.getdim(dim).squeeze().view(np.ndarray)
-
 
 
 class SpaceTimeDataArray(DataArray):

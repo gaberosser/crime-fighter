@@ -45,6 +45,7 @@ class TestKernelMultivariateNormal(unittest.TestCase):
     scale = [1.0, 2.0, 3.0]
     min_nd = 1
     tol_places = 5
+    tol = 1e-12
 
     def limits(self, n):
         if n == 1:
@@ -80,6 +81,25 @@ class TestKernelMultivariateNormal(unittest.TestCase):
                     )
         self.assertAlmostEqual(q[0], 1.0, places=self.tol_places)
 
+    def expected_pdf(self, x):
+        loc = self.location[:x.nd]
+        vars = self.scale[:x.nd]
+        res = multivariate_normal.pdf(x.data, mean=loc, cov=vars)
+        if x.original_shape:
+            res = res.reshape(x.original_shape, order='F')
+        return res
+
+    def test_pdf_values(self):
+        for i in range(self.min_nd, 4):
+            x = DataArray.from_meshgrid(
+                *np.meshgrid(
+                    *[np.linspace(-5, 5, 50)] * i
+                )
+            )
+            y = self.kernels[i].pdf(x)
+            ye = self.expected_pdf(x)
+            self.assertTrue(np.all(np.abs(y - ye) < self.tol))
+
 
 class TestKernelOneSided(TestKernelMultivariateNormal):
 
@@ -92,10 +112,51 @@ class TestKernelOneSided(TestKernelMultivariateNormal):
         else:
             return super(TestKernelOneSided, self).limits(n)
 
+    def test_cutoff(self):
+        x = DataArray(np.linspace(-5, 5, 100))
+        self.assertTrue(np.all(self.kernels[1].pdf(x)[x < self.location[0]] == 0))
+        x = DataArray.from_meshgrid(
+            *np.meshgrid(
+                np.linspace(-5, 5, 50),
+                np.linspace(-5, 5, 50)
+            )
+        )
+        res = self.kernels[2].pdf(x)
+        self.assertTrue(np.all(res[x.toarray(0) < self.location[0]] == 0))
+        self.assertTrue(np.all(res[x.toarray(0) >= self.location[0]] > 0.))
+
+    def expected_pdf(self, x):
+        res = super(TestKernelOneSided, self).expected_pdf(x)
+        res[x.toarray(0) < self.location[0]] = 0.
+        res[x.toarray(0) >= self.location[0]] *= 2.
+        return res
+
 
 class TestKernelReflective(TestKernelOneSided):
 
     kernel_class = kernels.SpaceTimeNormalReflective
+
+    def test_cutoff(self):
+        x = DataArray(np.linspace(-5, 5, 100))
+        self.assertTrue(np.all(self.kernels[1].pdf(x)[x < 0] == 0))
+        x = DataArray.from_meshgrid(
+            *np.meshgrid(
+                np.linspace(-5, 5, 50),
+                np.linspace(-5, 5, 50)
+            )
+        )
+        res = self.kernels[2].pdf(x)
+        self.assertTrue(np.all(res[x.toarray(0) < 0] == 0))
+        self.assertTrue(np.all(res[x.toarray(0) >= 0] > 0.))
+
+    def expected_pdf(self, x):
+        res = TestKernelMultivariateNormal.expected_pdf(self, x)
+        x2 = x.copy()
+        x2[:, 0] *= -1.0
+        res2 = TestKernelMultivariateNormal.expected_pdf(self, x2)
+        res += res2
+        res[x.toarray(0) < 0] = 0.
+        return res
 
 
 class TestKernelMultivariateNormal2(unittest.TestCase):

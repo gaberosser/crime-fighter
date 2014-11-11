@@ -4,6 +4,7 @@ import numpy as np
 import math
 from scipy import special
 from data.models import DataArray, Data, exp
+import ipdb
 
 PI = np.pi
 
@@ -98,8 +99,7 @@ class MultivariateNormal(BaseKernel):
             )
         else:
             b = np.prod(np.power(self.vars[dims], -0.5))
-            ## TODO: fix this next line to use new data object
-            c = np.exp(-np.sum((x - self.mean[dims])**2 / (2 * self.vars[dims]), axis=1))
+            c = exp(-((x - self.mean[dims])**2 / (2 * self.vars[dims])).sumdim())
 
         return (c * b * a).toarray(0)
 
@@ -110,6 +110,7 @@ class MultivariateNormal(BaseKernel):
     def marginal_cdf(self, x, dim=0):
         """ Return value is 1D marginal cdf with specified dim """
         x = self.prep_input(x, 1)
+        ## FIXME: old normcdf function does not support new data model
         return normcdf(x, self.mean[dim], self.vars[dim]).toarray(0)
 
     def partial_marginal_pdf(self, x, dim=0):
@@ -194,7 +195,14 @@ class SpaceTimeNormalOneSided(MultivariateNormal):
     The vars have the usual definition for dims > 1 and for the first dim it is the equivalent one-sided variance.
     """
     def pdf(self, x, dims=None):
-        x = self.prep_input(x)
+
+        if dims:
+            ndim = len(dims)
+        else:
+            dims = range(self.ndim)
+            ndim = self.ndim
+
+        x = self.prep_input(x, ndim)
         if dims is None:
             dims = range(self.ndim)
         res = super(SpaceTimeNormalOneSided, self).pdf(x, dims=dims)
@@ -228,16 +236,22 @@ class SpaceTimeNormalReflective(MultivariateNormal):
     def time_reversed_array(arr):
         arr = arr.copy()
         try:
-            t = arr.time.toarray(0).copy()
             arr.time *= -1.0
         except AttributeError:
-            t = arr[:, 0].copy()
-            arr[:, 0] *= -1.0
+            arr.data[:, 0] *= -1.0
         return arr
 
     def pdf(self, x, dims=None):
-        x = self.prep_input(x)
+
+        if dims:
+            ndim = len(dims)
+        else:
+            dims = range(self.ndim)
+            ndim = self.ndim
+
+        x = self.prep_input(x, ndim)
         res = super(SpaceTimeNormalReflective, self).pdf(x, dims=dims)
+
         # test whether temporal dimension was included
         if dims and 0 in dims:
             new_x = self.time_reversed_array(x)
