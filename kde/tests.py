@@ -7,6 +7,7 @@ from data.models import DataArray, SpaceTimeDataArray
 import numpy as np
 from scipy.stats import norm, multivariate_normal
 from scipy.integrate import quad, dblquad, tplquad
+from scipy.special import erf
 from functools import partial
 import ipdb
 
@@ -19,13 +20,6 @@ def quad_pdf_fun(*args, **kwargs):
 
 
 class TestHelperFunctions(unittest.TestCase):
-
-    def test_normpdf(self):
-        x = np.linspace(-4, 4, 100)
-        y1 = norm.pdf(x, loc=0.1, scale=2)
-        y2 = kernels.normpdf(x, 0.1, 4)
-        for a, b in zip(y1, y2):
-            self.assertAlmostEqual(a, b)
 
     def test_normcdf(self):
         self.assertAlmostEqual(kernels.normcdf(0., 0., 1.), 0.5)
@@ -89,6 +83,18 @@ class TestKernelMultivariateNormal(unittest.TestCase):
             res = res.reshape(x.original_shape, order='F')
         return res
 
+    def expected_marginal_pdf(self, x, dim):
+        assert x.nd == 1
+        loc = self.location[dim]
+        var = self.scale[dim]
+        return norm.pdf(x.toarray(0), loc=loc, scale=np.sqrt(var))
+
+    def expected_marginal_cdf(self, x, dim):
+        assert x.nd == 1
+        loc = self.location[dim]
+        var = self.scale[dim]
+        return norm.cdf(x.toarray(0), loc=loc, scale=np.sqrt(var))
+
     def test_pdf_values(self):
         for i in range(self.min_nd, 4):
             x = DataArray.from_meshgrid(
@@ -98,6 +104,24 @@ class TestKernelMultivariateNormal(unittest.TestCase):
             )
             y = self.kernels[i].pdf(x)
             ye = self.expected_pdf(x)
+            self.assertTrue(np.all(np.abs(y - ye) < self.tol))
+
+    def test_marginal_pdf_values(self):
+        k = self.kernels[3]
+        x = DataArray(np.linspace(-5, 5, 100))
+        for i in range(3):
+            y = k.marginal_pdf(x, dim=i)
+            ye1 = k.pdf(x, dims=[i])
+            ye2 = self.expected_marginal_pdf(x, i)
+            self.assertTrue(np.all(y == ye1))
+            self.assertTrue(np.all(np.abs(y - ye2) < self.tol))
+
+    def test_marginal_cdf_values(self):
+        k = self.kernels[3]
+        x = DataArray(np.linspace(-5, 5, 100))
+        for i in range(3):
+            y = k.marginal_cdf(x, dim=i)
+            ye = self.expected_marginal_cdf(x, i)
             self.assertTrue(np.all(np.abs(y - ye) < self.tol))
 
 
@@ -111,6 +135,9 @@ class TestKernelOneSided(TestKernelMultivariateNormal):
             return 0., 5. * self.scale[0]
         else:
             return super(TestKernelOneSided, self).limits(n)
+
+    def test_norming(self):
+        pass
 
     def test_cutoff(self):
         x = DataArray(np.linspace(-5, 5, 100))
@@ -129,6 +156,22 @@ class TestKernelOneSided(TestKernelMultivariateNormal):
         res = super(TestKernelOneSided, self).expected_pdf(x)
         res[x.toarray(0) < self.location[0]] = 0.
         res[x.toarray(0) >= self.location[0]] *= 2.
+        return res
+
+    def expected_marginal_pdf(self, x, dim):
+        res = super(TestKernelOneSided, self).expected_marginal_pdf(x, dim)
+        if dim == 0:
+            res[x.toarray(0) < self.location[0]] = 0.
+            res[x.toarray(0) >= self.location[0]] *= 2.
+        return res
+
+    def expected_marginal_cdf(self, x, dim):
+        if dim == 0:
+            # analytic CDF
+            res = erf((x.toarray(0) - self.location[0]) / (np.sqrt(2 * self.scale[0])))
+            res[x.toarray(0) < self.location[0]] = 0.
+        else:
+            res = super(TestKernelOneSided, self).expected_marginal_cdf(x, dim)
         return res
 
 
@@ -156,6 +199,29 @@ class TestKernelReflective(TestKernelOneSided):
         res2 = TestKernelMultivariateNormal.expected_pdf(self, x2)
         res += res2
         res[x.toarray(0) < 0] = 0.
+        return res
+
+    def expected_marginal_pdf(self, x, dim):
+        res = TestKernelMultivariateNormal.expected_marginal_pdf(self, x, dim=dim)
+        if dim == 0:
+            x2 = -x.copy()
+            res2 = TestKernelMultivariateNormal.expected_pdf(self, x2)
+            res += res2
+            res[x.toarray(0) < 0] = 0.
+        return res
+
+    def expected_marginal_cdf(self, x, dim):
+        assert x.nd == 1
+        loc = self.location[dim]
+        var = self.scale[dim]
+        if dim == 0:
+            x = x.toarray(0)
+            res = erf((x - loc) / (np.sqrt(2 * var)))
+            res -= erf((-x - loc) / (np.sqrt(2 * var)))
+            res[x < 0] = 0.
+            return 0.5 * res
+        else:
+            res = TestKernelMultivariateNormal.expected_marginal_cdf(self, x, dim=dim)
         return res
 
 

@@ -146,6 +146,41 @@ class CadDaily(CadTemporalAggregation):
         )
 
 
+
+class CadNightDay(CadTemporalAggregation):
+    @staticmethod
+    def create_bucket_fun(st, et):
+        """ Interesting! If we just generate the lambda function inline in bucket_dict, the scope is updated each time,
+         so the parameters (sd, ed) are also updated.  In essence the final function created is run every time.
+         Instead use a function factory to capture the closure correctly. """
+        return lambda x: st <= x.inc_datetime.time() < et
+
+    def bucket_dict(self):
+        return collections.OrderedDict([
+            ('daytime', lambda x: datetime.time(6, 0, 0) <= x.inc_datetime.time() < datetime.time(18, 0, 0)),
+            ('nighttime', lambda x: datetime.time(6, 0, 0) > x.inc_datetime.time()
+                                    or x.inc_datetime.time() >= datetime.time(18, 0, 0)),
+        ]
+        )
+
+def night_day_split_for_chris_gale():
+    import csv
+    res = []
+    for i in range(15):  # all major crime types
+        res.append(CadNightDay(nicl_number=i+1))
+
+    # create CSV
+    header = ['NICL number', 'NICL name', 'day counts', 'night counts', 'total counts']
+    with open('for_chris.csv', 'w') as f:
+        c = csv.writer(f)
+        c.writerow(header)
+        for row in res:
+            nt = len(row.data['nighttime'])
+            dt = len(row.data['daytime'])
+            datum = [row.nicl_number, row.nicl_name, nt, dt, nt + dt]
+            c.writerow(datum)
+
+
 def cad_space_time_count(cad_temporal, cad_spatial):
     # create numpy array with counts
     res = logic.combine_aggregations_into_count(cad_temporal.data, cad_spatial.data)

@@ -8,10 +8,7 @@ import ipdb
 
 PI = np.pi
 
-# a few helper functions
-def normpdf(x, mu, var):
-    return 1/np.sqrt(2*PI*var) * np.exp(-(x - mu)**2 / (2*var))
-
+# helper functions
 
 def normcdf(x, mu, var):
     return 0.5 * (1 + special.erf((x - mu) / (np.sqrt(2 * var))))
@@ -61,7 +58,6 @@ class MultivariateNormal(BaseKernel):
         if not isinstance(x, Data):
             x = DataArray(x)
         if expctd_dims and x.nd != expctd_dims:
-            import ipdb; ipdb.set_trace()
             raise AttributeError("Incorrect dimensions for input variable")
 
         return x
@@ -110,8 +106,7 @@ class MultivariateNormal(BaseKernel):
     def marginal_cdf(self, x, dim=0):
         """ Return value is 1D marginal cdf with specified dim """
         x = self.prep_input(x, 1)
-        ## FIXME: old normcdf function does not support new data model
-        return normcdf(x, self.mean[dim], self.vars[dim]).toarray(0)
+        return normcdf(x.toarray(0), self.mean[dim], self.vars[dim])
 
     def partial_marginal_pdf(self, x, dim=0):
         """ Return value is 1D partial marginal pdf:
@@ -215,14 +210,13 @@ class SpaceTimeNormalOneSided(MultivariateNormal):
         return res
 
     def marginal_cdf(self, x, dim=0):
-        x = self.prep_input(x)
+        x = self.prep_input(x, 1)
+        res = super(SpaceTimeNormalOneSided, self).marginal_cdf(x, dim=dim)
         if dim == 0:
-            res = special.erf((x - self.mean[0]) / (math.sqrt(2 * self.vars[0])))
             t0 = x.toarray(0) < self.mean[0]
             res[t0] = 0.
-            return res
-        else:
-            return super(SpaceTimeNormalOneSided, self).marginal_cdf(x, dim=dim)
+            res[~t0] = 2 * res[~t0] - 1.
+        return res
 
 
 class SpaceTimeNormalReflective(MultivariateNormal):
@@ -260,11 +254,11 @@ class SpaceTimeNormalReflective(MultivariateNormal):
         return res
 
     def marginal_cdf(self, x, dim=0):
-        x = self.prep_input(x)
         if dim == 0:
+            x = self.prep_input(x, 1).toarray(0)
             res = special.erf((x - self.mean[0]) / (math.sqrt(2 * self.vars[0])))
             res -= special.erf((-x - self.mean[0]) / (math.sqrt(2 * self.vars[0])))
-            res[x.toarray(0) < 0] = 0.
+            res[x < 0] = 0.
             return 0.5 * res
         else:
             return super(SpaceTimeNormalReflective, self).marginal_cdf(x, dim=dim)
