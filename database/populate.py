@@ -307,7 +307,8 @@ def setup_chicago_community_area(**kwargs):
     shp_file = os.path.join(CHICAGO_DATA_DIR, 'community_areas', 'CommAreas.shp')
     ds = DataSource(shp_file)
     lyr = ds[0]
-    source_srid = 102671
+    # source_srid = 102671
+    source_srid = 26971
     dest_srid = 2028
 
     for x in lyr:
@@ -336,7 +337,8 @@ def setup_chicago_division(**kwargs):
     shp_file = os.path.join(CHICAGO_DATA_DIR, 'community_areas', 'CommAreas.shp')
     ds = DataSource(shp_file)
     lyr = ds[0]
-    source_srid = 102671
+    # source_srid = 102671
+    source_srid = 26971
     dest_srid = 2028
 
     mpolys = []

@@ -492,7 +492,7 @@ class WeightedFixedBandwidthKde(FixedBandwidthKde):
     @property
     def raw_std_devs(self):
         # weighted standard deviation calculation
-        return weighted_stdev(self.data, self.weights)
+        return weighted_stdev(self.data.data, self.weights)
 
     def set_weights(self, weights):
         """ Required so that bandwidths are recomputed upon switching weights """
@@ -501,6 +501,23 @@ class WeightedFixedBandwidthKde(FixedBandwidthKde):
 
     def _iterative_operation(self, funcstr, *args, **kwargs):
         raise NotImplementedError()
+
+
+class WeightedVariableBandwidthKde(WeightedFixedBandwidthKde):
+
+    def set_bandwidths(self, *args, **kwargs):
+        bandwidths = kwargs.pop('bandwidths')
+
+        if not isinstance(bandwidths, np.ndarray):
+            bandwidths = np.array(bandwidths)
+
+        if len(bandwidths) != self.ndata:
+            raise AttributeError("Number of supplied bandwidths does not match the number of datapoints")
+
+        if len(bandwidths[0]) != self.ndim:
+            raise AttributeError("Number of supplied bandwidths does not match the dimensionality of the data")
+
+        self.bandwidths = bandwidths
 
 
 class WeightedVariableBandwidthNnKde(VariableBandwidthNnKde, WeightedFixedBandwidthKde):
@@ -586,6 +603,10 @@ class VariableBandwidthNnKdeSeparable(FixedBandwidthKde, KdeBaseSeparable):
                                                          self.raw_std_devs[1:],
                                                          self.nn[1], **kwargs)
         self.bandwidths = np.hstack((bandwidths_t, bandwidths_s))
+
+
+class WeightedVariableBandwidthNnKdeSeparable(WeightedFixedBandwidthKde, VariableBandwidthNnKdeSeparable):
+    pass
 
 
 class SpaceTimeExponentialVariableBandwidthNnKde(VariableBandwidthNnKde):
