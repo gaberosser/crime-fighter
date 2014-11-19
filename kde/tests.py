@@ -137,6 +137,7 @@ class TestKernelOneSided(TestKernelMultivariateNormal):
             return super(TestKernelOneSided, self).limits(n)
 
     def test_norming(self):
+        # TODO: this is extremely slow.  Why?  Discontinuity at cutoff?
         pass
 
     def test_cutoff(self):

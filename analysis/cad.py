@@ -329,8 +329,10 @@ def apply_point_process(nicl_type=3,
                         num_nn=None,
                         min_bandwidth=None,
                         jiggle_scale=None,
-                        max_delta_t=60, # days
-                        max_delta_d=500 # metres
+                        max_delta_t=60,  # days
+                        max_delta_d=500,  # metres
+                        sepp_class=pp_models.SeppStochasticNnReflected,
+                        tol_p=None
                         ):
 
     if min_bandwidth is None:
@@ -360,18 +362,12 @@ def apply_point_process(nicl_type=3,
         'number_nn': num_nn_trig,
     }
 
-    # r = pp_models.SeppStochasticNn(data=res, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
-    #                             bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
-    r = pp_models.SeppStochasticNnReflected(data=res, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
+    r = sepp_class(data=res, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
                                 bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
-    p = estimation.estimator_bowers(res, r.linkage, ct=1, cd=0.02)
-    r.p = p
-
-    # r = pp_models.PointProcessStochasticNn(estimator=est, max_trigger_t=max_trigger_t, max_trigger_d=max_trigger_d,
-    #                         min_bandwidth=min_bandwidth, num_nn=num_nn)
+    r.p = estimation.estimator_bowers(res, r.linkage, ct=1, cd=0.02)
 
     # train on all data
-    ps = r.train(data=res, niter=niter, tol_p=1e-5)
+    ps = r.train(data=res, niter=niter, tol_p=tol_p)
     return r, ps
 
 

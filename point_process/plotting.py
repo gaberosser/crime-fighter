@@ -355,3 +355,22 @@ def prediction_heatmap(sepp, t, poly=None, kind=None, **kwargs):
         raise AttributeError("Supplied kind %s is not recognised", kind)
 
     return plot_surface_on_polygon(_poly, pred_fun, **kwargs)
+
+
+def fluctuation_pre_convergence(res, conv_region=10):
+    '''
+    Various plots relating to the output of the function with the same name in models.
+    :param conv_region: Number of datapoints to take before convergence is assumed.
+    '''
+    niter = len(res['triggers'])
+    i = range(niter)
+    mean_l2 = np.mean(res['sepp_obj'].l2_differences[conv_region:])
+    std_l2 = np.std(res['sepp_obj'].l2_differences[10:], ddof=1)
+
+    # plot l2 differences with region of convergence indicated
+    plt.figure()
+    plt.plot(i, res['sepp_obj'].l2_differences, 'k-')
+    plt.fill_between(i, np.ones(niter) * (mean_l2 - 3 * std_l2), np.ones(niter) * (mean_l2 + 3 * std_l2),
+                     edgecolor='none', facecolor='k', alpha=0.5)
+    plt.xlabel('Iteration')
+    plt.ylabel('L2 difference')

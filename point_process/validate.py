@@ -9,6 +9,13 @@ import copy
 
 
 def confusion_matrix(p_inferred, linkage_col, t=0.5):
+    """
+    Return a standard confusion matrix from an inferred probability matrix
+    :param p_inferred: sparse or full probability matrix
+    :param linkage_col: as c.data[:, -1], where c is of type MohlerSimulation
+    :param t: probability threshold for assignment
+    :return: dictionary with counts of FP, etc.
+    """
 
     if p_inferred.shape[0] != p_inferred.shape[1]:
         raise AttributeError("Supplied matrix is not square")
