@@ -73,7 +73,10 @@ def get_camden_region():
 
 
 class CadAggregate(object):
-    def __init__(self, nicl_number=None, only_new=False, dedupe=True):
+    def __init__(self, nicl_number=None, only_new=False, dedupe=True,
+                 start_date=None, end_date=None):
+        self._start_date = start_date
+        self._end_date = end_date
         self.nicl_number = nicl_number
         if nicl_number:
             self.nicl_name = models.Nicl.objects.get(number=nicl_number).description
@@ -86,15 +89,23 @@ class CadAggregate(object):
 
     def load_data(self):
         self.cad = logic.initial_filter_cad(nicl_type=self.nicl_number, only_new=self.only_new)
+        if self.start_date:
+            self.cad = self.cad.filter(inc_datetime__gte=self.start_date)
+        if self.end_date:
+            self.cad = self.cad.filter(inc_datetime__lte=self.end_date)
         if self.dedupe:
             self.cad = logic.dedupe_cad(self.cad)
 
     @property
     def start_date(self):
+        if self._start_date:
+            return self._start_date
         return min([x.inc_datetime for x in self.cad]).replace(hour=0, minute=0, second=0)
 
     @property
     def end_date(self):
+        if self._end_date:
+            return self._end_date
         return max([x.inc_datetime for x in self.cad])
 
     def aggregate(self):
@@ -102,9 +113,11 @@ class CadAggregate(object):
 
 
 class CadSpatialGrid(CadAggregate):
-    def __init__(self, nicl_number=None, grid=None, only_new=False, dedupe=True):
+    def __init__(self, nicl_number=None, grid=None, only_new=False, dedupe=True,
+                 start_date=None, end_date=None):
         # defer dedupe until after spatial aggregation
-        super(CadSpatialGrid, self).__init__(nicl_number=nicl_number, only_new=only_new, dedupe=False)
+        super(CadSpatialGrid, self).__init__(nicl_number=nicl_number, only_new=only_new, dedupe=False,
+                                             start_date=start_date, end_date=end_date)
         self.dedupe = dedupe
         # load grid or use one provided
         self.grid = grid or models.Division.objects.filter(type='cad_250m_grid')
@@ -118,8 +131,10 @@ class CadSpatialGrid(CadAggregate):
 
 
 class CadTemporalAggregation(CadAggregate):
-    def __init__(self, nicl_number=None, only_new=False, dedupe=True):
-        super(CadTemporalAggregation, self).__init__(nicl_number=nicl_number, only_new=only_new, dedupe=dedupe)
+    def __init__(self, nicl_number=None, only_new=False, dedupe=True,
+                 start_date=None, end_date=None):
+        super(CadTemporalAggregation, self).__init__(nicl_number=nicl_number, only_new=only_new, dedupe=dedupe,
+                                                     start_date=start_date, end_date=end_date)
         bucket_dict = self.bucket_dict()
         self.data = []
         self.data = self.bucket_data()
