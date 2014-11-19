@@ -367,7 +367,7 @@ def apply_point_process(nicl_type=3,
     r.p = estimation.estimator_bowers(res, r.linkage, ct=1, cd=0.02)
 
     # train on all data
-    ps = r.train(data=res, niter=niter, tol_p=tol_p)
+    ps = r.train(niter=niter, tol_p=tol_p)
     return r, ps
 
 

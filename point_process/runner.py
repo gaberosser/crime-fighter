@@ -47,8 +47,8 @@ def noisy_init(c, noise_level=0.):
         for i in range(ndata):
             p_init[:, i] = p_init[:, i] / colsum[i]
 
-    r = models.PointProcess(max_trigger_d=0.75, max_trigger_t=80)
-    r.train(data, niter=20, tol_p=1e-5)
+    r = models.SeppStochasticNn(max_delta_d=0.75, max_delta_t=80)
+    r.train(data=data, niter=20, tol_p=1e-5)
 
     return r
 
@@ -73,7 +73,7 @@ def consistency_of_trigger_after_convergence(niter_initial=15, niter_after=30, s
                    bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
 
     r.p = estimation.estimator_bowers(data, r.linkage)
-    r.train(data, niter=niter_initial)
+    r.train(niter=niter_initial)
 
     # start recording kde
     triggers = [r.trigger_kde]

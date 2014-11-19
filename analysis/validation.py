@@ -95,8 +95,10 @@ class ValidationBase(object):
         :param as_point: If True, return N length list of (time, geos.Point) tuples, else return N x 3 matrix
         :return: Testing data for comparison with predictions, based on value of cutoff_t.
         """
+        assert dt_minus >= 0., "dt_minus must be positive"
         bottom = self.cutoff_t + dt_minus
         if dt_plus:
+            assert dt_plus >= 0., "dt_plus must be positive"
             d = self.data[(self.t > bottom) & (self.t <= (self.cutoff_t + dt_plus))]
         else:
             d = self.data[self.t > bottom]
@@ -260,6 +262,7 @@ class ValidationBase(object):
 
         return res
 
+
 class WeightedValidation(ValidationBase):
     ## TODO: implement WeightedRocSpatial - should be a fairly trivial extension
     # -> include ALL test data
@@ -292,48 +295,48 @@ if __name__ == "__main__":
     ))
 
     # use Bowers kernel
-    # stk = hotspot.STKernelBowers(1, 1e-4)
-    # vb = ValidationBase(data, hotspot.Hotspot, camden.mpoly, model_args=(stk,))
-    # vb.set_grid(grid_length=200)
-    # vb.set_t_cutoff(4.0)
+    stk = hotspot.STKernelBowers(1, 1e-4)
+    vb = ValidationBase(data, hotspot.Hotspot, camden.mpoly, model_args=(stk,))
+    vb.set_grid(200)
+    vb.set_t_cutoff(4.0)
 
     # use basic historic data spatial hotspot
     # sk = hotspot.SKernelHistoric(2) # use heatmap from final 2 days data
     # vb = ValidationBase(data, hotspot.Hotspot, camden.mpoly, model_args=(sk,))
-    # vb.set_grid(grid_length=200)
+    # vb.set_grid(200)
     # vb.set_t_cutoff(4.0)
 
     # use point process model
-    c = simulate.MohlerSimulation()
-    c.run()
-    data = np.array(c.data)[:, :3]  # (t, x, y, b_is_BG)
-    data = data[data[:, 0].argsort()]
-    vb = ValidationBase(data, pp_models.PointProcess,
-                        model_kwargs={'max_trigger_t': 80, 'max_trigger_d': 0.75})
-    vb.set_grid(5)
-    vb.train_model(niter=20)
+    # c = simulate.MohlerSimulation()
+    # c.run()
+    # data = np.array(c.data)[:, :3]  # (t, x, y, b_is_BG)
+    # data = data[data[:, 0].argsort()]
+    # vb = ValidationBase(data, pp_models.PointProcess,
+    #                     model_kwargs={'max_trigger_t': 80, 'max_trigger_d': 0.75})
+    # vb.set_grid(5)
+    # vb.train_model(niter=20)
 
 
-    rank, res, carea, cfrac, pai = vb.run(time_step=1) # predict one day ahead
-    polys = [vb.grid[i] for i in rank]
-    n = vb.true_values(dt_plus=1, dt_minus=0)
+    res = vb.run(time_step=1, n_iter=1) # predict one day ahead
+    pred_values = res['prediction_values'][0]
+    polys_pred_rank_order = [vb.roc.igrid[i] for i in res['prediction_rank'][0]]
 
-    norm = mpl.colors.Normalize(min(res), max(res))
+    norm = mpl.colors.Normalize(min(pred_values), max(pred_values))
     cmap = mpl.cm.jet
     sm = mpl.cm.ScalarMappable(norm, cmap)
 
     fig = plt.figure()
     ax = fig.add_subplot(111)
-    for (p, r) in zip(polys, res):
+    for (p, r) in zip(polys_pred_rank_order, pred_values):
         plotting.plot_geodjango_shapes(shapes=(p,), ax=ax, facecolor=sm.to_rgba(r), set_axes=False)
     plotting.plot_geodjango_shapes((vb.spatial_domain,), ax=ax, facecolor='none')
 
-    norm = mpl.colors.Normalize(min(n), max(n))
+    norm = mpl.colors.Normalize(min(vb.roc.true_count), max(vb.roc.true_count))
     sm = mpl.cm.ScalarMappable(norm, cmap)
 
     fig = plt.figure()
     ax = fig.add_subplot(111)
-    for (p, r) in zip(vb.grid, n):
+    for (p, r) in zip(vb.roc.igrid, vb.roc.true_count):
         plotting.plot_geodjango_shapes(shapes=(p,), ax=ax, facecolor=sm.to_rgba(r), set_axes=False)
     plotting.plot_geodjango_shapes((vb.spatial_domain,), ax=ax, facecolor='none')
 

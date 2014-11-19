@@ -27,8 +27,6 @@ class SepBase(object):
 
         self.p = p
         self.data = None
-        if len(data):
-            self.set_data(data)
         self.parallel = parallel
 
         self.max_delta_t = None
@@ -39,7 +37,10 @@ class SepBase(object):
         self.interpoint_data = None
         self.linkage = None
         self.linkage_cols = None
-        self.set_linkages()
+
+        if data is not None:
+            self.set_data(data)
+            self.set_linkages()
 
         self.bg_kde = None
         self.trigger_kde = None
@@ -210,18 +211,20 @@ class SepBase(object):
         # update p
         self.p = new_p
 
-    def train(self, data, niter=30, verbose=True, tol_p=None):
+    def train(self, data=None, niter=30, verbose=True, tol_p=None):
 
-        self.set_data(data)
-        # compute linkage indices
-        self.set_linkages()
+        if self.p is None:
+            raise AttributeError("p must be set before training")
+
+        if data:
+            self.set_data(data)
+            # compute linkage indices
+            self.set_linkages()
+        elif self.data is None:
+            raise AttributeError("No data supplied")
 
         # reset all other storage containers
         self.reset()
-
-        # initial estimate for p if required
-        if self.p is None:
-            self.p = self.estimator(self.data, self.linkage)
 
         ps = []
 
@@ -518,7 +521,7 @@ def fluctuation_at_convergence(sepp_obj, niter_initial=15, niter_after=30):
     :param niter_after: number of iterations to carry out at convergence point
     :return: dictionary of lists of: KDEs, weighted KDEs and probability matrices
     """
-    sepp_obj.train(sepp_obj.data, niter=niter_initial)
+    sepp_obj.train(niter=niter_initial)
 
     # start recording kde
     triggers = [sepp_obj.trigger_kde]
@@ -553,7 +556,7 @@ def variation_in_convergent_state(sepp_obj, niter_initial=15, num_repeats=20):
     :param num_repeats: number of repeated trainings to carry out
     :return: dictionary of lists of: KDEs, weighted KDEs and probability matrices, one per repeat
     """
-    sepp_obj.train(sepp_obj.data, niter=niter_initial)
+    sepp_obj.train(niter=niter_initial)
 
     # start recording kde
     triggers = []
@@ -564,7 +567,7 @@ def variation_in_convergent_state(sepp_obj, niter_initial=15, num_repeats=20):
     sepp_objs = []
 
     for i in range(num_repeats):
-        sepp_obj.train(sepp_obj.data, niter=niter_initial)
+        sepp_obj.train(niter=niter_initial)
         sepp_objs.append(copy.deepcopy(sepp_obj))
         triggers.append(sepp_obj.trigger_kde)
         bgs.append(sepp_obj.bg_kde)

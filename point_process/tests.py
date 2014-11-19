@@ -10,7 +10,7 @@ from mock import patch
 from scipy.spatial import KDTree
 import os
 from time import time
-from data.models import CartesianSpaceTimeData
+from data.models import CartesianSpaceTimeData, CartesianData
 
 cd = os.path.dirname(os.path.realpath(__file__))
 DATA_DIR = os.path.join(cd, 'test_data')
@@ -36,35 +36,6 @@ class TestSimulation(unittest.TestCase):
 
 
 class TestUtils(unittest.TestCase):
-
-    def test_self_linkage_array(self):
-        data1 = np.random.randn(5000, 3)
-        max_t = max_d = 0.5
-        i, j = utils.linkages_euclidean_array(data1, max_d=max_d, max_t=max_t)
-        # manually test restrictions
-        # all time differences positive
-        self.assertTrue(np.all(data1[j, 0] > data1[i, 0]))
-        # all time diffs less than max_t
-        self.assertTrue(np.all(data1[j, 0] - data1[i, 0] <= max_t))
-        # all distances <= max_d
-        d = np.sqrt((data1[j, 1] - data1[i, 1])**2 + (data1[j, 2] - data1[i, 2])**2)
-        self.assertTrue(np.all(d <= max_d))
-
-    def test_cross_linkage_array(self):
-        data_source = np.random.randn(5000, 3)
-        data_target = np.random.randn(1000, 3)
-        max_t = max_d = 0.5
-        i, j = utils.linkages_euclidean_array(data_source=data_source, max_d=max_d, max_t=max_t, data_target=data_target)
-        self.assertTrue(np.all(i < 5000))
-        self.assertTrue(np.all(j < 1000))
-        # manually test restrictions
-        # all time differences positive
-        self.assertTrue(np.all(data_target[j, 0] > data_source[i, 0]))
-        # all time diffs less than max_t
-        self.assertTrue(np.all(data_target[j, 0] - data_source[i, 0] <= max_t))
-        # all distances <= max_d
-        d = np.sqrt((data_target[j, 1] - data_source[i, 1])**2 + (data_target[j, 2] - data_source[i, 2])**2)
-        self.assertTrue(np.all(d <= max_d))
 
     def test_self_linkage(self):
         data1 = CartesianSpaceTimeData(np.random.randn(5000, 3))
@@ -96,7 +67,7 @@ class TestUtils(unittest.TestCase):
         self.assertTrue(np.all(d <= max_d))
 
 
-class TestPointProcessStochasticNn(unittest.TestCase):
+class TestSeppStochasticNn(unittest.TestCase):
 
     def setUp(self):
         self.c = simulate.MohlerSimulation()
@@ -105,73 +76,78 @@ class TestPointProcessStochasticNn(unittest.TestCase):
         self.c.run()
         self.data = self.c.data[:, :3]
 
-    def test_linkage(self):
-        r = models.PointProcessStochasticNn(max_trigger_d=0.75, max_trigger_t=80)
-        r.set_data(self.data)
-        link_mesh = r._set_linkages_meshed()
-        link_iter = r._set_linkages_iterated()
-        self.assertListEqual(list(link_iter[0]), list(link_mesh[0]))
-        self.assertListEqual(list(link_iter[1]), list(link_mesh[1]))
-        ## TODO: (1) use a known linkage structure to test output, (2) test linkage_cols
-
     def test_point_process(self):
         """
         Tests the output of the PP stochastic method based on a given random seed.
         The tests are all based on KNOWN results, NOT on the ideal results.  Failing some of these tests may still
         indicate an improvement.
         """
-        r = models.PointProcessStochasticNn(max_trigger_d=0.75, max_trigger_t=80)
-        models.estimation.set_seed(42)
-        ps = r.train(self.data, niter=15, verbose=False, tol_p=1e-8)
+        r = models.SeppStochasticNn(self.data, max_delta_d=0.75, max_delta_t=80)
+        r.set_seed(42)
+        r.p = estimation.estimator_bowers(self.data, r.linkage, ct=1, cd=10)
+        ps = r.train(niter=15, verbose=False, tol_p=1e-8)
         self.assertEqual(r.ndata, self.data.shape[0])
         self.assertEqual(len(r.num_bg), 15)
-        self.assertEqual(r.niter, 15)
         self.assertAlmostEqual(r.l2_differences[0], 0.0011281, places=3)
         self.assertAlmostEqual(r.l2_differences[-1], 0.0001080, places=3)
-        num_bge = [
-            1949,
-            1880,
-            1758,
-            1682,
-            1655,
-            1627,
-            1624,
-            1606,
-            1616,
-            1612,
-            1597,
-            1595,
-            1598,
-            1600,
-            1597
-        ]
-        self.assertListEqual(r.num_bg, num_bge)
+        num_bg_true = np.isnan(self.c.data[:, -1]).sum()
+
+        self.assertTrue(np.abs(r.num_bg[-1] - num_bg_true) / float(num_bg_true) < 0.05)  # agree to within 5pct
         self.assertListEqual(r.num_trig, [r.ndata - x for x in r.num_bg])
         self.assertEqual(len(r.linkage[0]), 6927)
+
         t = np.linspace(0, max(self.data[:, 0]), 10000)
-        zt = r.bg_t_kde.pdf(t, normed=False)
+        zt = r.bg_kde.marginal_pdf(t, dim=0, normed=False)
         # mean BG_t
         mt = np.mean(zt)
-        self.assertAlmostEqual(mt, 5.379642997277057, places=3)  # should be 5.71
-        # stdev BG_t
-        # should be as low as possible (no time variation in simulation):
-        stdevt = np.std(zt)
-        self.assertAlmostEqual(stdevt, 0.87447835663897755, places=3)
+        self.assertTrue(np.abs(mt - self.c.bg_mu_bar) / float(self.c.bg_mu_bar) < 0.05)
+        # integrated squared error
+        ise = np.sum((zt - self.c.bg_mu_bar) ** 2) * (t[1] - t[0])
+        # this bound is set manually from previous experiments
+        self.assertTrue(ise < 250)  # should be as low as possible (no time variation in simulation)
+
         # mean BG_x, BG_y
         # should be (0, 0)
         x, y = np.meshgrid(np.linspace(-15, 15, 200), np.linspace(-15, 15, 200))
-        zxy = r.bg_xy_kde.pdf(x,y,normed=False)
+        xy = CartesianData.from_meshgrid(x, y)
+        zxy = r.bg_kde.partial_marginal_pdf(xy, normed=False)
         mx = np.sum(x * zxy) / x.size
         my = np.sum(y * zxy) / y.size
-        self.assertAlmostEqual(mx, -0.16809429994382197, places=3)  # should be 0
-        self.assertAlmostEqual(my, -0.13588032032996472, places=3)  # should be 0
+        # bounds set manually
+        self.assertTrue(np.abs(mx) < 0.25)
+        self.assertTrue(np.abs(my) < 0.25)
+
         # stdev BG_x, BG_y
         stdevx = np.sqrt((np.sum(x**2 * zxy)/(x.size - 1)) - mx**2)
         stdevy = np.sqrt((np.sum(y**2 * zxy)/(y.size - 1)) - my**2)
-        self.assertAlmostEqual(stdevx, 6.1230874070314485)  # should be 4.5
-        self.assertAlmostEqual(stdevy, 6.1335341582567739)  # should be 4.5
-        self.assertTrue(2 * np.abs(stdevx - stdevy)/(stdevx + stdevy) < 0.003) # should be 0
-        # TODO: trigger
+        self.assertTrue(np.abs(stdevx - self.c.bg_sigma) / self.c.bg_sigma < 0.4)  # agreement here isn't great
+        self.assertTrue(np.abs(stdevy - self.c.bg_sigma) / self.c.bg_sigma < 0.4)  # agreement here isn't great
+        # measure of asymmetry
+        self.assertTrue(2 * np.abs(stdevx - stdevy)/(stdevx + stdevy) < 0.01)  # should be 0
+
+        # trigger t
+        t = np.linspace(0, r.max_delta_t, 1000)
+        gt = r.trigger_kde.marginal_pdf(t, normed=False) / r.ndata
+
+        w = self.c.off_omega
+        th = self.c.off_theta
+        gt_true = th * w * np.exp(-w * t)
+        ise = np.sum((gt - gt_true) ** 2) * (t[1] - t[0])
+        self.assertTrue(ise < 0.001)
+
+        x = np.linspace(-r.max_delta_d, r.max_delta_d, 10000)
+        gx = r.trigger_kde.marginal_pdf(x, dim=1, normed=False) / r.ndata
+        gy = r.trigger_kde.marginal_pdf(x, dim=2, normed=False) / r.ndata
+
+        sx = self.c.off_sigma_x
+        gx_true = th / (np.sqrt(2 * np.pi) * sx) * np.exp(-(x ** 2) / (2 * sx ** 2))
+        ise = np.sum((gx - gx_true) ** 2) * (x[1] - x[0])
+        self.assertTrue(ise < 0.1)
+
+        sy = self.c.off_sigma_y
+        gy_true = th / (np.sqrt(2 * np.pi) * sy) * np.exp(-(x ** 2) / (2 * sy ** 2))
+        ise = np.sum((gy - gy_true) ** 2) * (x[1] - x[0])
+        self.assertTrue(ise < 0.01)
 
 
 class TestSampling(unittest.TestCase):

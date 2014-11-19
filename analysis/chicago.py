@@ -189,7 +189,7 @@ def apply_point_process(start_date=datetime.datetime(2010, 3, 1, 0),
     r.p = p
 
     # train on ALL data
-    ps = r.train(data=res, niter=niter, tol_p=tol_p)
+    ps = r.train(niter=niter, tol_p=tol_p)
     return r, ps
 
 
