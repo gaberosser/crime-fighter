@@ -89,11 +89,18 @@ class DataArray(Data):
     def copy(self):
         return self.__class__(self)
 
-    @staticmethod
-    def from_meshgrid(*args):
+    @classmethod
+    def from_meshgrid(cls, *args):
         # create an instance from the output of meshgrid
         data = np.concatenate([t[..., np.newaxis] for t in args], axis=len(args))
-        return DataArray(data)
+        return cls(data)
+
+    @classmethod
+    def from_args(cls, *args):
+        # create an instance from the input args, each of which represents a dimension
+        # this loses the original shape
+        data = np.vstack([t.flat for t in args]).transpose()
+        return cls(data)
 
     def __repr__(self):
         return "{0}({1})".format(self.__class__.__name__, self.data.__str__())
@@ -213,8 +220,8 @@ class SpaceTimeDataArray(DataArray):
 
     def __init__(self, obj):
         super(SpaceTimeDataArray, self).__init__(obj)
-        if self.nd < 2:
-            raise AttributeError("Must have >= 2 dimensions for ST data")
+        # if self.nd < 2:
+        #     raise AttributeError("Must have >= 2 dimensions for ST data")
 
     @property
     def time(self):

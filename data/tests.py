@@ -93,9 +93,26 @@ class TestDataArray(SimpleTestCase):
     def test_instantiate_from_meshgrid(self):
         mg = np.meshgrid(np.linspace(0, 1, 5), np.linspace(2, 3, 10), np.linspace(4, 5, 15))
         data = models.DataArray.from_meshgrid(*mg)
+        self.assertIsInstance(data, models.DataArray)
+        self.assertEqual(data.ndata, 5 * 10 * 15)
         self.assertTupleEqual(data.original_shape, (10, 5, 15))
-        self.assertTrue(np.all(data.getdim(0) == mg[0]))
+        self.assertTrue(np.all(data.toarray(0) == mg[0]))
         self.assertTrue(np.all(data[:, 2] == mg[2].flatten('F')))
+
+    def test_instantiate_from_args(self):
+        mg = np.meshgrid(np.linspace(0, 1, 5), np.linspace(2, 3, 10), np.linspace(4, 5, 15))
+        data = models.DataArray.from_args(*mg)
+        self.assertIsInstance(data, models.DataArray)
+        self.assertEqual(data.ndata, 5 * 10 * 15)
+        # check that each dim is a flattened version of the input
+        for i in range(3):
+            self.assertFalse(np.any(mg[i].flatten() - data[:, i]))
+        with self.assertRaises(ValueError):
+            data = models.DataArray.from_args(np.ones((3, 2)), np.random.rand(3, 2), np.zeros((3, 3)))
+        # this works, though it doesn't make much sense:
+        data = models.DataArray.from_args(np.ones((3, 2)), np.random.rand(3, 2), np.zeros((2, 3)))
+        self.assertTrue(np.all(data[:, 0] == 1))
+        self.assertTrue(np.all(data[:, 2] == 0))
 
     def test_builtins(self):
         x = np.random.rand(10, 20, 4)
@@ -113,20 +130,14 @@ class TestDataArray(SimpleTestCase):
         self.assertTupleEqual((-data).original_shape, data.original_shape)
 
         xf = x.flatten('F')
-        self.assertTrue(np.all(data + 1.0 == xf + 1.0))
-        self.assertTrue(np.all(data - 1.0 == xf - 1.0))
-        self.assertTrue(np.all(data * 2.0 == xf * 2.0))
-        self.assertTrue(np.all(-data == -xf))
-        self.assertTrue(np.all(data ** -2 == xf ** -2))
-
-
+        self.assertTrue(np.all(data + 1.0 == models.DataArray(x + 1.0)))
+        self.assertTrue(np.all(data - 1.0 == models.DataArray(x - 1.0)))
+        self.assertTrue(np.all(data * 2.0 == models.DataArray(x * 2.0)))
+        self.assertTrue(np.all(-data == models.DataArray(-x)))
+        self.assertTrue(np.all(data ** -2 == models.DataArray(x ** -2)))
 
 
 class TestSpaceTimeDataArray(SimpleTestCase):
-
-    def test_exceptions(self):
-        with self.assertRaises(AttributeError):
-            data = models.SpaceTimeDataArray([1, 2, 3])
 
     def test_instantiation(self):
         data = models.SpaceTimeDataArray([[1, 2], [3, 4], [5, 6]])
@@ -172,12 +183,22 @@ class TestSpaceTimeDataArray(SimpleTestCase):
         data.space = s
         self.assertTrue(data.getdim(1) == s)
 
+    def test_instantiate_from_args(self):
+        mg = np.meshgrid(np.linspace(0, 1, 5), np.linspace(2, 3, 10), np.linspace(4, 5, 15))
+        data = models.SpaceTimeDataArray.from_args(*mg)
 
+        # this should return the correct class type as it is a classmethod
+        self.assertIsInstance(data, models.SpaceTimeDataArray)
+        self.assertEqual(data.ndata, 5 * 10 * 15)
+        self.assertEqual(data.nd, 3)
 
-
+        # check that each dim is a flattened version of the input
+        for i in range(3):
+            self.assertFalse(np.any(mg[i].flatten() - data[:, i]))
 
 
 class TestCartesianData(SimpleTestCase):
+    # test distance method
     pass
 
 

@@ -1,5 +1,6 @@
 __author__ = 'gabriel'
 import numpy as np
+from scipy import sparse
 
 
 def pairwise_differences_indices(n):
@@ -70,3 +71,28 @@ def linkages(data_source, max_t, max_d, data_target=None, chunksize=2**16):
         link_j.extend(j[mask])
 
     return np.array(link_i), np.array(link_j)
+
+
+def augmented_matrix(new_p, old_p):
+    """
+    Create an augmented matrix based on the previous version, but with new datapoints added
+    This assumes the new dataset builds on the previous one
+    """
+
+    num_old = old_p.shape[0]
+    num_new = new_p.shape[0]
+
+    assert num_new > num_old
+
+    # combine old and new indices
+    pre_indices = old_p.indices
+    pre_indptr = old_p.indptr
+    new_indices = new_p.indices
+    new_indptr = new_p.indptr
+
+    comb_indices = np.concatenate((pre_indices, new_indices[new_indptr[num_old]:]))
+    comb_indptr = np.concatenate((pre_indptr[:-1], new_indptr[num_old:]))
+    comb_data = np.concatenate((old_p.data, new_p.data[old_p.nnz:]))
+    comb_p = sparse.csc_matrix((comb_data, comb_indices, comb_indptr), shape=(num_new, num_new)).tocsr()
+
+    return comb_p

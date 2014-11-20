@@ -168,6 +168,12 @@ class ValidationBase(object):
 
         res = collections.defaultdict(list)
 
+        # store some attributes that will make repeating easier
+        res['pred_dt_plus'] = pred_dt_plus
+        res['true_dt_plus'] = true_dt_plus
+        res['true_dt_minus'] = true_dt_minus
+
+
         if verbose:
             print "Running %d validation iterations..." % n_iter
 
@@ -188,6 +194,7 @@ class ValidationBase(object):
                                                                                           n_iter)
 
                 # predict and assess iteration
+                print "**", self.model.ndata, "**"
                 this_res = self._iterate_run(pred_dt_plus, true_dt_plus, true_dt_minus, **pred_kwargs)
                 for k, v in this_res.items():
                     res[k].append(v)
@@ -215,7 +222,7 @@ class ValidationBase(object):
     def _initial_setup(self, **train_kwargs):
         self._update(time_step=0., **train_kwargs)
 
-    def repeat_run(self, run_res, time_step, pred_dt_plus=None, true_dt_plus=None, true_dt_minus=0,
+    def repeat_run(self, run_res, pred_dt_plus=None, true_dt_plus=None, true_dt_minus=None,
                    pred_kwargs=None, **kwargs):
         """
         Repeat a validation run, but rather than training the model use supplied output of a previous run to save time.
@@ -224,13 +231,17 @@ class ValidationBase(object):
         """
         verbose = kwargs.pop('verbose', True)
         pred_kwargs = pred_kwargs or {}
-        pred_dt_plus = pred_dt_plus or time_step
-        true_dt_plus = true_dt_plus or pred_dt_plus
+        pred_dt_plus = pred_dt_plus or run_res['pred_dt_plus']
+        true_dt_plus = true_dt_plus or run_res['true_dt_plus']
+        true_dt_minus = true_dt_minus or run_res['true_dt_minus']
 
         # number of iterations
         n_iter = len(run_res['cutoff_t'])
 
         res = collections.defaultdict(list)
+        res['pred_dt_plus'] = pred_dt_plus
+        res['true_dt_plus'] = true_dt_plus
+        res['true_dt_minus'] = true_dt_minus
 
         if verbose:
             print "Running %d repeat validation iterations..." % n_iter
@@ -273,7 +284,7 @@ class WeightedValidation(ValidationBase):
 if __name__ == "__main__":
     from database import logic, models
     from scipy.stats import multivariate_normal
-    from point_process import models as pp_models
+    from point_process import models as pp_models, estimation
     from point_process import simulate
     import hotspot
     from analysis import plotting
@@ -295,27 +306,16 @@ if __name__ == "__main__":
     ))
 
     # use Bowers kernel
-    stk = hotspot.STKernelBowers(1, 1e-4)
-    vb = ValidationBase(data, hotspot.Hotspot, camden.mpoly, model_args=(stk,))
-    vb.set_grid(200)
-    vb.set_t_cutoff(4.0)
-
-    # use basic historic data spatial hotspot
-    # sk = hotspot.SKernelHistoric(2) # use heatmap from final 2 days data
-    # vb = ValidationBase(data, hotspot.Hotspot, camden.mpoly, model_args=(sk,))
+    # stk = hotspot.STKernelBowers(1, 1e-4)
+    # vb = ValidationBase(data, hotspot.Hotspot, camden.mpoly, model_args=(stk,))
     # vb.set_grid(200)
     # vb.set_t_cutoff(4.0)
 
-    # use point process model
-    # c = simulate.MohlerSimulation()
-    # c.run()
-    # data = np.array(c.data)[:, :3]  # (t, x, y, b_is_BG)
-    # data = data[data[:, 0].argsort()]
-    # vb = ValidationBase(data, pp_models.PointProcess,
-    #                     model_kwargs={'max_trigger_t': 80, 'max_trigger_d': 0.75})
-    # vb.set_grid(5)
-    # vb.train_model(niter=20)
-
+    # use basic historic data spatial hotspot
+    sk = hotspot.SKernelHistoric(2) # use heatmap from final 2 days data
+    vb = ValidationBase(data, hotspot.Hotspot, camden.mpoly, model_args=(sk,))
+    vb.set_grid(200)
+    vb.set_t_cutoff(4.0)
 
     res = vb.run(time_step=1, n_iter=1) # predict one day ahead
     pred_values = res['prediction_values'][0]

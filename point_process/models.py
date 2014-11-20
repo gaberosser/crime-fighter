@@ -1,7 +1,6 @@
 __author__ = 'gabriel'
 
 from utils import linkages
-import estimation
 import ipdb
 from kde import models as pp_kde
 import numpy as np
@@ -9,8 +8,6 @@ from time import time
 import warnings
 from scipy import sparse
 import math
-import operator
-import psutil
 from data import models as data_models
 import copy
 
@@ -19,6 +16,7 @@ class SepBase(object):
     def __init__(self,
                  data=None,
                  p=None,
+                 estimation_function=None,
                  max_delta_t=None,
                  max_delta_d=None,
                  bg_kde_kwargs=None,
@@ -28,6 +26,7 @@ class SepBase(object):
         self.p = p
         self.data = None
         self.parallel = parallel
+        self.estimation_function = estimation_function
 
         self.max_delta_t = None
         self.max_delta_d = None
@@ -41,6 +40,8 @@ class SepBase(object):
         if data is not None:
             self.set_data(data)
             self.set_linkages()
+            if p is None and self.estimation_function is not None:
+                self.initial_estimate()
 
         self.bg_kde = None
         self.trigger_kde = None
@@ -85,8 +86,10 @@ class SepBase(object):
     def data_space(self):
         raise NotImplementedError
 
-    def initial_estimate(self, estimator):
-        self.p = estimator(self.data_time, self.data_space, self.linkage)
+    def initial_estimate(self):
+        if self.estimation_function is None:
+            raise AttributeError("No supplied estimator function")
+        self.p = self.estimation_function(self.data.data, self.linkage)
 
     def set_data(self, data):
         """
@@ -213,15 +216,16 @@ class SepBase(object):
 
     def train(self, data=None, niter=30, verbose=True, tol_p=None):
 
-        if self.p is None:
-            raise AttributeError("p must be set before training")
-
-        if data:
+        if data is not None:
+            # set data, linkages and p
             self.set_data(data)
-            # compute linkage indices
             self.set_linkages()
+            self.initial_estimate()
         elif self.data is None:
             raise AttributeError("No data supplied")
+
+        if self.p is None:
+            self.initial_estimate()
 
         # reset all other storage containers
         self.reset()
@@ -243,7 +247,13 @@ class SepBase(object):
             self.run_times.append(time() - tic)
 
             if verbose:
-                print "Completed %d / %d iterations in %f s.  L2 norm = %e" % (i+1, niter, self.run_times[-1], self.l2_differences[-1])
+                print "Completed %d / %d iterations in %f s.  L2 norm = %e. No. BG: %d, no. trig.: %d" % (
+                    i+1,
+                    niter,
+                    self.run_times[-1],
+                    self.l2_differences[-1],
+                    self.num_bg[-1],
+                    self.num_trig[-1])
 
             if tol_p is not None and self.l2_differences[-1] < tol_p:
                 if verbose:
@@ -304,7 +314,7 @@ class Sepp(SepBase):
         if spatial_only:
             ## FIXME: check norming here
             # estimate mean intensity per unit time
-            T = self.data_time.ptp()
+            T = np.ptp(self.data_time)
             k = num_bg / float(T)
             return k * self.bg_kde.partial_marginal_pdf(target_data.space, dim=0, normed=True)
         else:

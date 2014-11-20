@@ -2,10 +2,12 @@ __author__ = 'gabriel'
 import numpy as np
 import math
 import runner
+from utils import augmented_matrix
 from analysis import validation
 import models
 from scipy import sparse
 import copy
+from data.models import DataArray, CartesianSpaceTimeData
 
 
 def confusion_matrix(p_inferred, linkage_col, t=0.5):
@@ -97,7 +99,9 @@ def compute_lineage_matrix(linkage_col):
     return p
 
 
-class PpValidation(validation.ValidationBase):
+class SeppValidation(validation.ValidationBase):
+
+    data_class = CartesianSpaceTimeData
 
     def __init__(self,
                  data,
@@ -109,45 +113,55 @@ class PpValidation(validation.ValidationBase):
                  pp_class=models.SeppStochasticNn):
         """ Thin wrapper for parent's init method, but pp model class is set """
         self.pp_class = pp_class or models.SeppStochasticNn
-        super(PpValidation, self).__init__(data, self.pp_class, spatial_domain=spatial_domain, grid_length=grid_length,
+        super(SeppValidation, self).__init__(data, self.pp_class, spatial_domain=spatial_domain, grid_length=grid_length,
                                            cutoff_t=cutoff_t, model_args=model_args, model_kwargs=model_kwargs)
 
+
+    def prediction_array(self, t):
+        ts = np.ones(self.roc.ngrid) * t
+        return self.data_class.from_args(ts, self.centroids[:, 0], self.centroids[:, 1])
 
     def predict(self, t, **kwargs):
         # estimate total propensity in each grid poly
         # use centroid method for speed
         # background varies in space AND time
-        ts = np.ones(self.roc.ngrid) * t
-        return self.model.predict(ts, self.centroids[:, 0], self.centroids[:, 1])
+        return self.model.predict(self.prediction_array(t))
 
     def predict_static(self, t, **kwargs):
         # use spatial background only
-        ts = np.ones(self.roc.ngrid) * t
-        return self.model.predict_fixed_background(ts, self.centroids[:, 0], self.centroids[:, 1])
+        return self.model.predict_fixed_background(self.prediction_array(t))
 
     def predict_bg(self, t, **kwargs):
         # estimate total propensity in each grid poly based on ONLY the background density
         # background varies in space AND time
-        ts = np.ones(self.roc.ngrid) * t
-        return self.model.background_density(ts, self.centroids[:, 0], self.centroids[:, 1], spatial_only=False)
+        return self.model.background_density(self.prediction_array(t), spatial_only=False)
 
     def predict_bg_static(self, t, **kwargs):
         # estimate total propensity in each grid poly based on ONLY the background density
         # use spatial background only
-        ts = np.ones(self.roc.ngrid) * t
-        return self.model.background_density(ts, self.centroids[:, 0], self.centroids[:, 1], spatial_only=True)
+        return self.model.background_density(self.prediction_array(t), spatial_only=True)
 
     def predict_trigger(self, t, **kwargs):
         # estimate total propensity in each grid poly based on ONLY the in-place trigger density
-        ts = np.ones(self.roc.ngrid) * t
-        return self.model.trigger_density_in_place(ts, self.centroids[:, 0], self.centroids[:, 1])
+        return self.model.trigger_density_in_place(self.prediction_array(t))
 
-    def _update(self, time_step, **train_kwargs):
+    def _update(self, time_step, incremental=False, **train_kwargs):
         print "SEPP _update"
-        pre_training = self.training
+        # take a copy of P now if needed
+        if incremental:
+            pre_p = self.model.p.copy()
+
         self.set_t_cutoff(self.cutoff_t + time_step, b_train=False)
-        # update p based on previous
-        self.model.p = self.compute_new_p(pre_training)
+
+        # add new data to model, update linkages and re-estimate p
+        self.model.set_data(self.training)
+        self.model.set_linkages()
+        self.model.initial_estimate()
+
+        # if incremental updates are required, overwrite the previous portion
+        if incremental:
+            self.model.p = augmented_matrix(self.model.p, pre_p)
+
         # update time and train
         self.train_model(**train_kwargs)
 
@@ -191,6 +205,7 @@ class PpValidation(validation.ValidationBase):
 
         return res
 
+    ## TODO: remove this once the _update method has checked out
     def compute_new_p(self, pre_training):
         """ Compute the new initial estimate of p based on the previous value.
         Assumes that the new training set is the old set with additional records. """
@@ -264,25 +279,26 @@ if __name__ == "__main__":
     # vb.set_t_cutoff(4.0)
 
     # use Point process learning method
-    vb = PpValidation(data, model_kwargs={
-        'max_trigger_t': 80,
-        'max_trigger_d': 0.75,
-        'estimator': lambda x, y: estimation.estimator_bowers(x, y, ct=1, cd=10),
+    vb = SeppValidation(data, model_kwargs={
+        'max_delta_t': 80,
+        'max_delta_d': 0.75,
+        'estimation_function': lambda x, y: estimation.estimator_bowers(x, y, ct=1, cd=10),
         })
-    vb.set_grid(grid_length=3)
+    vb.set_grid(3)
     vb.set_t_cutoff(400, b_train=False)
-    res = vb.run(time_step=5, t_upper=450, train_kwargs={'niter': 15}, verbose=True)
+    res = vb.run(time_step=5, n_iter=5, train_kwargs={'niter': 10}, verbose=True)
 
-    mc = np.mean(np.array(res['carea']), axis=0)
-    mf = np.mean(np.array(res['cfrac']), axis=0)
-    mp = np.mean(np.array(res['pai']), axis=0)
-
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-    ax.plot(np.array(res['carea']).transpose(), np.array(res['cfrac']).transpose(), color='k', alpha=0.2)
-    ax.plot(mc, mf, 'r-')
+    variants = ['full', 'full_static', 'bg', 'bg_static', 'trigger']
+    colours = ['k', 'r', 'b', 'y', 'g']
 
     fig = plt.figure()
-    ax = fig.add_subplot(111)
-    ax.plot(np.array(res['carea']).transpose(), np.array(res['pai']).transpose(), color='k', alpha=0.2)
-    ax.plot(mc, mp, 'r-')
+    ax1 = fig.add_subplot(111)
+    fig = plt.figure()
+    ax2 = fig.add_subplot(111)
+
+    for v, col in zip(variants, colours):
+        x = np.mean(np.array(res['cumulative_area_' + v]), axis=0)
+        y = np.array(res['cumulative_crime_' + v])
+        ax1.fill_between(x, np.min(y, axis=0), np.max(y, axis=0), edgecolor='none', facecolor=col, alpha=0.4)
+        ax2.plot(x, np.mean(y, axis=0), col)
+        mp = np.mean(np.array(res['pai_' + v]), axis=0)
