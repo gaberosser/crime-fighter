@@ -317,4 +317,26 @@ class TestValidate(unittest.TestCase):
         pass
     # upon running, size of each successive dataset grows
 
+    def test_fixed_and_stationary_models(self):
+        data = np.hstack((
+            np.linspace(0, 1, 5000).reshape((5000, 1)),
+            np.random.rand(5000, 2)
+        ))
+        vb = validate.SeppValidationFixedModel(data, model_kwargs={
+        'max_delta_t': 80,
+        'max_delta_d': 0.75,
+        'estimation_function': lambda x, y: estimation.estimator_bowers(x, y, ct=1, cd=10),
+        })
+        vb.set_grid(0.05)
+        vb.set_t_cutoff(0.5, b_train=False)
+        ## TODO: try mocking the model to test it is called ONCE only with 10 iterations
+        res = vb.run(time_step=0.05, n_iter=5, train_kwargs={'niter': 10}, verbose=True)
 
+        vb2 = validate.SeppValidationPredefinedModel(data, model=vb.model)
+        vb2.set_grid(0.05)
+        ## TODO: mock to confirm this doesn't call training function:
+        vb2.set_t_cutoff(0.5)
+        res2 = vb.run(time_step=0.05, n_iter=5, verbose=True)
+
+        for i in range(5):
+            self.assertTrue(np.all(res['cumulative_crime_full'][i] == res2['cumulative_crime_full'][i]))

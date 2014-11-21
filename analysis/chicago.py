@@ -149,8 +149,8 @@ def apply_point_process(start_date=datetime.datetime(2010, 3, 1, 0),
 
 
 
-    if min_bandwidth is None:
-        min_bandwidth = np.array([0.3, 5., 5.])
+    # if min_bandwidth is None:
+    #     min_bandwidth = np.array([0.3, 5., 5.])
 
     if num_nn is not None:
         if len(num_nn) != 2:
@@ -421,7 +421,7 @@ def implement_spatial_temporal_domain_effect():
     niter = 35
 
     start_date_1 = datetime.datetime(2010, 1, 1, 0)
-    start_date_2 = datetime.datetime(2010, 1, 7, 0)
+    start_date_2 = datetime.datetime(2010, 7, 1, 0)
     end_date_1 = datetime.datetime(2010, 7, 1, 0)
     end_date_2 = datetime.datetime(2011, 1, 1, 0)
 

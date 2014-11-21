@@ -125,11 +125,11 @@ class SeppValidation(validation.ValidationBase):
         # estimate total propensity in each grid poly
         # use centroid method for speed
         # background varies in space AND time
-        return self.model.predict(self.prediction_array(t))
+        return self.model.predict(self.prediction_array(t), **kwargs)
 
     def predict_static(self, t, **kwargs):
         # use spatial background only
-        return self.model.predict_fixed_background(self.prediction_array(t))
+        return self.model.predict_fixed_background(self.prediction_array(t), **kwargs)
 
     def predict_bg(self, t, **kwargs):
         # estimate total propensity in each grid poly based on ONLY the background density
@@ -143,7 +143,7 @@ class SeppValidation(validation.ValidationBase):
 
     def predict_trigger(self, t, **kwargs):
         # estimate total propensity in each grid poly based on ONLY the in-place trigger density
-        return self.model.trigger_density_in_place(self.prediction_array(t))
+        return self.model.trigger_density_in_place(self.prediction_array(t), **kwargs)
 
     def _update(self, time_step, incremental=False, **train_kwargs):
         print "SEPP _update"
@@ -205,7 +205,7 @@ class SeppValidation(validation.ValidationBase):
 
         return res
 
-    ## TODO: remove this once the _update method has checked out
+    ## TODO: remove this once the augmented_matrix method has checked out
     def compute_new_p(self, pre_training):
         """ Compute the new initial estimate of p based on the previous value.
         Assumes that the new training set is the old set with additional records. """
@@ -234,6 +234,76 @@ class SeppValidation(validation.ValidationBase):
         comb_p = sparse.csc_matrix((comb_data, comb_indices, comb_indptr), shape=(num_new, num_new)).tocsr()
 
         return comb_p
+
+
+class SeppValidationFixedModel(SeppValidation):
+    """
+    As for parent class, but model is NOT retrained each time, it is assumed to be correct for the duration of the
+    validation run.  Probably fairly reasonable - we train these models on tons of data, one extra day isn't going to
+    make a significant difference.
+    """
+
+    def _update(self, time_step, incremental=False, **train_kwargs):
+        print "SEPP _update"
+        # take a copy of P now if needed
+        if incremental:
+            pre_p = self.model.p.copy()
+
+        self.set_t_cutoff(self.cutoff_t + time_step, b_train=False)
+
+    def _initial_setup(self, **train_kwargs):
+        """
+        Initial setup for SEPP model.
+        This is the ONLY time the model is trained
+        """
+        self.train_model(**train_kwargs)
+
+    def _iterate_run(self, pred_dt_plus, true_dt_plus, true_dt_minus, **kwargs):
+
+        # append source_data kwarg to force the use of new training data each time
+        kwargs['source_data'] = CartesianSpaceTimeData(self.training)
+
+        return super(SeppValidationFixedModel, self)._iterate_run(pred_dt_plus,
+                                                                  true_dt_plus=true_dt_plus,
+                                                                  true_dt_minus=true_dt_minus,
+                                                                  **kwargs)
+
+
+class mock_pp_class():
+    def __init__(self, *args, **kwargs):
+        pass
+
+class SeppValidationPredefinedModel(SeppValidationFixedModel):
+
+    def __init__(self,
+                 data,
+                 model,
+                 spatial_domain=None,
+                 grid_length=None,
+                 cutoff_t=None):
+        # pass a mock model to parent constructor
+        pp_class = mock_pp_class
+        super(SeppValidationPredefinedModel, self).__init__(
+            data,
+            spatial_domain=spatial_domain,
+            grid_length=grid_length,
+            cutoff_t=cutoff_t,
+            pp_class=pp_class)
+        self.pp_class = model.__class__
+        self.model = model
+
+    def _initial_setup(self, **train_kwargs):
+        """
+        The model has already been defined so no need to train at all
+        """
+        pass
+
+    def set_t_cutoff(self, cutoff_t, b_train=False, **kwargs):
+        """
+        Set cutoff time that divides dataset into training and testing portions.
+        Training NEVER happens
+        """
+        self.cutoff_t = cutoff_t
 
 
 if __name__ == "__main__":
@@ -279,11 +349,18 @@ if __name__ == "__main__":
     # vb.set_t_cutoff(4.0)
 
     # use Point process learning method
-    vb = SeppValidation(data, model_kwargs={
+    # vb = SeppValidation(data, model_kwargs={
+    #     'max_delta_t': 80,
+    #     'max_delta_d': 0.75,
+    #     'estimation_function': lambda x, y: estimation.estimator_bowers(x, y, ct=1, cd=10),
+    #     })
+
+    vb = SeppValidationFixedModel(data, model_kwargs={
         'max_delta_t': 80,
         'max_delta_d': 0.75,
         'estimation_function': lambda x, y: estimation.estimator_bowers(x, y, ct=1, cd=10),
         })
+
     vb.set_grid(3)
     vb.set_t_cutoff(400, b_train=False)
     res = vb.run(time_step=5, n_iter=5, train_kwargs={'niter': 10}, verbose=True)

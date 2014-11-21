@@ -428,6 +428,16 @@ class FixedBandwidthKdeSeparable(FixedBandwidthKde, KdeBaseSeparable):
     """
 
 
+class FixedBandwidthKdeScottBandwidth(FixedBandwidthKde):
+
+    def set_bandwidths(self, *args, **kwargs):
+
+        if np.any(self.raw_std_devs == 0):
+            raise ValueError("Zero values for standard deviation")
+        bandwidths = self.raw_std_devs * self.ndata ** (-1. / float(self.ndim + 4))
+        self.bandwidths = np.tile(bandwidths, (self.ndata, 1))
+
+
 class VariableBandwidthKde(FixedBandwidthKde):
 
     def set_bandwidths(self, *args, **kwargs):

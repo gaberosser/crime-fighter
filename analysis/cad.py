@@ -335,8 +335,8 @@ def apply_point_process(nicl_type=3,
                         tol_p=None
                         ):
 
-    if min_bandwidth is None:
-        min_bandwidth = np.array([0.3, 5., 5.])
+    # suggested value:
+    # min_bandwidth = np.array([0.3, 5., 5.])
 
     # get data
     res, t0 = get_crimes_by_type(nicl_type=nicl_type, only_new=only_new, jiggle_scale=jiggle_scale)
@@ -362,8 +362,9 @@ def apply_point_process(nicl_type=3,
         'number_nn': num_nn_trig,
     }
 
-    r = sepp_class(data=res, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
-                                bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
+    # r = sepp_class(data=res, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
+    #                             bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
+    r = sepp_class(data=res, max_delta_d=max_delta_d, max_delta_t=max_delta_t)
     r.p = estimation.estimator_bowers(res, r.linkage, ct=1, cd=0.02)
 
     # train on all data

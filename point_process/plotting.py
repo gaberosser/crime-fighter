@@ -98,7 +98,7 @@ def _plot_marginals(k, dim, norm=1.0, data_min=None, data_max=None, **kwargs):
 
 
 def plot_txy_t_marginals(k, norm=1.0, t_max=None, **kwargs):
-    fig, ax = _plot_marginals(k, 0, norm=norm, data_min=0., data_max=t_max, **kwargs)
+    fig, ax = _plot_marginals(k, 0, norm=norm, data_min=0., data_max=t_max, symm=False, **kwargs)
     ax.set_xlabel('Time (days)')
     ax.set_ylabel('Density')
     return fig

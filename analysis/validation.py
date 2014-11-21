@@ -194,7 +194,6 @@ class ValidationBase(object):
                                                                                           n_iter)
 
                 # predict and assess iteration
-                print "**", self.model.ndata, "**"
                 this_res = self._iterate_run(pred_dt_plus, true_dt_plus, true_dt_minus, **pred_kwargs)
                 for k, v in this_res.items():
                     res[k].append(v)

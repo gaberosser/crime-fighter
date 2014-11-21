@@ -190,9 +190,6 @@ if __name__ == '__main__':
     c, data = initial_simulation(t_total=t_total)
     ndata = data.shape[0]
 
-    # set estimation seed for consistency
-    models.estimation.set_seed(42)
-
     bg_kde_kwargs = {
         'number_nn': [101, 16],
     }
@@ -203,10 +200,11 @@ if __name__ == '__main__':
     }
 
     max_delta_t = 100
-    max_delta_d = 5
+    max_delta_d = 0.75
 
-    r = models.SeppStochasticNn(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
-                                bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
+    # r = models.SeppStochasticNn(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
+    #                             bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
+    r = models.SeppStochasticStationaryBg(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t)
     # r = models.SeppStochasticNnStExp(data=data, max_delta_d=0.75, max_delta_t=80,
     #                             bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
     # r = models.SeppStochasticNnSt(data=data, max_delta_d=0.75, max_delta_t=80,
@@ -219,17 +217,15 @@ if __name__ == '__main__':
     #                                bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
 
 
+
     p = estimation.estimator_bowers(data, r.linkage)
     r.p = p
 
-    # r = models.PointProcessStochastic(max_trigger_d=0.75, max_trigger_t=80, min_bandwidth=[1., .05, .05])
-    # r = models.PointProcessStochasticNn(max_trigger_d=0.75, max_trigger_t=80, parallel=parallel, sharedmem=False)
-    # r = models.PointProcessStochasticNn(max_trigger_d=1.5, max_trigger_t=100, parallel=parallel, sharedmem=True)
-    # r = models.PointProcessDeterministicNn(max_trigger_d=0.75, max_trigger_t=80)
-    # r = models.PointProcessDeterministicFixedBandwidth(max_trigger_d=0.75, max_trigger_t=80, min_bandwidth=[1., .05, .05])
+    # set seed for consistency
+    r.set_seed(42)
 
     try:
-        r.train(data, niter=num_iter)
+        r.train(niter=num_iter)
     except KeyboardInterrupt:
         num_iter = len(r.num_bg)
 

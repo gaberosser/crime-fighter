@@ -156,18 +156,18 @@ class SepBase(object):
         """
         raise NotImplementedError
 
-    def predict(self, target_data):
+    def predict(self, target_data, source_data=None):
         """
         Interface for validation code
         """
-        return self.conditional_intensity(target_data)
+        return self.conditional_intensity(target_data, source_data=source_data)
 
-    def predict_fixed_background(self, target_data):
+    def predict_fixed_background(self, target_data, source_data=None):
         """
         When predicting in 'the future', cannot use the temporal component of the background as this vanishes.
         Therefore use ONLY the spatial components of the background here
         """
-        return self.conditional_intensity(target_data, spatial_bg_only=True)
+        return self.conditional_intensity(target_data, spatial_bg_only=True, source_data=source_data)
 
     def set_kdes(self):
         # set bg_kde and trigger_kde
@@ -182,7 +182,7 @@ class SepBase(object):
 
         tic = time()
         self.set_kdes()
-        print "self._set_kdes() in %f s" % (time() - tic)
+        print "self.set_kdes() in %f s" % (time() - tic)
 
         # strip spatially overlapping points from p
         # self.delete_overlaps()
@@ -439,6 +439,53 @@ class SeppStochastic(Sepp):
         return pp_kde.WeightedVariableBandwidthNnKde(self.interpoint_data, weights=p_trig, **self.trigger_kde_kwargs)
 
 
+class SeppStochasticStationaryBg(SeppStochastic):
+    """
+    Stationary background (2D).
+    Trigger function 3D.
+    Bandwidths in both computed using Scott's rule-of-thumb plugin bandwidth
+    """
+
+    bg_kde_class = pp_kde.FixedBandwidthKdeScottBandwidth
+    trigger_kde_class = pp_kde.FixedBandwidthKdeScottBandwidth
+
+    def set_kdes(self):
+        bg_idx, cause_idx, effect_idx = self.sample_data()
+        interpoint = self.data[effect_idx] - self.data[cause_idx]
+
+        self.num_bg.append(len(bg_idx))
+        self.num_trig.append(len(cause_idx))
+
+        # compute KDEs
+        try:
+            self.bg_kde = self.bg_kde_class(self.data[bg_idx, 1:], **self.bg_kde_kwargs)
+            self.trigger_kde = self.trigger_kde_class(interpoint, **self.trigger_kde_kwargs)
+
+        except AttributeError as exc:
+            print "Error.  Num BG: %d, num trigger %d" % (self.num_bg[-1], self.num_trig[-1])
+            raise exc
+
+    def background_density(self, target_data, spatial_only=True):
+        """
+        Return the (unnormalised) density due to background events
+        :param spatial_only: Ignore.  This MUST be True, as BG is spatial only.
+        """
+
+        num_bg = self.p.diagonal().sum()
+        T = np.ptp(self.data_time)
+        k = num_bg / float(T)
+        return self.bg_kde.pdf(target_data.space, normed=False) / T
+        #
+        # if spatial_only:
+        #     ## FIXME: check norming here
+        #     # estimate mean intensity per unit time
+        #     T = np.ptp(self.data_time)
+        #     k = num_bg / float(T)
+        #     return k * self.bg_kde.partial_marginal_pdf(target_data.space, dim=0, normed=True)
+        # else:
+        #     return self.bg_kde.pdf(target_data, normed=False)
+
+
 class SeppStochasticNn(SeppStochastic):
 
     bg_kde_class = pp_kde.VariableBandwidthNnKdeSeparable
@@ -454,6 +501,43 @@ class SeppStochasticNn(SeppStochastic):
         else:
             if len(self.bg_kde_kwargs['number_nn']) != 2:
                 raise AttributeError("Kwarg 'number_nn' in bg_kde_kwargs must have length 2")
+
+
+class SeppStochasticNnIsotropicTrigger(SeppStochasticNn):
+
+    """
+    Currently BROKEN... Idea is to reduce the (x, y) representation of triggers down to an isotropic representation,
+    which may be more realistic if there is no reason to believe that the triggering is anisotropic.
+    But the normalisation here is tricky, need to incorporate the Jacobian?
+    """
+
+    def set_kdes(self):
+        bg_idx, cause_idx, effect_idx = self.sample_data()
+        interpoint = data_models.SpaceTimeDataArray(self.data[effect_idx] - self.data[cause_idx])
+        # replace full interpoint data with time, distance representation
+        distances = np.sqrt(np.sum(interpoint[:, 1:] ** 2, axis=1))
+        interpoint = interpoint.time.adddim(distances)
+
+        self.num_bg.append(len(bg_idx))
+        self.num_trig.append(len(cause_idx))
+
+        # compute KDEs
+        try:
+            self.bg_kde = self.bg_kde_class(self.data[bg_idx], **self.bg_kde_kwargs)
+            self.trigger_kde = self.trigger_kde_class(interpoint, **self.trigger_kde_kwargs)
+
+        except AttributeError as exc:
+            print "Error.  Num BG: %d, num trigger %d" % (self.num_bg[-1], self.num_trig[-1])
+            raise exc
+
+    def trigger_density(self, delta_data):
+        """
+        Return the (unnormalised) trigger density
+        Integral over all data dimensions should return num_trig / num_events
+        """
+        distances = np.sqrt(np.sum(delta_data[:, 1:] ** 2, axis=1))
+        isotropic_data = data_models.DataArray(delta_data[:, 0]).adddim(distances)
+        return 2 * np.pi * self.trigger_kde.pdf(isotropic_data, normed=False) / self.ndata / distances
 
 
 class SeppStochasticNnReflected(SeppStochasticNn):
