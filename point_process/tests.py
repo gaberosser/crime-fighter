@@ -161,7 +161,6 @@ class TestSampling(unittest.TestCase):
         num1 = sum(rvs > 0.8)
         # force random seed of 42
         estimation.set_seed(42)
-        # with patch('numpy.random.RandomState', return_value=np.random.RandomState(42)) as mock:
         idx = np.array([estimation.weighted_choice_np(weights) for i in range(num_iter)])
         self.assertEqual(sum(idx == 0), num_iter - num1)
         self.assertEqual(sum(idx == 1), num1)
@@ -322,21 +321,21 @@ class TestValidate(unittest.TestCase):
             np.linspace(0, 1, 5000).reshape((5000, 1)),
             np.random.rand(5000, 2)
         ))
+
         vb = validate.SeppValidationFixedModel(data, model_kwargs={
-        'max_delta_t': 80,
-        'max_delta_d': 0.75,
-        'estimation_function': lambda x, y: estimation.estimator_bowers(x, y, ct=1, cd=10),
-        })
+        'max_delta_t': 0.1,
+        'max_delta_d': 0.1,
+        'estimation_function': lambda x, y: estimation.estimator_bowers(x, y, ct=10, cd=10),
+        }, pp_class=models.SeppStochasticStationaryBg)
         vb.set_grid(0.05)
         vb.set_t_cutoff(0.5, b_train=False)
-        ## TODO: try mocking the model to test it is called ONCE only with 10 iterations
-        res = vb.run(time_step=0.05, n_iter=5, train_kwargs={'niter': 10}, verbose=True)
+        res = vb.run(time_step=0.05, n_iter=5, train_kwargs={'niter': 5}, verbose=True)
+
 
         vb2 = validate.SeppValidationPredefinedModel(data, model=vb.model)
         vb2.set_grid(0.05)
-        ## TODO: mock to confirm this doesn't call training function:
         vb2.set_t_cutoff(0.5)
-        res2 = vb.run(time_step=0.05, n_iter=5, verbose=True)
+        res2 = vb2.run(time_step=0.05, n_iter=5, verbose=True)
 
         for i in range(5):
             self.assertTrue(np.all(res['cumulative_crime_full'][i] == res2['cumulative_crime_full'][i]))

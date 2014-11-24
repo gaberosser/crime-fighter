@@ -6,7 +6,8 @@ import datetime
 import os
 from analysis import roc
 from analysis.plotting import plot_surface_on_polygon
-from data.models import CartesianSpaceTimeData
+from data.models import CartesianSpaceTimeData, DataArray
+from django.contrib.gis import geos
 
 
 def plot_t_kde(k, max_t=50):
@@ -374,3 +375,83 @@ def fluctuation_pre_convergence(res, conv_region=10):
                      edgecolor='none', facecolor='k', alpha=0.5)
     plt.xlabel('Iteration')
     plt.ylabel('L2 difference')
+
+
+def fluctuation_at_convergence(res, poly=None):
+    '''
+    Various plots relating to the output of the function with the same name in models.
+    '''
+    r = res['sepp_obj']
+    # envelope plots
+    # trigger t
+    t = np.linspace(0, r.max_delta_t, 500)
+    gt = np.array([a.marginal_pdf(t, dim=0, normed=False) / float(r.ndata) for a in res['triggers']])
+    gt_normed = np.array([a.marginal_pdf(t, dim=0, normed=True) for a in res['triggers']])
+
+    plt.figure()
+    plt.fill_between(t, np.min(gt, axis=0), np.max(gt, axis=0), edgecolor='none', facecolor='k', alpha=0.4)
+    plt.plot(t, gt.mean(axis=0), 'k-')
+    plt.xlabel('Time (days)', fontsize=18)
+    plt.ylabel('Intensity', fontsize=18)
+
+    plt.figure()
+    plt.fill_between(t, np.min(gt_normed, axis=0), np.max(gt_normed, axis=0), edgecolor='none', facecolor='k', alpha=0.5)
+    plt.plot(t, gt_normed.mean(axis=0), 'k-')
+    plt.xlabel('Time (days)', fontsize=18)
+    plt.ylabel('Normalised intensity', fontsize=18)
+
+    # trigger x
+    # get best axis scaling
+    xmax = res['triggers'][-1].marginal_icdf(0.99, dim=1)
+    x = np.linspace(-xmax, xmax, 500)
+    gx = np.array([a.marginal_pdf(x, dim=1, normed=False) / float(r.ndata) for a in res['triggers']])
+
+    plt.figure()
+    plt.fill_between(x, np.min(gx, axis=0), np.max(gx, axis=0), edgecolor='none', facecolor='k', alpha=0.4)
+    plt.plot(x, gx.mean(axis=0), 'k-')
+    plt.xlim([-xmax, xmax])
+    plt.ylim([0, 1.02 * np.max(gx)])
+    plt.xlabel('X (metres)', fontsize=18)
+    plt.ylabel('Intensity', fontsize=18)
+
+    # background
+    if not poly:
+        xmin = res['backgrounds'][-1].marginal_icdf(0.005, dim=1)
+        ymin = res['backgrounds'][-1].marginal_icdf(0.005, dim=2)
+        xmax = res['backgrounds'][-1].marginal_icdf(0.995, dim=1)
+        ymax = res['backgrounds'][-1].marginal_icdf(0.995, dim=2)
+        poly = geos.Polygon([
+            (xmin, ymin),
+            (xmin, ymax),
+            (xmax, ymax),
+            (xmax, ymin),
+            (xmin, ymin)
+        ])
+
+    def bg_mean_density(x, y):
+        xy = DataArray.from_meshgrid(x, y)
+        fxy = np.array([a.partial_marginal_pdf(xy) for a in res['backgrounds']])
+        return fxy.mean(axis=0).reshape(xy.original_shape)
+
+    def weighted_bg_mean_density(x, y):
+        xy = DataArray.from_meshgrid(x, y)
+        fxy = np.array([a.partial_marginal_pdf(xy) for a in res['weighted_backgrounds']])
+        return fxy.mean(axis=0).reshape(xy.original_shape)
+
+    def bg_rel_range(x, y):
+        xy = DataArray.from_meshgrid(x, y)
+        fxy = np.array([a.partial_marginal_pdf(xy) for a in res['backgrounds']])
+        fxy_mean = fxy.mean(axis=0)
+        return (fxy.ptp(axis=0) / fxy_mean).reshape(xy.original_shape)
+
+    def weighted_bg_rel_range(x, y):
+        xy = DataArray.from_meshgrid(x, y)
+        fxy = np.array([a.partial_marginal_pdf(xy) for a in res['weighted_backgrounds']])
+        fxy_mean = fxy.mean(axis=0)
+        return (fxy.ptp(axis=0) / fxy_mean).reshape(xy.original_shape)
+
+    plot_surface_on_polygon(poly, bg_mean_density, colorbar=True)
+    plot_surface_on_polygon(poly, bg_rel_range, colorbar=True)
+    plot_surface_on_polygon(poly, weighted_bg_mean_density, colorbar=True)
+    plot_surface_on_polygon(poly, weighted_bg_rel_range, colorbar=True)
+

@@ -4,6 +4,7 @@ import collections
 from django.contrib.gis.geos import Polygon, MultiPolygon, LinearRing, Point
 import numpy as np
 import datetime
+from time import time
 import pytz
 from database import logic, models
 from point_process import estimation, models as pp_models, validate
@@ -14,6 +15,7 @@ from django.contrib.gis.gdal import DataSource
 from django.db import connection
 from matplotlib import pyplot as plt
 import dill
+import copy
 
 CHICAGO_DATA_DIR = os.path.join(settings.DATA_DIR, 'chicago')
 SRID = 2028
@@ -74,13 +76,21 @@ def get_crimes_by_type(crime_type='burglary', start_date=None, end_date=None, do
     :param where_strs:
     :return:
     """
+    if start_date and not isinstance(start_date, datetime.datetime):
+        # start_date refers to 00:00 onwards
+        start_date = datetime.datetime.combine(start_date, datetime.time(0))
+    if end_date and not isinstance(end_date, datetime.datetime):
+        # end_date refers to 23:59:59 backwards
+        end_date = end_date + datetime.timedelta(days=1)
+        end_date = datetime.datetime.combine(end_date, datetime.time(0)) - datetime.timedelta(seconds=1)
+
     cursor = connection.cursor()
     sql = """ SELECT datetime, ST_X(location), ST_Y(location) FROM database_chicago
               WHERE LOWER(primary_type) LIKE '%{0}%' """.format(crime_type.lower())
     if start_date:
-        sql += """AND datetime >= '{0}' """.format(start_date.strftime('%Y-%m-%d'))
+        sql += """AND datetime >= '{0}' """.format(start_date.strftime('%Y-%m-%d %H:%M:%S'))
     if end_date:
-        sql += """AND datetime <= '{0}' """.format(end_date.strftime('%Y-%m-%d'))
+        sql += """AND datetime <= '{0}' """.format(end_date.strftime('%Y-%m-%d %H:%M:%S'))
     if domain:
         sql += """AND ST_Intersects(location, ST_GeomFromText('{0}', {1}))"""\
             .format(domain.wkt, SRID)
@@ -381,14 +391,15 @@ def validate_historic_kernel_multi(start_date=datetime.datetime(2001, 3, 1, 0),
 
 # implementation script
 # test the effect of delta_t and delta_d on the output
-def implement_delta_effect(outfile):
+# test_domain allows the restriction of testing to a subdomain (model is trained on full dataset either way)
+def implement_delta_effect(outfile, test_domain=None):
 
     dts = [10, 20, 30, 40, 50, 60, 90]
     dds = [20, 50, 100, 200, 300, 500, 1000, 5000]
 
     start_date = datetime.datetime(2010, 1, 1, 0)
     end_date = datetime.datetime(2010, 7, 1, 0)
-    niter = 15
+    niter = 30
 
     dt_grid, dd_grid = np.meshgrid(dts, dds)
 
@@ -397,16 +408,38 @@ def implement_delta_effect(outfile):
     with open(outfile, 'w') as f:
         for dt, dd in zip(dt_grid.flat, dd_grid.flat):
             try:
+                # train model
+                tic = time()
                 r, p = apply_point_process(
                     start_date=start_date,
                     end_date=end_date,
                     niter=niter,
                     max_delta_t=dt,
                     max_delta_d=dd,
+                    pp_class=pp_models.SeppStochasticNn,
                 )
-                res.append((dt, dd, r))
+                computation_time = time() - tic
 
-                dill.dump((dt, dd, r), f)
+                # validate model for next one month of data
+                data, t0 = get_crimes_by_type(
+                    start_date=end_date + datetime.timedelta(days=1),
+                    end_date=end_date + datetime.timedelta(days=31),
+                    domain=None
+                )
+                vb = validate.SeppValidationPredefinedModel(data, copy.deepcopy(r), spatial_domain=test_domain)
+                vb.set_t_cutoff(0)
+                vb.set_grid(150)
+                vres = vb.run(1)
+
+                res.append(
+                    {
+                        'max_delta_t': dt,
+                        'max_delta_d': dd,
+                        'model': r,
+                        'validation': vres,
+                    }
+                )
+                dill.dump(res[-1], f)
 
             except Exception:
                 pass

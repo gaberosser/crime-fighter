@@ -247,13 +247,14 @@ class SepBase(object):
             self.run_times.append(time() - tic)
 
             if verbose:
+                num_bg = self.p.diagonal().sum()
                 print "Completed %d / %d iterations in %f s.  L2 norm = %e. No. BG: %d, no. trig.: %d" % (
                     i+1,
                     niter,
                     self.run_times[-1],
                     self.l2_differences[-1],
-                    self.num_bg[-1],
-                    self.num_trig[-1])
+                    num_bg,
+                    self.ndata - num_bg)
 
             if tol_p is not None and self.l2_differences[-1] < tol_p:
                 if verbose:

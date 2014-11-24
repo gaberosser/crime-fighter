@@ -105,7 +105,7 @@ def plot_geodjango_shapes(shapes, ax=None, set_axes=True, **kwargs):
 
 
 def plot_surface_on_polygon(poly, func, ax=None, dx=None, offset_coords=None, cmap=cm.jet, nlevels=50,
-                            vmin=None, vmax=None, fmax=None, egrid=None, **kwargs):
+                            vmin=None, vmax=None, fmax=None, egrid=None, colorbar=False, **kwargs):
     """
     :param poly: geos Polygon or Multipolygon defining region
     :param func: function accepting two vectorized input arrays returning the values to be plotted
@@ -157,6 +157,9 @@ def plot_surface_on_polygon(poly, func, ax=None, dx=None, offset_coords=None, cm
 
     cont = ax.contourf(xx, yy, zz, levels=levels, cmap=cmap, **kwargs)
 
+    if colorbar:
+        plt.colorbar(cont, shrink=0.9)
+
     # plot grid if required
     if egrid is not None:
         egrid = np.array(egrid)
@@ -175,6 +178,8 @@ def plot_surface_on_polygon(poly, func, ax=None, dx=None, offset_coords=None, cm
     # mask_outside_polygon(poly_verts, ax=ax)
     mask_contour(cont, poly_verts, ax=ax, show_clip_path=True)
     plot_geodjango_shapes(poly, ax=ax, facecolor='none')
+
+    plt.draw()
 
     return xx, yy, zz
 
