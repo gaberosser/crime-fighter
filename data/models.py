@@ -64,11 +64,8 @@ class DataArray(Data):
 
         # check dimensions
         if obj.ndim == 0:
-            # input is either empty or a single value
-            try:
-                self.data = obj.reshape(1, 1)
-            except ValueError:
-                raise AttributeError("Input array has no data")
+            # input is a single value
+            self.data = obj.reshape(1, 1)
 
         elif obj.ndim == 1:
             self.data = obj.reshape((obj.size, 1))
@@ -132,6 +129,18 @@ class DataArray(Data):
 
     def __mul__(self, other):
         return self.__builtin_combine__(other, self.data.__mul__)
+
+    def __gt__(self, other):
+        return self.__builtin_combine__(other, self.data.__gt__)
+
+    def __lt__(self, other):
+        return self.__builtin_combine__(other, self.data.__lt__)
+
+    def __ge__(self, other):
+        return self.__builtin_combine__(other, self.data.__ge__)
+
+    def __le__(self, other):
+        return self.__builtin_combine__(other, self.data.__le__)
 
     def __neg__(self):
         return self.__builtin_unary__(self.data.__neg__)

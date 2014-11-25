@@ -428,7 +428,7 @@ class FixedBandwidthKdeSeparable(FixedBandwidthKde, KdeBaseSeparable):
     """
 
 
-class FixedBandwidthKdeScottBandwidth(FixedBandwidthKde):
+class FixedBandwidthKdeScott(FixedBandwidthKde):
 
     def set_bandwidths(self, *args, **kwargs):
 

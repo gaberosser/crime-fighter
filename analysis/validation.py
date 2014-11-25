@@ -1,10 +1,10 @@
 __author__ = 'gabriel'
 from django.contrib.gis import geos
 import numpy as np
-# import mcint
 import math
 from roc import RocSpatial
 import collections
+from data.models import DataArray
 
 
 def mc_sampler(poly):
@@ -17,6 +17,8 @@ def mc_sampler(poly):
 
 
 class ValidationBase(object):
+
+    roc_class = RocSpatial
 
     def __init__(self, data, model_class, spatial_domain=None, grid_length=None, cutoff_t=None, model_args=None, model_kwargs=None):
         # sort data in increasing time
@@ -73,8 +75,8 @@ class ValidationBase(object):
         return self.roc.poly
 
     @property
-    def centroids(self):
-        return self.roc.centroids
+    def sample_points(self):
+        return self.roc.sample_points
 
     @property
     def ndata(self):
@@ -113,9 +115,12 @@ class ValidationBase(object):
 
     def predict(self, t, **kwargs):
         # estimate total propensity in each grid poly
-        # use centroid method for speed
-        ts = np.ones(len(self.roc.egrid)) * t
-        return self.model.predict(ts, self.centroids[:, 0], self.centroids[:, 1])
+        x = self.roc.sample_points.toarray(0)
+        y = self.roc.sample_points.toarray(0)
+        ts = np.ones_like(x) * t
+        data_array = DataArray.from_args(ts, x, y)
+        data_array.original_shape = x.shape
+        return self.model.predict(data_array)
 
     def _iterate_run(self, pred_dt_plus, true_dt_plus, true_dt_minus, **kwargs):
         true_dt_plus = true_dt_plus or pred_dt_plus

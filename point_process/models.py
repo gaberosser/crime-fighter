@@ -248,7 +248,7 @@ class SepBase(object):
 
             if verbose:
                 num_bg = self.p.diagonal().sum()
-                print "Completed %d / %d iterations in %f s.  L2 norm = %e. No. BG: %d, no. trig.: %d" % (
+                print "Completed %d / %d iterations in %.3f s.  L2 norm = %e. No. BG: %.2f, no. trig.: %.2f" % (
                     i+1,
                     niter,
                     self.run_times[-1],
@@ -387,9 +387,26 @@ class SeppStochastic(Sepp):
     def __init_extra__(self):
         super(SeppStochastic, self).__init_extra__()
         self.rng = np.random.RandomState()
+        self.bg_kde_kwargs['parallel'] = self.parallel
+        self.trigger_kde_kwargs['parallel'] = self.parallel
 
     def set_seed(self, seed):
         self.rng.seed(seed)
+
+    def set_parallel(self, state):
+        if state is True:
+            self.parallel = True
+        elif state is False:
+            self.parallel = False
+        else:
+            raise AttributeError("input argument must be either True or False")
+
+        if self.bg_kde:
+            self.bg_kde.parallel = self.parallel
+        if self.trigger_kde:
+            self.trigger_kde.parallel = self.parallel
+        self.bg_kde_kwargs['parallel'] = self.parallel
+        self.trigger_kde_kwargs['parallel'] = self.parallel
 
     def sample_data(self):
         """
@@ -447,8 +464,8 @@ class SeppStochasticStationaryBg(SeppStochastic):
     Bandwidths in both computed using Scott's rule-of-thumb plugin bandwidth
     """
 
-    bg_kde_class = pp_kde.FixedBandwidthKdeScottBandwidth
-    trigger_kde_class = pp_kde.FixedBandwidthKdeScottBandwidth
+    bg_kde_class = pp_kde.FixedBandwidthKdeScott
+    trigger_kde_class = pp_kde.FixedBandwidthKdeScott
 
     def set_kdes(self):
         bg_idx, cause_idx, effect_idx = self.sample_data()

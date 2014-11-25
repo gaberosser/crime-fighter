@@ -403,8 +403,6 @@ def implement_delta_effect(outfile, test_domain=None):
 
     dt_grid, dd_grid = np.meshgrid(dts, dds)
 
-    res = []
-
     with open(outfile, 'w') as f:
         for dt, dd in zip(dt_grid.flat, dd_grid.flat):
             try:
@@ -426,25 +424,27 @@ def implement_delta_effect(outfile, test_domain=None):
                     end_date=end_date + datetime.timedelta(days=31),
                     domain=None
                 )
+                # disable parallel execution as it seems to slow things down here
+                r.set_parallel(False)
                 vb = validate.SeppValidationPredefinedModel(data, copy.deepcopy(r), spatial_domain=test_domain)
                 vb.set_t_cutoff(0)
                 vb.set_grid(150)
                 vres = vb.run(1)
 
-                res.append(
-                    {
-                        'max_delta_t': dt,
-                        'max_delta_d': dd,
-                        'model': r,
-                        'validation': vres,
-                    }
-                )
-                dill.dump(res[-1], f)
+                # only keep the first saved model for memory saving purposes
+                del vres['model']
+
+                this_res = {
+                    'max_delta_t': dt,
+                    'max_delta_d': dd,
+                    'validation': vres,
+                    'model': r,
+                }
+
+                dill.dump(this_res, f)
 
             except Exception:
                 pass
-
-    return res
 
 
 # implementation script

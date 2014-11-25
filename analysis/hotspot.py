@@ -1,7 +1,9 @@
 __author__ = 'gabriel'
 import numpy as np
 from scipy.stats import gaussian_kde
-from kde.models import VariableBandwidthNnKde
+from kde.models import FixedBandwidthKdeScott, VariableBandwidthNnKde
+from data.models import DataArray, CartesianSpaceTimeData, SpaceTimeDataArray
+from point_process.utils import linkages
 
 class Hotspot(object):
 
@@ -17,44 +19,70 @@ class Hotspot(object):
     def train(self, data, **kwargs):
         self.stkernel.train(data)
 
-    def predict(self, t, x, y):
-        return self.stkernel.predict(t, x, y)
+    def predict(self, data_array):
+        """
+        :param data_array: data array object that inherits from data.models.Data
+        :return: prediction at the datapoints in data_array
+        """
+        return self.stkernel.predict(data_array)
 
 
 class STKernelBase(object):
 
+    data_class = DataArray
+
     def __init__(self):
-        self.data = np.array([])
+        self.data = None
 
     @property
     def ndata(self):
-        return self.data.shape[0]
+        if self.data is None:
+            return 0
+        return self.data.ndata
 
     def train(self, data):
-        self.data = data
+        self.data = self.data_class(data)
 
-    def _evaluate(self, t, x, y):
+    def predict(self, data_array):
         raise NotImplementedError()
-
-    def predict(self, t, x, y):
-        it = np.nditer([t, x, y] + [None,])
-        for i in it:
-            i[-1][...] = self._evaluate(i[0], i[1], i[2])
-        return it.operands[-1]
 
 
 class STKernelBowers(STKernelBase):
+
+    data_class = CartesianSpaceTimeData
 
     def __init__(self, a, b):
         self.a = a
         self.b = b
         super(STKernelBowers, self).__init__()
 
-    def _evaluate(self, t, x, y):
-        td = self.data[:, 0]
-        xd = self.data[:, 1]
-        yd = self.data[:, 2]
-        return sum(1.0 / ((1 + self.a * np.abs(t - td)) * (1 + self.b * np.sqrt((x - xd)**2 + (y - yd)**2))))
+    def predict(self, data_array):
+        data_array = self.data_class(data_array)
+
+        # construct linkage indices
+        e = 0.005
+        max_delta_t = (1 - e) / (self.a * e)
+        max_delta_d = (1 - e) / (self.b * e)
+
+        link_i, link_j = linkages(self.data, max_delta_t, max_delta_d, data_target=data_array)
+
+
+        # construct time and space difference matrices
+        # FIXME: this will fail with large numbers of sources
+        # easy fix - define cutoff based on a and b
+        t2, t1 = np.meshgrid(data_array.time, self.data.time, copy=False)
+        dt = t2 - t1
+        x2, x1 = np.meshgrid(data_array.toarray(1), self.data.toarray(1), copy=False)
+        dx = x2 - x1
+        y2, y1 = np.meshgrid(data_array.toarray(2), self.data.toarray(2), copy=False)
+        dy = y2 - y1
+        dist = np.sqrt(dx ** 2 + dy ** 2)
+
+        res =  sum(1.0 / (
+            (1 + self.a * np.abs(dt)) *
+            (1 + self.b * data_array.space.distance(self.data.space))
+        )
+        )
 
 
 class SKernelHistoric(STKernelBase):
@@ -66,25 +94,24 @@ class SKernelHistoric(STKernelBase):
         super(SKernelHistoric, self).__init__()
 
     def set_data(self, data):
-        # assume last data point is most recent
-        tf = data[-1, 0]
+        tf = max(data.time)
         if self.dt:
-            self.data = data[data[:, 0] >= (tf - self.dt), 1:] # only spatial component
+            self.data = data.space[data.time >= (tf - self.dt)] # only spatial component
         else:
-            self.data = data[:, 1:]
+            self.data = data.space
 
     def set_kde(self):
-        self.kde = gaussian_kde(self.data.transpose(), bw_method=self.bdwidth or 'silverman')
+        self.kde = FixedBandwidthKdeScott(self.data)
+        # self.kde = gaussian_kde(self.data.data.transpose(), bw_method=self.bdwidth or 'scott')
 
     def train(self, data):
-        self.set_data(data)
+        self.set_data(SpaceTimeDataArray(data))
         self.set_kde()
 
-    def _evaluate(self, t, x, y):
-        if not isinstance(x, np.ndarray):
-            return self.kde([x, y])
-        shp = x.shape
-        return self.kde([x.flatten(), y.flatten()]).reshape(shp)
+    def predict(self, data_array):
+        data_array = SpaceTimeDataArray(data_array)
+        return self.kde.pdf(data_array.space)
+        # return self.kde(data_array.data.transpose()).reshape(data_array.original_shape, order='F')
 
 
 class SKernelHistoricVariableBandwidthNn(STKernelBase):
@@ -96,22 +123,20 @@ class SKernelHistoricVariableBandwidthNn(STKernelBase):
         super(SKernelHistoricVariableBandwidthNn, self).__init__()
 
     def set_data(self, data):
-        # assume last data point is most recent
-        tf = data[-1, 0]
+        tf = max(data.time)
         if self.dt:
-            self.data = data[data[:, 0] >= (tf - self.dt), 1:] # only spatial component
+            self.data = data.space.getrows(np.where(data.time >= (tf - self.dt))[0])  # only spatial component
         else:
-            self.data = data[:, 1:]
+            self.data = data.space
 
     def set_kde(self):
-        self.kde = VariableBandwidthNnKde(self.data, nn=self.nn)
+        self.kde = VariableBandwidthNnKde(self.data, number_nn=self.nn)
 
     def train(self, data):
-        self.set_data(data)
+        self.set_data(SpaceTimeDataArray(data))
         self.set_kde()
 
-    def _evaluate(self, t, x, y):
-        return self.kde.pdf(x, y)
-
-    def predict(self, t, x, y):
-        return self._evaluate(t, x, y)
+    def predict(self, data_array):
+        data_array = DataArray(data_array)
+        assert data_array.nd == 2, 'Predict requires a 2D DataArray'
+        return self.kde.pdf(data_array)

@@ -4,16 +4,20 @@ from django.contrib.gis import geos
 import numpy as np
 import math
 from spatial import create_spatial_grid
+from data.models import DataArray
 import collections
+import warnings
 
 
 class RocSpatial(object):
 
     def __init__(self, data=None, poly=None):
         self.poly = poly
+        self.side_length = None
         self._intersect_grid = None
         self._extent_grid = None
         self.centroids = None
+        self.sample_points = None
         self.a = None
         self.prediction_values = None
         self._data = None
@@ -32,11 +36,9 @@ class RocSpatial(object):
 
     def set_data(self, data):
         if data is not None:
-            if data.ndim != 2:
+            data = DataArray(data)
+            if data.nd != 2:
                 raise AttributeError("Data must be a 2D array")
-            if data.shape[1] != 2:
-                raise AttributeError("Second dimension must be of length 2 (spatial data)")
-        # self._data = [geos.Point(list(t)) for t in data]
         self._data = data
 
     def generate_bounding_poly(self):
@@ -52,17 +54,20 @@ class RocSpatial(object):
         ])
 
     def set_grid(self, side_length):
+        self.side_length = side_length
         if not self.poly:
             # find minimal bounding rectangle
             self.poly = self.generate_bounding_poly()
         self._intersect_grid, self._extent_grid = create_spatial_grid(self.poly, side_length)
         self.centroids = np.array([t.centroid.coords for t in self._intersect_grid])
         self.a = np.array([t.area for t in self._intersect_grid])
+        self.sample_points = DataArray(self.centroids.reshape((1, self.ngrid, 2), order='F'))
 
     def copy_grid(self, roc):
-        self._intersect_grid = roc._intersect_grid
-        self._extent_grid = roc._extent_grid
+        self._intersect_grid = list(roc.igrid)
+        self._extent_grid = list(roc.egrid)
         self.centroids = np.array(roc.centroids)
+        self.sample_points = np.array(roc.sample_points)
         self.a = np.array(roc.a)
 
     @property
@@ -133,6 +138,48 @@ class RocSpatial(object):
 
         return res
 
+
+class RocSpatialMonteCarloIntegration(RocSpatial):
+
+    max_iter = 5
+
+    def set_sample_points(self, n_sample_per_grid):
+        """ Generate n_sample_per_grid sample points per grid unit
+         Return n_sample_per_grid x self.ndata x 2 array, final dim is x, y """
+
+        xmins = np.array([x[0] for x in self.egrid])
+        ymins = np.array([x[1] for x in self.egrid])
+        xres = np.random.rand(n_sample_per_grid, self.ngrid) * self.side_length + xmins
+        yres = np.random.rand(n_sample_per_grid, self.ngrid) * self.side_length + ymins
+
+        # TODO: disabled this due to unbelievably slow performance.
+
+        # iterate over grid to check points are within area
+        # for i in range(self.ngrid):
+        #     this_grid = self.igrid[i]
+        #     idx = np.where([not this_grid.intersects(geos.Point(x, y)) for x, y in zip(xres[:, i], yres[:, i])])[0]
+        #     niter = 1
+        #     while len(idx):
+        #         xres[idx, i] = np.random.rand(len(idx)) * self.side_length + xmins[i]
+        #         yres[idx, i] = np.random.rand(len(idx)) * self.side_length + ymins[i]
+        #         new_idx = []
+        #         for x, y in zip(xres[idx, i], yres[idx, i]):
+        #             try:
+        #                 new_idx.append(not this_grid.intersects(geos.Point(x, y)))
+        #             except Exception:
+        #                 import ipdb; ipdb.set_trace()
+        #         idx = idx[new_idx]
+        #         # idx = idx[np.where([not this_grid.intersects(geos.Point(x, y)) for x, y in zip(xres[idx, i], yres[idx, i])])]
+        #         niter += 1
+        #         if niter > self.max_iter:
+        #             warnings.warn('Reached maximum number of iterations and some points are still outside the grid')
+        #             continue
+
+        self.sample_points = DataArray.from_meshgrid(xres, yres)
+
+    def set_grid(self, side_length, n_sample_per_grid=10):
+        super(RocSpatialMonteCarloIntegration, self).set_grid(side_length)
+        self.set_sample_points(n_sample_per_grid)
 
 class WeightedRocSpatial(RocSpatial):
 

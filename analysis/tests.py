@@ -141,8 +141,10 @@ class TestHotspot(unittest.TestCase):
         stk = hotspot.STKernelBowers(a, b)
         data = np.tile(np.arange(10), (3, 1)).transpose()
         stk.train(data)
-        self.assertTupleEqual(stk.data.shape, (10, 3))
-        z = stk.predict(10, 10, 10)
+        self.assertEqual(stk.data.ndata, 10)
+        self.assertEqual(stk.data.nd, 3)
+        import ipdb; ipdb.set_trace()
+        z = stk.predict([[10, 10, 10]])
         zt_expct = np.sum(1 / (1 + a * np.arange(1, 11)))
         zd_expct = np.sum(1 / (1 + b * np.sqrt(2) * np.arange(1, 11)))
         self.assertAlmostEqual(z, zt_expct * zd_expct)
@@ -159,7 +161,7 @@ class TestHotspot(unittest.TestCase):
         b = 10
         stk = hotspot.STKernelBowers(a, b)
         h = hotspot.Hotspot(stk, data=data)
-        self.assertEqual(h.predict(1.3, 4.6, 7.8), stk.predict(1.3, 4.6, 7.8))
+        self.assertEqual(h.predict([[1.3, 4.6, 7.8]]), stk.predict([[1.3, 4.6, 7.8]]))
 
 
 class TestRoc(unittest.TestCase):
@@ -217,6 +219,24 @@ class TestRoc(unittest.TestCase):
         areas_expctd = [0.0025, 0.0025, 0.0625, 0.0625, 0.125, 0.125]
         for a, ae in zip(areas, areas_expctd):
             self.assertAlmostEqual(a, ae)
+
+    def test_sample_points(self):
+        # RocSpatial
+        r = roc.RocSpatial(data=self.data)
+        r.set_grid(0.05)
+        self.assertTrue(np.all(r.sample_points[:, 0] == r.centroids[:, 0]))
+        self.assertTrue(np.all(r.sample_points[:, 1] == r.centroids[:, 1]))
+
+        # RocSpatialMonteCarloIntegration
+        r = roc.RocSpatialMonteCarloIntegration(data=self.data)
+        r.set_grid(0.05, 10)  # 10 sample points per grid square
+
+        for i in range(r.ngrid):
+            xmin, ymin, xmax, ymax = r.egrid[i]
+            self.assertTrue(np.all(r.sample_points.toarray(0)[:, i] > xmin))
+            self.assertTrue(np.all(r.sample_points.toarray(0)[:, i] < xmax))
+            self.assertTrue(np.all(r.sample_points.toarray(1)[:, i] > ymin))
+            self.assertTrue(np.all(r.sample_points.toarray(1)[:, i] < ymax))
 
     def test_true_count(self):
         r = roc.RocSpatial(data=self.data)
