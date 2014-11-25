@@ -1,6 +1,7 @@
 __author__ = 'gabriel'
 import numpy as np
 from scipy.stats import gaussian_kde
+from scipy import sparse
 from kde.models import FixedBandwidthKdeScott, VariableBandwidthNnKde
 from data.models import DataArray, CartesianSpaceTimeData, SpaceTimeDataArray
 from point_process.utils import linkages
@@ -60,29 +61,21 @@ class STKernelBowers(STKernelBase):
         data_array = self.data_class(data_array)
 
         # construct linkage indices
-        e = 0.005
+        # e = 0.005
+        e = 1e-6
         max_delta_t = (1 - e) / (self.a * e)
         max_delta_d = (1 - e) / (self.b * e)
 
         link_i, link_j = linkages(self.data, max_delta_t, max_delta_d, data_target=data_array)
 
+        m = sparse.lil_matrix((self.data.ndata, data_array.ndata))
+        tt = 1 / ((data_array.time.getrows(link_j) - self.data.time.getrows(link_i)) * self.a + 1.).toarray(0)
+        dd = 1 / (data_array.space.getrows(link_j).distance(self.data.space.getrows(link_i)) * self.b + 1.).toarray(0)
 
-        # construct time and space difference matrices
-        # FIXME: this will fail with large numbers of sources
-        # easy fix - define cutoff based on a and b
-        t2, t1 = np.meshgrid(data_array.time, self.data.time, copy=False)
-        dt = t2 - t1
-        x2, x1 = np.meshgrid(data_array.toarray(1), self.data.toarray(1), copy=False)
-        dx = x2 - x1
-        y2, y1 = np.meshgrid(data_array.toarray(2), self.data.toarray(2), copy=False)
-        dy = y2 - y1
-        dist = np.sqrt(dx ** 2 + dy ** 2)
+        m[link_i, link_j] = tt * dd
+        m[tt < 0] = 0.
 
-        res =  sum(1.0 / (
-            (1 + self.a * np.abs(dt)) *
-            (1 + self.b * data_array.space.distance(self.data.space))
-        )
-        )
+        return np.array(m.sum(axis=0).flat)
 
 
 class SKernelHistoric(STKernelBase):

@@ -116,7 +116,7 @@ class ValidationBase(object):
     def predict(self, t, **kwargs):
         # estimate total propensity in each grid poly
         x = self.roc.sample_points.toarray(0)
-        y = self.roc.sample_points.toarray(0)
+        y = self.roc.sample_points.toarray(1)
         ts = np.ones_like(x) * t
         data_array = DataArray.from_args(ts, x, y)
         data_array.original_shape = x.shape

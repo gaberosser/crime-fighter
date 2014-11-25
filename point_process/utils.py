@@ -64,8 +64,8 @@ def linkages(data_source, max_t, max_d, data_target=None, chunksize=2**16):
     for k in range(0, idx_i.size, chunksize):
         i = idx_i.flat[k:(k + chunksize)]
         j = idx_j.flat[k:(k + chunksize)]
-        dt = (data_target.time[j] - data_source.time[i]).flat
-        dd = (data_target.space.getrows(j).distance(data_source.space.getrows(i))).flat
+        dt = (data_target.time.getrows(j) - data_source.time.getrows(i)).toarray(0)
+        dd = (data_target.space.getrows(j).distance(data_source.space.getrows(i))).toarray(0)
         mask = (dt <= max_t) & (dt > 0.) & (dd <= max_d)
         link_i.extend(i[mask])
         link_j.extend(j[mask])

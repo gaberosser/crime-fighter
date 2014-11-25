@@ -60,7 +60,9 @@ class DataArray(Data):
 
 
         if not isinstance(obj, np.ndarray):
-            obj = np.array(obj)
+            obj = np.array(obj, dtype=float)
+        else:
+            obj = obj.astype(float)
 
         # check dimensions
         if obj.ndim == 0:
@@ -268,20 +270,22 @@ class CartesianData(DataArray):
 
         # write out exact formula for common cases: nd == 1, 2, 3
         if self.nd == 1:
-            return np.sqrt((self - other) ** 2)
+            res = np.sqrt((self - other) ** 2)
 
         if self.nd == 2:
-            return np.sqrt((self[:, 0] - other[:, 0])**2 + (self[:, 1] - other[:, 1])**2)
+            res = np.sqrt((self[:, 0] - other[:, 0])**2 + (self[:, 1] - other[:, 1])**2)
 
         if self.nd == 3:
-            return np.sqrt(
+            res = np.sqrt(
                 (self[:, 0] - other[:, 0])**2
                 + (self[:, 1] - other[:, 1])**2
                 + (self[:, 2] - other[:, 2])**2
             )
 
         # otherwise use (slower) generic algorithm
-        return np.sqrt(np.sum((self - other) ** 2, axis=1))
+        res = np.sqrt(np.sum((self - other) ** 2, axis=1))
+
+        return DataArray(res)
 
 
 class CartesianSpaceTimeData(SpaceTimeDataArray, CartesianData):

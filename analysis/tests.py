@@ -14,6 +14,7 @@ import cad
 import roc
 from database.models import Division, DivisionType
 from database.populate import setup_cad250_grid
+from data.models import DataArray
 
 
 class TestSpatial(unittest.TestCase):
@@ -143,11 +144,11 @@ class TestHotspot(unittest.TestCase):
         stk.train(data)
         self.assertEqual(stk.data.ndata, 10)
         self.assertEqual(stk.data.nd, 3)
-        import ipdb; ipdb.set_trace()
         z = stk.predict([[10, 10, 10]])
-        zt_expct = np.sum(1 / (1 + a * np.arange(1, 11)))
-        zd_expct = np.sum(1 / (1 + b * np.sqrt(2) * np.arange(1, 11)))
-        self.assertAlmostEqual(z, zt_expct * zd_expct)
+        zt_expct = 1. / (1. + a * np.arange(1, 11))
+        zd_expct = 1. / (1. + b * np.sqrt(2) * np.arange(1, 11))
+        z_expct = sum(zt_expct * zd_expct)
+        self.assertAlmostEqual(z, z_expct)
 
     def test_hotspot(self):
         stk = mock.create_autospec(hotspot.STKernelBowers)
@@ -468,29 +469,14 @@ class TestValidation(unittest.TestCase):
         pop = vb.predict(vb.cutoff_t)
 
         self.assertEqual(stk.predict.call_count, 1)
-        self.assertEqual(len(stk.predict.call_args[0]), 3)
-        te = np.ones(vb.centroids.shape[0]) * vb.cutoff_t
-        xe = vb.centroids[:, 0]
-        ye = vb.centroids[:, 1]
-        self.assertListEqual(list(stk.predict.call_args[0][0]), list(te))
-        self.assertListEqual(list(stk.predict.call_args[0][1]), list(xe))
-        self.assertListEqual(list(stk.predict.call_args[0][2]), list(ye))
+        sp = vb.sample_points
+        pred_call_arg = DataArray.from_args(
+            vb.cutoff_t * np.ones(sp.ndata),
+            sp.toarray(0),
+            sp.toarray(1),
+        )
+        self.assertTrue(np.all(stk.predict.call_args[0] == pred_call_arg))
 
-        class MockKernel(hotspot.STKernelBase):
-
-            def _evaluate(self, t, x, y):
-                return sum(self.data[:, 1] - x)
-
-        stk = MockKernel()
-        vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
-        self.assertEqual(stk.ndata, 0)
-        vb.train_model()
-        vb.set_grid(0.1)
-        pop = vb.predict(vb.cutoff_t)
-        self.assertEqual(len(pop), len(vb.centroids))
-        pope = np.array([np.sum(self.data[self.data[:, 0] <= vb.cutoff_t, 1] - x.centroid.coords[0]) for x in vb.roc.igrid])
-        for (p, pe) in zip(pop, pope):
-            self.assertAlmostEqual(p, pe)
 
     def test_assess(self):
 
@@ -503,6 +489,7 @@ class TestValidation(unittest.TestCase):
         mocroc.centroids = np.array([[0., 0.],
                                      [1., 1.]])
         mocroc.egrid = range(2) # needs to have the correct length, contents not used
+        mocroc.sample_points = range(2)
         vb.roc = mocroc
 
         res = vb._iterate_run(pred_dt_plus=0.2, true_dt_plus=None, true_dt_minus=0.)
