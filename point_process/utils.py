@@ -61,6 +61,7 @@ def linkages(data_source, max_t, max_d, data_target=None, chunksize=2**16):
 
     link_i = []
     link_j = []
+
     for k in range(0, idx_i.size, chunksize):
         i = idx_i.flat[k:(k + chunksize)]
         j = idx_j.flat[k:(k + chunksize)]

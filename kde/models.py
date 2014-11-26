@@ -47,8 +47,8 @@ def marginal_icdf_optimise(k, y, dim=0, tol=1e-8):
 
 
 def set_nn_bandwidths(normed_data, raw_stdevs, num_nn, **kwargs):
-    tol = 1e-12
 
+    tol = kwargs.get('tol', 1e-12)
     min_bandwidth = kwargs.get('min_bandwidth', None)
 
     # compute nn distances on normed data
@@ -82,6 +82,10 @@ def set_nn_bandwidths(normed_data, raw_stdevs, num_nn, **kwargs):
         for i, j in enumerate(intol_idx):
             d = dist[i][num_nn + 1:]
             nn_distances[j] = d[d > tol][0]
+        print "Found %d NN distances below tolerance, of which %d were exactly zero." % (
+            len(intol_idx),
+            sum(nn_distances == 0)
+        )
 
     nn_distances = nn_distances.reshape((normed_data.ndata, 1))
     bandwidths = raw_stdevs * nn_distances

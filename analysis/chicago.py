@@ -148,8 +148,10 @@ def apply_point_process(start_date=datetime.datetime(2010, 3, 1, 0),
                         num_nn=None,
                         estimate_kwargs=None,
                         pp_class=pp_models.SeppStochasticNnReflected,
-                        tol_p=None):
+                        tol_p=None,
+                        seed=42):
 
+    print "Getting data..."
     res, t0 = get_crimes_by_type(
         crime_type='burglary',
         start_date=start_date,
@@ -186,6 +188,7 @@ def apply_point_process(start_date=datetime.datetime(2010, 3, 1, 0),
             'cd': 0.02
         }
 
+    print "Instantiating SEPP class..."
     r = pp_class(data=res, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
                  bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
 
@@ -195,10 +198,16 @@ def apply_point_process(start_date=datetime.datetime(2010, 3, 1, 0),
     #                             bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
     # r = pp_models.SeppStochasticNnOneSided(data=res, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
     #                             bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
+
+    print "Computing initial probability matrix estimate..."
     p = estimation.estimator_bowers(res, r.linkage, **estimate_kwargs)
     r.p = p
 
     # train on ALL data
+    if seed:
+        r.set_seed(seed)
+
+    print "Starting training..."
     ps = r.train(niter=niter, tol_p=tol_p)
     return r, ps
 

@@ -1,6 +1,7 @@
 __author__ = 'gabriel'
 import matplotlib as mpl
 from matplotlib import pyplot as plt
+from matplotlib import ticker
 import numpy as np
 import datetime
 import os
@@ -8,6 +9,7 @@ from analysis import roc
 from analysis.plotting import plot_surface_on_polygon
 from data.models import CartesianSpaceTimeData, DataArray
 from django.contrib.gis import geos
+import dill
 
 
 def plot_t_kde(k, max_t=50):
@@ -455,3 +457,97 @@ def fluctuation_at_convergence(res, poly=None):
     plot_surface_on_polygon(poly, weighted_bg_mean_density, colorbar=True)
     plot_surface_on_polygon(poly, weighted_bg_rel_range, colorbar=True)
 
+
+def delta_effect(res, nrow=8, ncol=7):
+    """ to prepare res:
+        import dill
+        f = open('delta_effect_north_side2.dill', 'r')
+        res = []
+        while True:
+            res.append(dill.load(f))
+    """
+    niter = len(res[0]['model'].num_bg)
+    xiter = range(1, niter + 1)
+    res_arr = np.array(res, dtype=object)
+    res_arr = res_arr.reshape((nrow, ncol))
+    dt = np.array([t['max_delta_t'] for t in res_arr.flat]).reshape((nrow, ncol))
+    dd = np.array([t['max_delta_d'] for t in res_arr.flat]).reshape((nrow, ncol))
+
+    majorFormatter = ticker.FormatStrFormatter('%.2e')  # scientific notation
+
+    # l2 differences plot
+
+    fig, axs = plt.subplots(nrow, ncol, sharex=True, sharey='row')
+    for (a, r) in zip(axs.flat, res_arr.flat):
+        a.plot(xiter, r['model'].l2_differences)
+
+    # iterate over axes with yticks
+    for a, d in zip(axs[:, 0], dd[:, 0]):
+        a.yaxis.set_major_locator(ticker.MaxNLocator(nbins=2))
+        a.yaxis.set_major_formatter(majorFormatter)
+        a.set_ylabel(r'$\Delta d_{{max}} = %d$' % d, fontsize=18)
+
+    # iterate over axes with x ticks
+    for a, t in zip(axs[-1, :], dt[-1, :]):
+        a.set_xlabel(r'$\Delta t_{{max}} = %d$' % t, fontsize=18)
+
+    plt.draw()
+    plt.tight_layout(h_pad=0.0, w_pad=0.1)
+
+    # num trigger / BG plot
+
+    fig, axs = plt.subplots(nrow, ncol, sharex=True, sharey='row')
+    for (a, r) in zip(axs.flat, res_arr.flat):
+        a.plot(xiter, r['model'].num_bg, 'k-')
+        a.plot(xiter, r['model'].num_trig, 'r-')
+
+    # iterate over axes with yticks
+    for a, d in zip(axs[:, 0], dd[:, 0]):
+        a.yaxis.set_major_locator(ticker.MaxNLocator(nbins=2))
+        a.yaxis.set_major_formatter(majorFormatter)
+        a.set_ylabel(r'$\Delta d_{{max}} = %d$' % d, fontsize=18)
+
+    # iterate over axes with x ticks
+    for a, t in zip(axs[-1, :], dt[-1, :]):
+        a.set_xlabel(r'$\Delta t_{{max}} = %d$' % t, fontsize=18)
+
+    plt.draw()
+    plt.tight_layout(h_pad=0.0, w_pad=0.1)
+
+    # trigger T
+
+    fig, axs = plt.subplots(nrow, ncol, sharex=True, sharey=True)
+    for (a, r) in zip(axs.flat, res_arr.flat):
+        _plot_marginals(r['model'].trigger_kde, 0, data_min=0, data_max=45, ax=a, symm=False)
+
+    # iterate over axes with yticks
+    for a, d in zip(axs[:, 0], dd[:, 0]):
+        a.yaxis.set_major_locator(ticker.MaxNLocator(nbins=2))
+        a.yaxis.set_major_formatter(majorFormatter)
+        a.set_ylabel(r'$\Delta d_{{max}} = %d$' % d, fontsize=18)
+
+    # iterate over axes with x ticks
+    for a, t in zip(axs[-1, :], dt[-1, :]):
+        a.set_xlabel(r'$\Delta t_{{max}} = %d$' % t, fontsize=18)
+
+    plt.draw()
+    plt.tight_layout(h_pad=0.0, w_pad=0.1)
+
+    # trigger X
+
+    fig, axs = plt.subplots(nrow, ncol, sharex=True, sharey=True)
+    for (a, r) in zip(axs.flat, res_arr.flat):
+        _plot_marginals(r['model'].trigger_kde, 1, data_max=200, ax=a)
+
+    # iterate over axes with yticks
+    for a, d in zip(axs[:, 0], dd[:, 0]):
+        a.yaxis.set_major_locator(ticker.MaxNLocator(nbins=2))
+        a.yaxis.set_major_formatter(majorFormatter)
+        a.set_ylabel(r'$\Delta d_{{max}} = %d$' % d, fontsize=18)
+
+    # iterate over axes with x ticks
+    for a, t in zip(axs[-1, :], dt[-1, :]):
+        a.set_xlabel(r'$\Delta t_{{max}} = %d$' % t, fontsize=18)
+
+    plt.draw()
+    plt.tight_layout(h_pad=0.0, w_pad=0.1)

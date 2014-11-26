@@ -348,6 +348,7 @@ class Sepp(SepBase):
         trigger = np.array(trigger.sum(axis=0))
         # reshape if target_data has a shape
         if target_data.original_shape:
+            ## FIXME: think the reshape order needs to be 'F' based on the data model??
             trigger = trigger.reshape(target_data.original_shape)
         # else flatten
         else:
