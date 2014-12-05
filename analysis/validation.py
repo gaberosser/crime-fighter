@@ -124,6 +124,8 @@ class ValidationBase(object):
 
     def _iterate_run(self, pred_dt_plus, true_dt_plus, true_dt_minus, **kwargs):
         true_dt_plus = true_dt_plus or pred_dt_plus
+        # run prediction
+        # output should be M x ndata matrix, where M is the number of sample points per grid square
         prediction = self.predict(self.cutoff_t + pred_dt_plus, **kwargs)
         testing_data = self.testing(dt_plus=true_dt_plus, dt_minus=true_dt_minus)
         self.roc.set_data(testing_data[:, 1:])
@@ -315,6 +317,8 @@ if __name__ == "__main__":
     # vb.set_grid(200)
     # vb.set_t_cutoff(4.0)
 
+    import ipdb; ipdb.set_trace()
+
     # use basic historic data spatial hotspot
     sk = hotspot.SKernelHistoric(2) # use heatmap from final 2 days data
     vb = ValidationBase(data, hotspot.Hotspot, camden.mpoly, model_args=(sk,))
@@ -329,11 +333,14 @@ if __name__ == "__main__":
     cmap = mpl.cm.jet
     sm = mpl.cm.ScalarMappable(norm, cmap)
 
+    # Figure: surface showing prediction values by grid square
     fig = plt.figure()
     ax = fig.add_subplot(111)
     for (p, r) in zip(polys_pred_rank_order, pred_values):
         plotting.plot_geodjango_shapes(shapes=(p,), ax=ax, facecolor=sm.to_rgba(r), set_axes=False)
     plotting.plot_geodjango_shapes((vb.spatial_domain,), ax=ax, facecolor='none')
+
+    # Figure: surface showing true values by grid square
 
     norm = mpl.colors.Normalize(min(vb.roc.true_count), max(vb.roc.true_count))
     sm = mpl.cm.ScalarMappable(norm, cmap)

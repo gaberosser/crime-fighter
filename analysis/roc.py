@@ -31,7 +31,7 @@ class RocSpatial(object):
 
     @property
     def ndata(self):
-        return self.data.shape[0]
+        return self.data.ndata
         # return len(self.data)
 
     def set_data(self, data):
@@ -61,7 +61,7 @@ class RocSpatial(object):
         self._intersect_grid, self._extent_grid = create_spatial_grid(self.poly, side_length)
         self.centroids = np.array([t.centroid.coords for t in self._intersect_grid])
         self.a = np.array([t.area for t in self._intersect_grid])
-        self.sample_points = DataArray(self.centroids.reshape((1, self.ngrid, 2), order='F'))
+        self.set_sample_points()
 
     def copy_grid(self, roc):
         self._intersect_grid = list(roc.igrid)
@@ -69,6 +69,11 @@ class RocSpatial(object):
         self.centroids = np.array(roc.centroids)
         self.sample_points = np.array(roc.sample_points)
         self.a = np.array(roc.a)
+
+    def set_sample_points(self, *args, **kwargs):
+        # sample points here are just the centroids
+        self.sample_points = DataArray(self.centroids)
+        self.sample_points.original_shape = (1, self.ngrid)
 
     @property
     def igrid(self):
@@ -89,9 +94,9 @@ class RocSpatial(object):
         raise AttributeError("Grid has not been computed, run set_grid with grid length")
 
     def set_prediction(self, prediction):
-        if len(prediction) != len(self.igrid):
-            raise AttributeError("Length of supplied prediction does not match grid")
-        self.prediction_values = prediction
+        if prediction.shape[1] != self.ngrid:
+            raise AttributeError("Dim 1 of supplied prediction does not match grid")
+        self.prediction_values = np.mean(prediction, axis=0)
 
     @property
     def prediction_rank(self):

@@ -118,6 +118,7 @@ class SKernelHistoricVariableBandwidthNn(STKernelBase):
     def set_data(self, data):
         tf = max(data.time)
         if self.dt:
+            #### FIXME
             self.data = data.space.getrows(np.where(data.time >= (tf - self.dt))[0])  # only spatial component
         else:
             self.data = data.space
