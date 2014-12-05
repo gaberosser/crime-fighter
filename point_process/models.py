@@ -324,7 +324,8 @@ class Sepp(SepBase):
     def trigger_density(self, delta_data):
         """
         Return the (unnormalised) trigger density
-        Integral over all data dimensions should return num_trig / num_events
+        Integral over all data dimensions should return num_trig / num_events... This kernel is then summed over all
+        data points, returning a total mass of num_trig as required.
         """
         return self.trigger_kde.pdf(delta_data, normed=False) / self.ndata
 
@@ -494,15 +495,6 @@ class SeppStochasticStationaryBg(SeppStochastic):
         T = np.ptp(self.data_time)
         k = num_bg / float(T)
         return self.bg_kde.pdf(target_data.space, normed=False) / T
-        #
-        # if spatial_only:
-        #     ## FIXME: check norming here
-        #     # estimate mean intensity per unit time
-        #     T = np.ptp(self.data_time)
-        #     k = num_bg / float(T)
-        #     return k * self.bg_kde.partial_marginal_pdf(target_data.space, dim=0, normed=True)
-        # else:
-        #     return self.bg_kde.pdf(target_data, normed=False)
 
 
 class SeppStochasticNn(SeppStochastic):
@@ -591,6 +583,10 @@ class SeppDeterministicNn(Sepp):
 
         self.bg_kde = self.bg_kde_class(self.data, weights=p_bg, **self.bg_kde_kwargs)
         self.trigger_kde = self.trigger_kde_class(self.interpoint_data, weights=p_trig, **self.trigger_kde_kwargs)
+
+
+class SeppDeterministicNnReflected(SeppDeterministicNn):
+    trigger_kde_class = pp_kde.WeightedVariableBandwidthNnKdeReflective
 
 
 def fluctuation_pre_convergence(sepp_obj, niter=15):

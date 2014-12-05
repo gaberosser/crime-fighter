@@ -215,6 +215,10 @@ class KdeBase(object):
         return self.data.ndata
 
     @property
+    def norm_constant(self):
+        return self.ndata
+
+    @property
     def raw_std_devs(self):
         return np.std(self.data, axis=0, ddof=1)
 
@@ -256,8 +260,9 @@ class KdeBase(object):
         The returned list contains an element for each kernel
         """
 
-        if self.b_shared:
-
+        if not self.parallel:
+            z = sum([x.operation(funcstr, target, **kwargs) for x in self.kernel_clusters])
+        elif self.b_shared:
             # create ctypes array pointer
             c_double_p = ctypes.POINTER(ctypes.c_double)
             flat_data_ctypes_p = target.ctypes.data_as(c_double_p)
@@ -280,7 +285,6 @@ class KdeBase(object):
 
         if not self.parallel:
             z = sum([x.additive_operation(funcstr, target, **kwargs) for x in self.kernel_clusters])
-            # z = self.kernel_clusters[0].additive_operation(funcstr, target, **kwargs)
         elif self.b_shared:
             # create ctypes array pointer
             c_double_p = ctypes.POINTER(ctypes.c_double)
@@ -295,7 +299,7 @@ class KdeBase(object):
                 z = sum(pool.map(partial(runner_additive, fstr=funcstr, fd=target, **kwargs), self.kernel_clusters))
 
         if normed:
-            z /= float(self.ndata)
+            z /= float(self.norm_constant)
         return z
 
     def check_inputs(self, x, ndim=None, cls=None):
@@ -493,6 +497,10 @@ class WeightedFixedBandwidthKde(FixedBandwidthKde):
         self.weights = np.array(weights)
         super(WeightedFixedBandwidthKde, self).__init__(data, *args, **kwargs)
 
+    @property
+    def norm_constant(self):
+        return self.weights.sum()
+
     def set_kernels(self):
         self.kernel_clusters = []
         for i, j in self.distributed_indices:
@@ -536,6 +544,11 @@ class WeightedVariableBandwidthKde(WeightedFixedBandwidthKde):
 
 class WeightedVariableBandwidthNnKde(VariableBandwidthNnKde, WeightedFixedBandwidthKde):
     pass
+
+
+class WeightedVariableBandwidthNnKdeReflective(WeightedVariableBandwidthNnKde):
+    data_class = SpaceTimeDataArray
+    kernel_class = kernels.SpaceTimeNormalReflective
 
 
 class FixedBandwidthXValidationKde(FixedBandwidthKde):

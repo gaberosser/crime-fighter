@@ -204,16 +204,18 @@ if __name__ == '__main__':
 
     # r = models.SeppStochasticNn(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
     #                             bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
-    r = models.SeppStochasticStationaryBg(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t)
+    # r = models.SeppStochasticStationaryBg(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t)
     # r = models.SeppStochasticNnStExp(data=data, max_delta_d=0.75, max_delta_t=80,
     #                             bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
     # r = models.SeppStochasticNnSt(data=data, max_delta_d=0.75, max_delta_t=80,
     #                             bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
-    # r = models.SeppStochasticNnReflected(data=data, max_delta_d=0.75, max_delta_t=80,
+    # r = models.SeppStochasticNnReflected(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
     #                                     bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
-    # r = models.SeppStochasticNnOneSided(data=data, max_delta_d=0.75, max_delta_t=80,
-    #                                     bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
+    r = models.SeppStochasticNnOneSided(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
+                                        bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
     # r = models.SeppDeterministicNn(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
+    #                                bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
+    # r = models.SeppDeterministicNnReflected(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
     #                                bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
 
 
@@ -222,7 +224,7 @@ if __name__ == '__main__':
     r.p = p
 
     # set seed for consistency
-    r.set_seed(42)
+    # r.set_seed(42)
 
     try:
         r.train(niter=num_iter)
