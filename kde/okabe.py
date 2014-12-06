@@ -21,6 +21,7 @@ from collections import defaultdict
 import bisect as bs
 from network import itn
 from kernels import LinearKernel
+from network.geos import NetworkPoint
 
 
 #A helper function to do network searching from within the class
@@ -222,7 +223,7 @@ class EqualSplitKernel():
         self.edge_points=edge_points
 
 
-    def points_within_bandwidth(self,eval_node):
+    def points_within_bandwidth(self, eval_node):
         '''
         Finds paths and distances to all points within h of a given node.
 
@@ -380,6 +381,11 @@ class EqualSplitKernel():
 
                 total_value += kernel_value
 
+        ## FIXME: this is a hack for now.  We've not included the contribution from the source itself
+        ## Things that break this: (1) if there are two coincident sources, this will only grab one of them.
+        ## (2) it doesn't find loops back to itself, so underestimates the density
+        total_value += self.kernel_univ.pdf(0.)
+
         return total_value
 
 
@@ -387,6 +393,8 @@ if __name__ == '__main__':
 
     from settings import DATA_DIR
     import os
+    from network.plotting import network_point_coverage
+    import numpy as np
 
     ITNFILE = os.path.join(DATA_DIR, 'network_data/itn_sample', 'mastermap-itn_417209_0_brixton_sample.gml')
 
@@ -402,23 +410,50 @@ if __name__ == '__main__':
 
 
     #Four test points - 1 and 3 on same segment, 2 on neighbouring segment, 4 long way away.
-    closest_edge1,dist_along1,snap_dist=CurrentNet.closest_segments_euclidean(531190,175214,x_grid,y_grid,edge_locator)
-    closest_edge2,dist_along2,snap_dist=CurrentNet.closest_segments_euclidean(531149,175185,x_grid,y_grid,edge_locator)
-    closest_edge3,dist_along3,snap_dist=CurrentNet.closest_segments_euclidean(531210,175214,x_grid,y_grid,edge_locator)
-    closest_edge4,dist_along4,snap_dist=CurrentNet.closest_segments_euclidean(531198,174962,x_grid,y_grid,edge_locator)
+    test_points = [
+        [531291, 175044],
+        [531293, 175054],
+        [531209, 175211],
+        [531466, 175005],
+        [531643, 175061],
+        [531724, 174826],
+        [531013, 175294]
+    ]
+    closest_edge = []
+    dist_along = []
+    network_points = []
+    kde_source_points={}
 
+    # Add these points as the kernel sources
+    for i, t in enumerate(test_points):
+        c, d, _ = CurrentNet.closest_segments_euclidean(t[0], t[1], x_grid, y_grid, edge_locator)
+        closest_edge.append(c)
+        dist_along.append(d)
+        network_points.append(NetworkPoint(CurrentNet.g, **d))
+        kde_source_points['point%d' % i] = (c, d)
 
-    #Add some combination of the points as the kernel centres
-    points={}
-    points['point1']=(closest_edge1,dist_along1)
-    #points['point2']=(closest_edge2,dist_along2)
-    points['point3']=(closest_edge3,dist_along3)
-    #points['point4']=(closest_edge4,dist_along4)
 
     #Initialise the kernel
-    TestKernel=EqualSplitKernel(CurrentNet,points,100)
-
+    TestKernel = EqualSplitKernel(CurrentNet, kde_source_points, 100)
 
     #Both evaluation methods
-    print TestKernel.evaluate_non_point((closest_edge2,dist_along2))
-    print TestKernel.evaluate_point('point3')
+    ## TODO: see comments in evaluate_point for why these differ
+    print TestKernel.evaluate_non_point((closest_edge[1],dist_along[1]))
+    print TestKernel.evaluate_point('point1')
+
+    # define a whole load of points on the network for plotting
+    xy, cd = network_point_coverage(CurrentNet.g, dx=10)
+
+    # evaluate KDE at those points
+    res = []
+    failed = []
+    for arr in cd:
+        this_res = []
+        for t in arr:
+            try:
+                this_res.append(TestKernel.evaluate_non_point(t))
+            except KeyError as exc:
+                this_res.append(np.nan)
+                failed.append(repr(exc))
+        res.append(this_res)
+
