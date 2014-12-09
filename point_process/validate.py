@@ -7,6 +7,7 @@ from analysis import validation
 import models
 from scipy import sparse
 import copy
+from time import time
 from data.models import DataArray, CartesianSpaceTimeData
 
 
@@ -191,7 +192,10 @@ class SeppValidation(validation.ValidationIntegration):
         res = {}
 
         for app, func in pred_opt.items():
+            print "Computing prediction %s" % app
+            tic = time()
             prediction = func(self.cutoff_t + pred_dt_plus, **kwargs)
+            print "Complete in %f s" % (time() - tic)
             self.roc.set_prediction(prediction)
             this_res = self.roc.evaluate()
             for k, v in this_res.items():

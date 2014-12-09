@@ -254,7 +254,7 @@ def validate_point_process(
         end_date=end_date,
         domain=domain,
     )
-    vb = validate.SeppValidation(res, spatial_domain=domain, **model_kwargs)
+    vb = validate.SeppValidation(res, spatial_domain=domain, model_kwargs=model_kwargs)
     vb.set_grid(grid)
     vb.set_t_cutoff(training_size, b_train=False)
 

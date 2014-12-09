@@ -13,7 +13,9 @@ from django.contrib.gis.utils import LayerMapping
 from django.contrib.gis.gdal import DataSource
 from django.db import transaction
 from django.db.models.signals import pre_save
+from django.db import connection
 import gc
+import shapefile
 
 UK_TZ = pytz.timezone('Europe/London')
 USCENTRAL_TZ = pytz.timezone('US/Central')
@@ -533,6 +535,11 @@ def setup_divisiontypes(**kwargs):
     dt.save()
     res.append(dt.name)
 
+    dt, created = models.DivisionType.objects.get_or_create(name='monsuru_250m_grid')
+    dt.description = 'Monsuru CAD 250m square grid'
+    dt.save()
+    res.append(dt.name)
+
     dt, created = models.DivisionType.objects.get_or_create(name='city')
     dt.description = 'City region'
     dt.save()
@@ -601,6 +608,28 @@ def setup_chicago_data(verbose=True, chunksize=50000):
         print "Saved %d Chicago crime records.  %d failed." % (count, fail_count)
 
 
+def setup_monsuru_cad_grid(verbose=False):
+    DATADIR = os.path.join(settings.DATA_DIR, 'monsuru/cad_grids')
+    fin = os.path.join(DATADIR, 'grids')
+    s = shapefile.Reader(fin)
+    dt = models.DivisionType.objects.get(name='monsuru_250m_grid')
+
+    count = 0
+
+    for x in s.shapeRecords():
+        poly = Polygon([tuple(t) for t in x.shape.points])
+        div = models.Division(
+            type=dt,
+            name=str(x.record[5]),
+            mpoly=MultiPolygon(poly),
+        )
+        div.save()
+        count += 1
+
+    if verbose:
+        print "Saved %d grid records" % count
+
+
 def setup_all(verbose=False):
     make_list = collections.OrderedDict([
         ('DIVISIONTYPE', setup_divisiontypes),
@@ -627,3 +656,45 @@ def setup_all(verbose=False):
             print "Failed"
             print repr(exc)
     print "Completed all tasks"
+
+
+def import_monsuru_cad_data():
+
+    DATADIR = os.path.join(settings.DATA_DIR, 'monsuru/cad')
+    def date_parser(x):
+        if hasattr(x, '__iter__'):
+            return datetime.date(x[0], x[1], x[2])
+        t0 = datetime.date(2011, 3, 1)
+        return t0 + datetime.timedelta(days=int(x - 40603))
+
+    cur = connection.cursor()
+    input_dict = {
+        'monsuru_cad_burglary': 'burglary',
+        'monsuru_cad_violence': 'Violence',
+        'monsuru_cad_shoplifting': 'Shoplifting',
+    }
+    create_sql = """CREATE TABLE {0} (id SERIAL PRIMARY KEY, inc_date DATE);
+                    SELECT AddGeometryColumn('{0}', 'location', 27700, 'POINT', 2);"""
+    pt_from_text_sql = """ST_GeomFromText('POINT(%f %f)', 27700)"""
+
+    for t, v in input_dict.items():
+        # DROP if possible
+        try:
+            cur.execute("DROP TABLE %s;" % t)
+        except Exception as exc:
+            print repr(exc)
+            pass
+        # CREATE
+        cur.execute(create_sql.format(t))
+        # POPULATE
+        fin = os.path.join(DATADIR, v)
+        s = shapefile.Reader(fin)
+        for x in s.shapeRecords():
+            # import ipdb; ipdb.set_trace()
+            insert_sql = """INSERT INTO {0} (inc_date, location) VALUES ('{1}', {2});""".format(
+                t,
+                date_parser(x.record[2]).strftime('%Y-%m-%d'),
+                pt_from_text_sql % (x.shape.points[0][0], x.shape.points[0][1])
+            )
+            cur.execute(insert_sql)
+

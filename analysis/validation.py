@@ -5,6 +5,7 @@ import math
 import roc
 import collections
 from data.models import DataArray
+from time import time
 import ipdb
 
 
@@ -131,7 +132,10 @@ class ValidationBase(object):
         true_dt_plus = true_dt_plus or pred_dt_plus
         # run prediction
         # output should be M x ndata matrix, where M is the number of sample points per grid square
+        print "Computing prediction..."
+        tic = time()
         prediction = self.predict(self.cutoff_t + pred_dt_plus, **kwargs)
+        print "Complete in %f s" % (time() - tic)
         testing_data = self.testing(dt_plus=true_dt_plus, dt_minus=true_dt_minus)
         self.roc.set_data(testing_data[:, 1:])
         self.roc.set_prediction(prediction)

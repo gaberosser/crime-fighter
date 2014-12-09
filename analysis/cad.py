@@ -20,6 +20,7 @@ import hotspot
 import validation
 from itertools import combinations
 from stats.logic import rook_boolean_connectivity, global_morans_i_p, local_morans_i as lmi
+from django.db import connection
 
 UK_TZ = pytz.timezone('Europe/London')
 SEC_IN_DAY = float(24 * 60 * 60)
@@ -65,6 +66,53 @@ def get_crimes_by_type(nicl_type=3, only_new=False, jiggle_scale=None, start_dat
     res = res[np.argsort(res[:, 0])]
 
     return res, t0
+
+
+def get_crimes_from_dump(table_name):
+    cur = connection.cursor()
+    cur.execute("""SELECT inc_date, ST_X(location), ST_Y(location) FROM %s ORDER BY inc_date;""" % table_name)
+    res = cur.cursor.fetchall()
+    t0 = res[0][0]
+    t = [(r[0] - t0).total_seconds() / (24 * 60 * 60) for r in res]
+    x = [r[1] for r in res]
+    y = [r[2] for r in res]
+    return np.vstack((t, x, y)).transpose(), t0
+
+
+def dump_crimes_to_table(table_name,
+                         nicl_type=3,
+                         only_new=False,
+                         jiggle_scale=None,
+                         start_date=None,
+                         end_date=None):
+    def parse_date(t, t0):
+        dt = t0 + datetime.timedelta(days=t)
+        return dt.strftime('%Y-%m-%d %H:%M:%S')
+
+    cur = connection.cursor()
+    res, t0 = get_crimes_by_type(nicl_type=nicl_type,
+                                 only_new=only_new,
+                                 jiggle_scale=jiggle_scale,
+                                 start_date=start_date,
+                                 end_date=end_date)
+    drop_sql = """DROP TABLE {0};""".format(table_name)
+    create_sql = """CREATE TABLE {0} (id SERIAL PRIMARY KEY, inc_datetime TIMESTAMP);
+                    SELECT AddGeometryColumn('{0}', 'location', 27700, 'POINT', 2);""".format(table_name)
+
+    try:
+        cur.execute(drop_sql)
+    except Exception as exc:
+        print repr(exc)
+    cur.execute(create_sql)
+
+    pt_from_text_sql = """ST_GeomFromText('POINT(%f %f)', 27700)"""
+    for x in res:
+        insert_sql = """INSERT INTO {0} (inc_datetime, location) VALUES ('{1}', {2});""".format(
+            table_name,
+            parse_date(x[0], t0),
+            pt_from_text_sql % (x[1], x[2])
+        )
+        cur.execute(insert_sql)
 
 
 def get_camden_region():
@@ -332,14 +380,18 @@ def apply_point_process(nicl_type=3,
                         max_delta_t=60,  # days
                         max_delta_d=500,  # metres
                         sepp_class=pp_models.SeppStochasticNnReflected,
-                        tol_p=None
+                        tol_p=None,
+                        data=None
                         ):
 
     # suggested value:
     # min_bandwidth = np.array([0.3, 5., 5.])
 
     # get data
-    res, t0 = get_crimes_by_type(nicl_type=nicl_type, only_new=only_new, jiggle_scale=jiggle_scale)
+    if data is not None:
+        res = data
+    else:
+        res, t0 = get_crimes_by_type(nicl_type=nicl_type, only_new=only_new, jiggle_scale=jiggle_scale)
 
     # define initial estimator
     # est = lambda x, y: estimation.estimator_bowers(x, y, ct=1, cd=0.02)
