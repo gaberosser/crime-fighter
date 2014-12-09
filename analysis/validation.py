@@ -2,9 +2,10 @@ __author__ = 'gabriel'
 from django.contrib.gis import geos
 import numpy as np
 import math
-from roc import RocSpatial
+import roc
 import collections
 from data.models import DataArray
+import ipdb
 
 
 def mc_sampler(poly):
@@ -18,7 +19,8 @@ def mc_sampler(poly):
 
 class ValidationBase(object):
 
-    roc_class = RocSpatial
+    roc_class = roc.RocSpatial
+    data_class = DataArray
 
     def __init__(self, data, model_class, spatial_domain=None, grid_length=None, cutoff_t=None, model_args=None, model_kwargs=None):
         # sort data in increasing time
@@ -43,7 +45,7 @@ class ValidationBase(object):
     def set_roc(self, poly):
 
         # set roc
-        self.roc = RocSpatial(poly=poly)
+        self.roc = self.roc_class(poly=poly)
         # set roc with ALL data initially
         self.roc.set_data(self.data[:, 1:])
 
@@ -65,7 +67,7 @@ class ValidationBase(object):
         :param grid: Either a scalar giving the grid square length or an instance of RocSpatial from which the grid
         will be copied
         """
-        if isinstance(grid, RocSpatial):
+        if isinstance(grid, self.roc_class):
             self.roc.copy_grid(grid)
         else:
             self.roc.set_grid(grid)
@@ -113,14 +115,17 @@ class ValidationBase(object):
         """ Train the predictor on training data """
         self.model.train(self.training, *args, **kwargs)
 
-    def predict(self, t, **kwargs):
-        # estimate total propensity in each grid poly
+    def prediction_array(self, t):
         x = self.roc.sample_points.toarray(0)
         y = self.roc.sample_points.toarray(1)
         ts = np.ones_like(x) * t
-        data_array = DataArray.from_args(ts, x, y)
+        data_array = self.data_class.from_args(ts, x, y)
         data_array.original_shape = x.shape
-        return self.model.predict(data_array)
+        return data_array
+
+    def predict(self, t, **kwargs):
+        # estimate total propensity in each grid poly
+        return self.model.predict(self.prediction_array(t))
 
     def _iterate_run(self, pred_dt_plus, true_dt_plus, true_dt_minus, **kwargs):
         true_dt_plus = true_dt_plus or pred_dt_plus
@@ -287,6 +292,22 @@ class WeightedValidation(ValidationBase):
     # -> only real change is in def testing()?
     pass
 
+
+class ValidationIntegration(ValidationBase):
+
+    roc_class = roc.RocSpatialMonteCarloIntegration
+
+    def set_grid(self, grid, n_sample_per_grid=10):
+        """
+        Set the domain grid for computing SER etc.
+        :param grid: Either a scalar giving the grid square length or an instance of RocSpatial from which the grid
+        will be copied
+        """
+        if isinstance(grid, self.roc_class):
+            self.roc.copy_grid(grid)
+        else:
+            self.roc.set_grid(grid, n_sample_per_grid)
+
 if __name__ == "__main__":
     from database import logic, models
     from scipy.stats import multivariate_normal
@@ -317,12 +338,12 @@ if __name__ == "__main__":
     # vb.set_grid(200)
     # vb.set_t_cutoff(4.0)
 
-    import ipdb; ipdb.set_trace()
-
     # use basic historic data spatial hotspot
     sk = hotspot.SKernelHistoric(2) # use heatmap from final 2 days data
-    vb = ValidationBase(data, hotspot.Hotspot, camden.mpoly, model_args=(sk,))
-    vb.set_grid(200)
+    # vb = ValidationBase(data, hotspot.Hotspot, camden.mpoly, model_args=(sk,))
+    # vb.set_grid(200)
+    vb = ValidationIntegration(data, hotspot.Hotspot, camden.mpoly, model_args=(sk,))
+    vb.set_grid(200, n_sample_per_grid=10)
     vb.set_t_cutoff(4.0)
 
     res = vb.run(time_step=1, n_iter=1) # predict one day ahead

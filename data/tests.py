@@ -46,7 +46,7 @@ class TestDataArray(SimpleTestCase):
         self.assertTrue(isinstance(data, models.Data))
         self.assertEqual(data.nd, 3)
         self.assertEqual(data.ndata, 1000)
-        self.assertTrue(np.all(data[:, 2] == x[2].flatten('F')))
+        self.assertTrue(np.all(data[:, 2] == x[2].flat))
 
         # 5D
         x = np.linspace(0, 1, 500).reshape(10, 10, 5)
@@ -54,7 +54,7 @@ class TestDataArray(SimpleTestCase):
         self.assertTrue(isinstance(data, models.Data))
         self.assertEqual(data.nd, 5)
         self.assertEqual(data.ndata, 100)
-        self.assertTrue(np.all(data[:, 3] == x[..., 3].flatten('F')))
+        self.assertTrue(np.all(data[:, 3] == x[..., 3].flat))
 
     def test_separate(self):
 
@@ -97,7 +97,7 @@ class TestDataArray(SimpleTestCase):
         self.assertEqual(data.ndata, 5 * 10 * 15)
         self.assertTupleEqual(data.original_shape, (10, 5, 15))
         self.assertTrue(np.all(data.toarray(0) == mg[0]))
-        self.assertTrue(np.all(data[:, 2] == mg[2].flatten('F')))
+        self.assertTrue(np.all(data[:, 2] == mg[2].flat))
 
     def test_instantiate_from_args(self):
         mg = np.meshgrid(np.linspace(0, 1, 5), np.linspace(2, 3, 10), np.linspace(4, 5, 15))
@@ -165,10 +165,10 @@ class TestSpaceTimeDataArray(SimpleTestCase):
         x = np.linspace(0, 1, 500).reshape(10, 10, 5)
         data = models.SpaceTimeDataArray(x)
 
-        self.assertTrue(data.time == models.DataArray(x[..., 0].flatten('F')))
+        self.assertTrue(data.time == models.DataArray(x[..., 0].flat))
 
-        self.assertTrue(np.all(data.space[:, 0] == x[..., 1].flatten('F')))
-        self.assertTrue(np.all(data.space[:, 3] == x[..., 4].flatten('F')))
+        self.assertTrue(np.all(data.space[:, 0] == x[..., 1].flat))
+        self.assertTrue(np.all(data.space[:, 3] == x[..., 4].flat))
 
     def test_set_get(self):
 

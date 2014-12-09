@@ -53,7 +53,7 @@ class RocSpatial(object):
                 (xmin, ymin),
         ])
 
-    def set_grid(self, side_length):
+    def set_grid(self, side_length, *args, **kwargs):
         self.side_length = side_length
         if not self.poly:
             # find minimal bounding rectangle
@@ -61,7 +61,7 @@ class RocSpatial(object):
         self._intersect_grid, self._extent_grid = create_spatial_grid(self.poly, side_length)
         self.centroids = np.array([t.centroid.coords for t in self._intersect_grid])
         self.a = np.array([t.area for t in self._intersect_grid])
-        self.set_sample_points()
+        self.set_sample_points(*args, **kwargs)
 
     def copy_grid(self, roc):
         self._intersect_grid = list(roc.igrid)
@@ -146,8 +146,6 @@ class RocSpatial(object):
 
 class RocSpatialMonteCarloIntegration(RocSpatial):
 
-    max_iter = 5
-
     def set_sample_points(self, n_sample_per_grid):
         """ Generate n_sample_per_grid sample points per grid unit
          Return n_sample_per_grid x self.ndata x 2 array, final dim is x, y """
@@ -160,6 +158,7 @@ class RocSpatialMonteCarloIntegration(RocSpatial):
         # TODO: disabled this due to unbelievably slow performance.
 
         # iterate over grid to check points are within area
+        # max_iter = 5
         # for i in range(self.ngrid):
         #     this_grid = self.igrid[i]
         #     idx = np.where([not this_grid.intersects(geos.Point(x, y)) for x, y in zip(xres[:, i], yres[:, i])])[0]
@@ -182,9 +181,6 @@ class RocSpatialMonteCarloIntegration(RocSpatial):
 
         self.sample_points = DataArray.from_meshgrid(xres, yres)
 
-    def set_grid(self, side_length, n_sample_per_grid=10):
-        super(RocSpatialMonteCarloIntegration, self).set_grid(side_length)
-        self.set_sample_points(n_sample_per_grid)
 
 class WeightedRocSpatial(RocSpatial):
 

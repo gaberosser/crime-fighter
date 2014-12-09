@@ -77,13 +77,16 @@ class DataArray(Data):
 
         elif obj.ndim > 2:
             # separate by last dimension, flattening all other dimensions
-            # NB: the order of unravelling here is 'F', which is different to numpy's default 'C' method
-            # that is used by the 'flat' iterator
+            # NB: the order of unravelling here is numpy's default 'C' method
+            # the same ordering is used by the 'flat' iterator
             nd = obj.shape[-1]
             ndata = obj[..., 0].size
             # record original shape for later rebuilding
             self.original_shape = obj[..., 0].shape
-            self.data = obj.reshape((ndata, nd), order='F')
+            dim_arrs = []
+            for i in range(nd):
+                dim_arrs.append(obj[..., i].flatten())
+            self.data = np.vstack(dim_arrs).transpose()
 
     def copy(self):
         return self.__class__(self)
@@ -217,7 +220,7 @@ class DataArray(Data):
         if dim > (self.nd - 1):
             raise AttributeError("Requested dim %d but this array has nd %d" % (dim, self.nd))
         if self.original_shape:
-            return self.data[:, dim].reshape(self.original_shape, order='F')
+            return self.data[:, dim].reshape(self.original_shape)
         else:
             return self.data[:, dim].squeeze()
 

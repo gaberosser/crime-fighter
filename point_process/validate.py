@@ -99,7 +99,7 @@ def compute_lineage_matrix(linkage_col):
     return p
 
 
-class SeppValidation(validation.ValidationBase):
+class SeppValidation(validation.ValidationIntegration):
 
     data_class = CartesianSpaceTimeData
 
@@ -116,10 +116,10 @@ class SeppValidation(validation.ValidationBase):
         super(SeppValidation, self).__init__(data, self.pp_class, spatial_domain=spatial_domain, grid_length=grid_length,
                                            cutoff_t=cutoff_t, model_args=model_args, model_kwargs=model_kwargs)
 
-
-    def prediction_array(self, t):
-        ts = np.ones(self.roc.ngrid) * t
-        return self.data_class.from_args(ts, self.centroids[:, 0], self.centroids[:, 1])
+    #
+    # def prediction_array(self, t):
+    #     ts = np.ones(self.roc.ngrid) * t
+    #     return self.data_class.from_args(ts, self.centroids[:, 0], self.centroids[:, 1])
 
     def predict(self, t, **kwargs):
         # estimate total propensity in each grid poly
@@ -361,7 +361,7 @@ if __name__ == "__main__":
         'estimation_function': lambda x, y: estimation.estimator_bowers(x, y, ct=1, cd=10),
         })
 
-    vb.set_grid(3)
+    vb.set_grid(3, n_sample_per_grid=10)
     vb.set_t_cutoff(400, b_train=False)
     res = vb.run(time_step=5, n_iter=5, train_kwargs={'niter': 10}, verbose=True)
 
