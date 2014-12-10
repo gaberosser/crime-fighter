@@ -458,6 +458,8 @@ class SeppStochastic(Sepp):
         p_trig = np.array(self.p[self.linkage].flat)
         return pp_kde.WeightedVariableBandwidthNnKde(self.interpoint_data, weights=p_trig, **self.trigger_kde_kwargs)
 
+    ## TODO: think about adding method for weighted_trigger_density, weighted_trigger_density_in_place, weighted_background_density
+
 
 class SeppStochasticStationaryBg(SeppStochastic):
     """

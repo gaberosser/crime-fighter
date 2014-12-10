@@ -231,7 +231,7 @@ class EqualSplitKernel():
         so if there are cycles then multiple paths to the same point might be found
         '''
 
-        paths = all_paths_source_targets(self.g_aug,eval_node,self.points,cutoff=self.h,weight='length')
+        paths = all_paths_source_targets(self.g_aug, eval_node, self.points, cutoff=self.h, weight='length')
 
         point_paths={k: v for k, v in paths.iteritems() if k!=eval_node}
 
@@ -357,7 +357,7 @@ class EqualSplitKernel():
         return total_value
 
 
-    def evaluate_point(self,point_id):
+    def evaluate_point(self, point_id):
         '''
         Exactly the same as above, but where the evaluation is to be done at an existing
         node (kernel centre).
@@ -438,7 +438,7 @@ if __name__ == '__main__':
 
     #Both evaluation methods
     ## TODO: see comments in evaluate_point for why these differ
-    print TestKernel.evaluate_non_point((closest_edge[1],dist_along[1]))
+    print TestKernel.evaluate_non_point((closest_edge[1], dist_along[1]))
     print TestKernel.evaluate_point('point1')
 
     # define a whole load of points on the network for plotting

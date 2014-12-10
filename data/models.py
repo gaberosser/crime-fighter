@@ -286,7 +286,8 @@ class CartesianData(DataArray):
             )
 
         # otherwise use (slower) generic algorithm
-        res = np.sqrt(np.sum((self - other) ** 2, axis=1))
+        else:
+            res = np.sqrt(np.sum((self - other) ** 2, axis=1))
 
         return DataArray(res)
 
