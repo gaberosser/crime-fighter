@@ -34,7 +34,7 @@ def pairwise_differences_indices(n):
     return idx_i, idx_j
 
 
-def linkages(data_source, max_t, max_d, data_target=None, chunksize=2**16):
+def linkages(data_source, max_t, max_d, data_target=None, chunksize=2**18):
     """
     Compute the indices of datapoints that are within the following tolerances:
     interpoint distance less than max_d

@@ -275,10 +275,10 @@ class CartesianData(DataArray):
         if self.nd == 1:
             res = np.sqrt((self - other) ** 2)
 
-        if self.nd == 2:
+        elif self.nd == 2:
             res = np.sqrt((self[:, 0] - other[:, 0])**2 + (self[:, 1] - other[:, 1])**2)
 
-        if self.nd == 3:
+        elif self.nd == 3:
             res = np.sqrt(
                 (self[:, 0] - other[:, 0])**2
                 + (self[:, 1] - other[:, 1])**2
@@ -287,7 +287,7 @@ class CartesianData(DataArray):
 
         # otherwise use (slower) generic algorithm
         else:
-            res = np.sqrt(np.sum((self - other) ** 2, axis=1))
+            res = np.sqrt(((self - other) ** 2).sumdim().toarray(0))
 
         return DataArray(res)
 

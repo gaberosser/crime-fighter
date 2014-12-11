@@ -339,6 +339,8 @@ class Sepp(SepBase):
         else:
             source_data = self.data
 
+        print "SEPP trigger_density_in_place num source_data = %d" % len(source_data)
+
         link_source, link_target = linkages(source_data, self.max_delta_t, self.max_delta_d, data_target=target_data)
         trigger = sparse.csr_matrix((source_data.ndata, target_data.ndata))
 
@@ -371,7 +373,6 @@ class Sepp(SepBase):
 
         bg = self.background_density(target_data, spatial_only=spatial_bg_only)
         trigger = self.trigger_density_in_place(target_data, source_data=source_data)
-
 
         return bg + trigger
 

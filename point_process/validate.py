@@ -117,34 +117,26 @@ class SeppValidation(validation.ValidationIntegration):
         super(SeppValidation, self).__init__(data, self.pp_class, spatial_domain=spatial_domain, grid_length=grid_length,
                                            cutoff_t=cutoff_t, model_args=model_args, model_kwargs=model_kwargs)
 
-    #
-    # def prediction_array(self, t):
-    #     ts = np.ones(self.roc.ngrid) * t
-    #     return self.data_class.from_args(ts, self.centroids[:, 0], self.centroids[:, 1])
+    def predict_all(self, t):
+        """
+        Carry out all prediction methods at time t.  Doing this in one go means computing linkages only once per call.
+        :param t: Time at which to make the prediction
+        :return: Dictionary, values correspond to the prediction output array, keys describe the method used
+        """
+        target_data = self.prediction_array(t)
+        bg_dynamic = self.model.background_density(target_data, spatial_only=False)
+        bg_static = self.model.background_density(target_data, spatial_only=True)
+        # trigger = self.model.trigger_density_in_place(target_data)
+        ## NB set the new source data here!
+        trigger = self.model.trigger_density_in_place(target_data, source_data=self.training)
 
-    def predict(self, t, **kwargs):
-        # estimate total propensity in each grid poly
-        # use centroid method for speed
-        # background varies in space AND time
-        return self.model.predict(self.prediction_array(t), **kwargs)
-
-    def predict_static(self, t, **kwargs):
-        # use spatial background only
-        return self.model.predict_fixed_background(self.prediction_array(t), **kwargs)
-
-    def predict_bg(self, t, **kwargs):
-        # estimate total propensity in each grid poly based on ONLY the background density
-        # background varies in space AND time
-        return self.model.background_density(self.prediction_array(t), spatial_only=False)
-
-    def predict_bg_static(self, t, **kwargs):
-        # estimate total propensity in each grid poly based on ONLY the background density
-        # use spatial background only
-        return self.model.background_density(self.prediction_array(t), spatial_only=True)
-
-    def predict_trigger(self, t, **kwargs):
-        # estimate total propensity in each grid poly based on ONLY the in-place trigger density
-        return self.model.trigger_density_in_place(self.prediction_array(t), **kwargs)
+        return {
+            'full': bg_dynamic + trigger,
+            'full_static': bg_static + trigger,
+            'bg': bg_dynamic,
+            'bg_static': bg_static,
+            'trigger': trigger,
+        }
 
     def _update(self, time_step, incremental=False, **train_kwargs):
         print "SEPP _update"
@@ -180,27 +172,17 @@ class SeppValidation(validation.ValidationIntegration):
         testing_data = self.testing(dt_plus=true_dt_plus, dt_minus=true_dt_minus)
         self.roc.set_data(testing_data[:, 1:])
 
-        # cycle through the various prediction options and append to results
-        # NB: bg and bg_static will give the same result as the predictions are simply scaled
-        pred_opt = {
-            'full': self.predict,
-            'full_static': self.predict_static,
-            'bg': self.predict_bg,
-            'bg_static': self.predict_bg_static,
-            'trigger': self.predict_trigger,
-        }
         res = {}
 
-        for app, func in pred_opt.items():
-            print "Computing prediction %s" % app
-            tic = time()
-            prediction = func(self.cutoff_t + pred_dt_plus, **kwargs)
-            print "Complete in %f s" % (time() - tic)
-            self.roc.set_prediction(prediction)
+        # cycle through the various prediction options and append to results
+        # NB: bg and bg_static will give the same result as the predictions are simply scaled
+        all_predictions = self.predict_all(self.cutoff_t + pred_dt_plus)
+        for pred_method, pred_values in all_predictions.items():
+            self.roc.set_prediction(pred_values)
             this_res = self.roc.evaluate()
             for k, v in this_res.items():
                 # append to name to maintain uniqueness
-                name = k + '_' + app
+                name = k + '_' + pred_method
                 res[name] = v
 
         # store a copy of the full SEPP model
@@ -239,6 +221,19 @@ class SeppValidation(validation.ValidationIntegration):
 
         return comb_p
 
+    def post_process(self, res):
+        # replace multiple copies of cumulative_crime_max
+        # these are all the same, as they are independent of the prediction
+        methods = ['full', 'full_static', 'bg', 'bg_static', 'trigger']
+        ccm = res['cumulative_crime_max_%s' % methods[0]]
+        for m in methods:
+            del res['cumulative_crime_max_%s' % m]
+        res['cumulative_crime_max'] = ccm
+        # overwrite all models with the first entry since they are all identical - copies are wasteful
+        # maintain a list because this way the repeat_run code is simpler
+        for i in range(len(res['model'])):
+            res['model'][i] = res['model'][0]
+
 
 class SeppValidationFixedModel(SeppValidation):
     """
@@ -248,11 +243,6 @@ class SeppValidationFixedModel(SeppValidation):
     """
 
     def _update(self, time_step, incremental=False, **train_kwargs):
-        print "SEPP _update"
-        # take a copy of P now if needed
-        if incremental:
-            pre_p = self.model.p.copy()
-
         self.set_t_cutoff(self.cutoff_t + time_step, b_train=False)
 
     def _initial_setup(self, **train_kwargs):

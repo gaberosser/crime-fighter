@@ -371,6 +371,24 @@ def jiggle_all_points_on_grid(x, y):
     return np.array(res)
 
 
+def apply_sepp_to_data(data,
+                       max_delta_t,
+                       max_delta_d,
+                       estimation_function,
+                       niter=50,
+                       bg_kde_kwargs=None,
+                       trigger_kde_kwargs=None,
+                       sepp_class=pp_models.SeppStochasticNnReflected,
+                       ):
+    bg_kde_kwargs = bg_kde_kwargs or {}
+    trigger_kde_kwargs = trigger_kde_kwargs or {}
+    r = sepp_class(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
+                   bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs,
+                   estimation_function=estimation_function)
+    r.train(niter=niter)
+    return r
+
+
 def apply_point_process(nicl_type=3,
                         only_new=False,
                         niter=15,
@@ -394,7 +412,7 @@ def apply_point_process(nicl_type=3,
         res, t0 = get_crimes_by_type(nicl_type=nicl_type, only_new=only_new, jiggle_scale=jiggle_scale)
 
     # define initial estimator
-    # est = lambda x, y: estimation.estimator_bowers(x, y, ct=1, cd=0.02)
+    est = lambda x, y: estimation.estimator_bowers(x, y, ct=1, cd=0.02)
 
     if num_nn is not None:
         if len(num_nn) != 2:
@@ -414,14 +432,59 @@ def apply_point_process(nicl_type=3,
         'number_nn': num_nn_trig,
     }
 
+    return apply_sepp_to_data(
+        res,
+        max_delta_t=max_delta_t,
+        max_delta_d=max_delta_d,
+        estimation_function=est,
+        niter=niter,
+        bg_kde_kwargs=bg_kde_kwargs,
+        trigger_kde_kwargs=trigger_kde_kwargs,
+        sepp_class=sepp_class
+    )
+
     # r = sepp_class(data=res, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
     #                             bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
-    r = sepp_class(data=res, max_delta_d=max_delta_d, max_delta_t=max_delta_t)
-    r.p = estimation.estimator_bowers(res, r.linkage, ct=1, cd=0.02)
+    # r = sepp_class(data=res, max_delta_d=max_delta_d, max_delta_t=max_delta_t)
+    # r.p = estimation.estimator_bowers(res, r.linkage, ct=1, cd=0.02)
+    #
+    # # train on all data
+    # ps = r.train(niter=niter, tol_p=tol_p)
+    # return r, ps
 
-    # train on all data
-    ps = r.train(niter=niter, tol_p=tol_p)
-    return r, ps
+
+def apply_sepp_to_tabular_data(table_name):
+    data, t0 = get_crimes_from_dump(table_name)
+    est = lambda x, y: estimation.estimator_bowers(x, y, ct=1, cd=0.02)
+    max_delta_t = 60
+    max_delta_d = 500
+    niter = 50
+    bg_kde_kwargs = {
+        'number_nn': [100, 15],
+    }
+
+    trigger_kde_kwargs = {
+        'min_bandwidth': [0.5, 10, 10],
+        'number_nn': 15,
+    }
+    sepp_class = pp_models.SeppStochasticNnReflected
+
+    # filter data to provide correct quantity for training
+    # data = data[data[:, 0] >= 151.]
+    data = data[data[:, 0] <= 210.]
+
+    r = apply_sepp_to_data(
+        data,
+        max_delta_t=max_delta_t,
+        max_delta_d=max_delta_d,
+        estimation_function=est,
+        niter=niter,
+        bg_kde_kwargs=bg_kde_kwargs,
+        trigger_kde_kwargs=trigger_kde_kwargs,
+        sepp_class=sepp_class
+    )
+
+    return r
 
 
 def validate_point_process(

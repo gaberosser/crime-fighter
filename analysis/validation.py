@@ -4,7 +4,7 @@ import numpy as np
 import math
 import roc
 import collections
-from data.models import DataArray
+from data.models import DataArray, CartesianSpaceTimeData
 from time import time
 import ipdb
 
@@ -21,12 +21,13 @@ def mc_sampler(poly):
 class ValidationBase(object):
 
     roc_class = roc.RocSpatial
-    data_class = DataArray
+    data_class = CartesianSpaceTimeData
 
     def __init__(self, data, model_class, spatial_domain=None, grid_length=None, cutoff_t=None, model_args=None, model_kwargs=None):
         # sort data in increasing time
-        self.data = data
-        self.data = np.array(data)[np.argsort(self.t)]
+        self.data = self.data_class(data)
+        sort_idx = np.argsort(self.data.time.toarray(0))
+        self.data = self.data.getrows(sort_idx)
 
         self.model_args = model_args or []
         self.model_kwargs = model_kwargs or {}
@@ -83,15 +84,15 @@ class ValidationBase(object):
 
     @property
     def ndata(self):
-        return self.data.shape[0]
+        return self.data.ndata
 
     @property
     def t(self):
-        return self.data[:, 0]
+        return self.data.toarray(0)
 
     @property
     def training(self):
-        return self.data[self.t <= self.cutoff_t]
+        return self.data.getrows(self.t <= self.cutoff_t)
 
     def testing(self, dt_plus=None, dt_minus=0., as_point=False):
         """
@@ -104,9 +105,9 @@ class ValidationBase(object):
         bottom = self.cutoff_t + dt_minus
         if dt_plus:
             assert dt_plus >= 0., "dt_plus must be positive"
-            d = self.data[(self.t > bottom) & (self.t <= (self.cutoff_t + dt_plus))]
+            d = self.data.getrows((self.t > bottom) & (self.t <= (self.cutoff_t + dt_plus)))
         else:
-            d = self.data[self.t > bottom]
+            d = self.data.getrows(self.t > bottom)
         if as_point:
             return [(t[0], geos.Point(list(t[1:]))) for t in d]
         else:
@@ -223,7 +224,17 @@ class ValidationBase(object):
             # this breaks the loop, now return res as it stands
             pass
 
+        self.post_process(res)
         return res
+
+    def post_process(self, res):
+        """
+        Called at the very end of the run method with the output.  This is the place to make any final changes if
+        required
+        :param res: output from run method just before this function gets called
+        :return: None - modify in place
+        """
+        pass
 
     def _update(self, time_step, **train_kwargs):
         """

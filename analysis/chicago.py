@@ -218,6 +218,7 @@ def validate_point_process(
         num_validation=20,
         num_pp_iter=20,
         grid=500,
+        n_sample_per_grid=10,
         prediction_dt=1, true_dt_plus=1,
         domain=None,
         model_kwargs=None):
@@ -254,8 +255,8 @@ def validate_point_process(
         end_date=end_date,
         domain=domain,
     )
-    vb = validate.SeppValidation(res, spatial_domain=domain, model_kwargs=model_kwargs)
-    vb.set_grid(grid)
+    vb = validate.SeppValidationFixedModel(res, spatial_domain=domain, model_kwargs=model_kwargs)
+    vb.set_grid(grid, n_sample_per_grid=n_sample_per_grid)
     vb.set_t_cutoff(training_size, b_train=False)
 
     ## TODO: check the number of iterations reported is as expected here

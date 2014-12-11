@@ -10,6 +10,7 @@ from analysis.plotting import plot_surface_on_polygon
 from data.models import CartesianSpaceTimeData, DataArray
 from django.contrib.gis import geos
 import dill
+import collections
 
 
 def plot_t_kde(k, max_t=50):
@@ -358,6 +359,33 @@ def prediction_heatmap(sepp, t, poly=None, kind=None, **kwargs):
         raise AttributeError("Supplied kind %s is not recognised", kind)
 
     return plot_surface_on_polygon(_poly, pred_fun, **kwargs)
+
+
+def validation_multiplot(res):
+    max_coverage = 0.20
+    methods = ['full', 'full_static', 'bg', 'bg_static', 'trigger']
+    methods = collections.OrderedDict([
+        ('full', 'Full'),
+        ('full_static', 'Full model, static background'),
+        ('bg', 'Background only'),
+        ('trigger', 'Trigger only'),
+    ])
+    styles = ['k-', 'k--', 'r-', 'r--']
+
+    x = []
+    cc = []
+    cc_max = 0.
+    for m in methods:
+        x.append(np.mean(res['cumulative_area_%s' % m], axis=0))
+        cc.append(np.mean(res['cumulative_crime_%s' % m], axis=0))
+        cc_max = max(cc_max, cc[-1][x[-1] <= max_coverage].max())
+
+    plt.figure()
+    ax = plt.gca()
+    [ax.plot(x[i], cc[i], styles[i]) for i in range(len(methods))]
+    # import ipdb; ipdb.set_trace()
+    ax.set_xlim([0, max_coverage])
+    ax.set_ylim([0, np.ceil(10 * cc_max) * 0.1])
 
 
 def fluctuation_pre_convergence(res, conv_region=10):
