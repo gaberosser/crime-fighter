@@ -100,7 +100,7 @@ def compute_lineage_matrix(linkage_col):
     return p
 
 
-class SeppValidation(validation.ValidationIntegration):
+class SeppValidation(validation.ValidationBase):
 
     data_class = CartesianSpaceTimeData
 
@@ -235,6 +235,10 @@ class SeppValidation(validation.ValidationIntegration):
             res['model'][i] = res['model'][0]
 
 
+class SeppValidationIntegration(validation.ValidationIntegration, SeppValidation):
+    pass
+
+
 class SeppValidationFixedModel(SeppValidation):
     """
     As for parent class, but model is NOT retrained each time, it is assumed to be correct for the duration of the
@@ -261,6 +265,10 @@ class SeppValidationFixedModel(SeppValidation):
                                                                   true_dt_plus=true_dt_plus,
                                                                   true_dt_minus=true_dt_minus,
                                                                   **kwargs)
+
+
+class SeppValidationFixedModelIntegration(validation.ValidationIntegration, SeppValidationFixedModel):
+    pass
 
 
 class mock_pp_class():
@@ -298,6 +306,10 @@ class SeppValidationPredefinedModel(SeppValidationFixedModel):
         Training NEVER happens
         """
         self.cutoff_t = cutoff_t
+
+
+class SeppValidationPredefinedModelIntegration(validation.ValidationIntegration, SeppValidationPredefinedModel):
+    pass
 
 
 if __name__ == "__main__":

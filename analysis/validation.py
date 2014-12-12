@@ -69,6 +69,7 @@ class ValidationBase(object):
         :param grid: Either a scalar giving the grid square length or an instance of RocSpatial from which the grid
         will be copied
         """
+        print "ValidationBase set_grid"
         if isinstance(grid, self.roc_class):
             self.roc.copy_grid(grid)
         else:
@@ -130,13 +131,11 @@ class ValidationBase(object):
         return self.model.predict(self.prediction_array(t))
 
     def _iterate_run(self, pred_dt_plus, true_dt_plus, true_dt_minus, **kwargs):
+        print "ValidationBase _iterate_run"
         true_dt_plus = true_dt_plus or pred_dt_plus
         # run prediction
         # output should be M x ndata matrix, where M is the number of sample points per grid square
-        print "Computing prediction..."
-        tic = time()
         prediction = self.predict(self.cutoff_t + pred_dt_plus, **kwargs)
-        print "Complete in %f s" % (time() - tic)
         testing_data = self.testing(dt_plus=true_dt_plus, dt_minus=true_dt_minus)
         self.roc.set_data(testing_data[:, 1:])
         self.roc.set_prediction(prediction)
@@ -318,6 +317,7 @@ class ValidationIntegration(ValidationBase):
         :param grid: Either a scalar giving the grid square length or an instance of RocSpatial from which the grid
         will be copied
         """
+        print "ValidationIntegration set_grid"
         if isinstance(grid, self.roc_class):
             self.roc.copy_grid(grid)
         else:

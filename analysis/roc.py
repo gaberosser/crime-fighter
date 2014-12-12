@@ -54,6 +54,8 @@ class RocSpatial(object):
         ])
 
     def set_grid(self, side_length, *args, **kwargs):
+        # reset prediction values
+        self.prediction_values = None
         self.side_length = side_length
         if not self.poly:
             # find minimal bounding rectangle
@@ -64,6 +66,8 @@ class RocSpatial(object):
         self.set_sample_points(*args, **kwargs)
 
     def copy_grid(self, roc):
+        # reset prediction values
+        self.prediction_values = None
         self._intersect_grid = list(roc.igrid)
         self._extent_grid = list(roc.egrid)
         self.centroids = np.array(roc.centroids)
