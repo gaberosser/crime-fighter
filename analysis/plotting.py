@@ -170,7 +170,7 @@ def plot_surface_on_polygon(poly, func, ax=None, dx=None, offset_coords=None, cm
         for y in yu:
             ax.plot([x_min, x_max], np.ones(2) * y, 'w-', alpha=0.3)
 
-    poly_verts = list(poly.coords[0])
+    poly_verts = list(poly.exterior_ring.coords)
     # check handedness of poly
     if is_clockwise(poly):
         poly_verts = poly_verts[::-1]
