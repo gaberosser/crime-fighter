@@ -184,7 +184,7 @@ class TestRoc(unittest.TestCase):
         ])
 
     def test_instantiation(self):
-        r = roc.RocSpatial()
+        r = roc.RocSpatialGrid()
         with self.assertRaises(AttributeError):
             r.ngrid
         with self.assertRaises(AttributeError):
@@ -198,7 +198,7 @@ class TestRoc(unittest.TestCase):
 
     def test_grid_no_poly(self):
         # no spatial domain supplied
-        r = roc.RocSpatial(data=self.udata[:, 1:])
+        r = roc.RocSpatialGrid(data=self.udata[:, 1:])
         r.set_grid(0.1)
         self.assertTupleEqual(r.poly.extent, (
             min(self.udata[:, 1]),
@@ -213,7 +213,7 @@ class TestRoc(unittest.TestCase):
         self.assertEqual(sum(np.array([x.area for x in r.igrid]) > 0.00999), 64) # 8 x 8 centre grid
 
         # different arrangement
-        r = roc.RocSpatial(data=self.data)
+        r = roc.RocSpatialGrid(data=self.data)
         r.set_grid(0.5)
         self.assertEqual(r.ngrid, 6)
         areas = sorted([x.area for x in r.igrid])
@@ -222,14 +222,14 @@ class TestRoc(unittest.TestCase):
             self.assertAlmostEqual(a, ae)
 
     def test_sample_points(self):
-        # RocSpatial
-        r = roc.RocSpatial(data=self.data)
+        # RocSpatialGrid
+        r = roc.RocSpatialGrid(data=self.data)
         r.set_grid(0.05)
         self.assertTrue(np.all(r.sample_points[:, 0] == r.centroids[:, 0]))
         self.assertTrue(np.all(r.sample_points[:, 1] == r.centroids[:, 1]))
 
-        # RocSpatialMonteCarloIntegration
-        r = roc.RocSpatialMonteCarloIntegration(data=self.data)
+        # RocSpatialGridMonteCarloIntegration
+        r = roc.RocSpatialGridMonteCarloIntegration(data=self.data)
         r.set_grid(0.05, 10)  # 10 sample points per grid square
 
         for i in range(r.ngrid):
@@ -240,7 +240,7 @@ class TestRoc(unittest.TestCase):
             self.assertTrue(np.all(r.sample_points.toarray(1)[:, i] < ymax))
 
     def test_true_count(self):
-        r = roc.RocSpatial(data=self.data)
+        r = roc.RocSpatialGrid(data=self.data)
         r.set_grid(0.5)
         tc = r.true_count
         self.assertEqual(len(tc), r.ngrid)
@@ -260,7 +260,7 @@ class TestRoc(unittest.TestCase):
             self.assertEqual(tc[idx], v)
 
     def test_prediction(self):
-        r = roc.RocSpatial(data=self.data)
+        r = roc.RocSpatialGrid(data=self.data)
         r.set_grid(0.5)
         tc = r.true_count
 
@@ -272,7 +272,7 @@ class TestRoc(unittest.TestCase):
         self.assertListEqual(list(r.prediction_rank), range(r.ngrid)[::-1])
 
     def test_evaluate(self):
-        r = roc.RocSpatial(data=self.data)
+        r = roc.RocSpatialGrid(data=self.data)
         r.set_grid(0.5)
         with self.assertRaises(AttributeError):
             res = r.evaluate()
@@ -485,7 +485,7 @@ class TestValidation(unittest.TestCase):
         vb.train_model()
 
         # mock roc object with grid
-        mocroc = mock.create_autospec(roc.RocSpatial)
+        mocroc = mock.create_autospec(roc.RocSpatialGrid)
         mocroc.centroids = np.array([[0., 0.],
                                      [1., 1.]])
         mocroc.egrid = range(2) # needs to have the correct length, contents not used

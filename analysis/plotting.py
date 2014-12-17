@@ -104,8 +104,8 @@ def plot_geodjango_shapes(shapes, ax=None, set_axes=True, **kwargs):
     return res
 
 
-def plot_surface_on_polygon(poly, func, ax=None, dx=None, offset_coords=None, cmap=cm.jet, nlevels=50,
-                            vmin=None, vmax=None, fmax=None, egrid=None, colorbar=False, **kwargs):
+def plot_surface_function_on_polygon(poly, func, ax=None, dx=None, offset_coords=None, cmap=cm.jet, nlevels=50,
+                            vmin=None, vmax=None, fmax=None, colorbar=False, **kwargs):
     """
     :param poly: geos Polygon or Multipolygon defining region
     :param func: function accepting two vectorized input arrays returning the values to be plotted
@@ -113,7 +113,6 @@ def plot_surface_on_polygon(poly, func, ax=None, dx=None, offset_coords=None, cm
     :param offset_coords: iterable giving the (x, y) coordinates of a grid point, default = (0, 0)
     :param cmap: matplotlib cmap to use
     :param nlevels: number of contour colour levels to use
-    :param egrid: egrid member of RocSpatial for plotting.  No grid is plotted if None.
     :param vmin: minimum value to plot. Values below this are left unfilled
     :param vmax: maximum value to assign on colourmap - values beyond this are clipped
     :param fmax: maximum value on CDF at which to clip z values
@@ -160,16 +159,6 @@ def plot_surface_on_polygon(poly, func, ax=None, dx=None, offset_coords=None, cm
     if colorbar:
         plt.colorbar(cont, shrink=0.9)
 
-    # plot grid if required
-    if egrid is not None:
-        egrid = np.array(egrid)
-        xu = np.unique(np.vstack((egrid[:, 0], egrid[:, 2])))
-        yu = np.unique(np.vstack((egrid[:, 1], egrid[:, 3])))
-        for x in xu:
-            ax.plot(np.ones(2) * x, [y_min, y_max], 'w-', alpha=0.3)
-        for y in yu:
-            ax.plot([x_min, x_max], np.ones(2) * y, 'w-', alpha=0.3)
-
     poly_verts = list(poly.exterior_ring.coords)
     # check handedness of poly
     if is_clockwise(poly):
@@ -182,6 +171,72 @@ def plot_surface_on_polygon(poly, func, ax=None, dx=None, offset_coords=None, cm
     plt.draw()
 
     return xx, yy, zz
+
+
+def plot_surface_on_polygon((x, y, z), poly=None, ax=None, cmap=cm.jet, nlevels=50,
+                            vmin=None, vmax=None, fmax=None, colorbar=False, **kwargs):
+    """
+    :param poly: geos Polygon or Multipolygon defining region
+    :param (x, y, z): 2D matrices holding the regularly-spaced x and y coordinates and corresponding z values
+    :param cmap: matplotlib cmap to use
+    :param nlevels: number of contour colour levels to use
+    :param vmin: minimum value to plot. Values below this are left unfilled
+    :param vmax: maximum value to assign on colourmap - values beyond this are clipped
+    :param fmax: maximum value on CDF at which to clip z values
+    :param kwargs: any other kwargs are passed to the plt.contourf call
+    :return:
+    """
+    if poly and isinstance(poly, geos.MultiPolygon):
+        poly = poly.simplify()
+        if not isinstance(poly, geos.Polygon):
+            ## TODO: if this ever becomes an issue, can probably break the multipoly into constituent parts
+            raise AttributeError("Unable to use a multipolygon as a mask")
+
+
+    if fmax and vmax:
+        raise AttributeError("Either specify vmax OR fmax")
+
+    if vmax is None:
+        vmax = np.max(z)
+
+    if vmin is None:
+        vmin = np.min(z)
+
+    if fmax:
+        tmp = sorted(z.flat)
+        cut = int(np.floor(len(tmp) * fmax))
+        vmax = tmp[cut]
+
+    # clip max values to vmax so they still get drawn:
+    z[z > vmax] = vmax
+
+    levels = np.linspace(vmin, vmax, nlevels)
+
+    if not ax:
+        fig = plt.figure()
+        buf = 2e-2
+        ax = fig.add_axes([buf, buf, 1 - 2 * buf, 1 - 2 * buf])
+        ax.axis('equal')
+        ax.axis('off')
+
+    cont = ax.contourf(x, y, z, levels=levels, cmap=cmap, **kwargs)
+
+    if colorbar:
+        plt.colorbar(cont, shrink=0.9)
+
+    if poly:
+        poly_verts = list(poly.exterior_ring.coords)
+        # check handedness of poly
+        if is_clockwise(poly):
+            poly_verts = poly_verts[::-1]
+
+        # mask_outside_polygon(poly_verts, ax=ax)
+        mask_contour(cont, poly_verts, ax=ax, show_clip_path=True)
+        # plot_geodjango_shapes(poly, ax=ax, facecolor='none')
+
+    plt.draw()
+
+    return cont
 
 
 def mask_outside_polygon(poly_verts, ax=None):

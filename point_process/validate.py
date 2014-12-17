@@ -180,10 +180,13 @@ class SeppValidation(validation.ValidationBase):
         for pred_method, pred_values in all_predictions.items():
             self.roc.set_prediction(pred_values)
             this_res = self.roc.evaluate()
-            for k, v in this_res.items():
+            res[pred_method] = this_res
+            res[pred_method]['prediction_values'] = pred_values
+            # for k, v in this_res.items():
                 # append to name to maintain uniqueness
-                name = k + '_' + pred_method
-                res[name] = v
+
+                # name = k + '_' + pred_method
+                # res[name] = v
 
         # store a copy of the full SEPP model
         # this contains p matrix and KDEs, plus data
@@ -222,13 +225,24 @@ class SeppValidation(validation.ValidationBase):
         return comb_p
 
     def post_process(self, res):
-        # replace multiple copies of cumulative_crime_max
-        # these are all the same, as they are independent of the prediction
         methods = ['full', 'full_static', 'bg', 'bg_static', 'trigger']
-        ccm = res['cumulative_crime_max_%s' % methods[0]]
+        # restructure results
+        # only need one copy of cumulative_crime_max
+        # these are all the same, as they are independent of the prediction
+        ccm = res[methods[0]][0]['cumulative_crime_max']
         for m in methods:
-            del res['cumulative_crime_max_%s' % m]
+
+            this_res = {}
+            for k in res[m][0].keys():
+                if k == 'cumulative_crime_max':
+                    pass
+                else:
+                    val = np.array([res[m][i][k] for i in range(len(res[m]))])
+                    this_res[k] = val
+            # overwrite with new restructured results
+            res[m] = this_res
         res['cumulative_crime_max'] = ccm
+
         # overwrite all models with the first entry since they are all identical - copies are wasteful
         # maintain a list because this way the repeat_run code is simpler
         for i in range(len(res['model'])):

@@ -9,7 +9,7 @@ import collections
 import warnings
 
 
-class RocSpatial(object):
+class RocSpatialGrid(object):
 
     def __init__(self, data=None, poly=None):
         self.poly = poly
@@ -53,14 +53,29 @@ class RocSpatial(object):
                 (xmin, ymin),
         ])
 
-    def set_grid(self, side_length, *args, **kwargs):
+    def set_grid(self, length_or_arr, *args, **kwargs):
+        '''
+        Set the ROC grid.
+        :param length_or_arr: Either a scalar, interpreted as the side length of the grid square, OR an array of
+          geos.Polygon or geos.MultiPolygon objects
+        :param args: Passed to set_sample_points
+        :param kwargs: Passed to set_sample_points
+        :return: None
+        '''
         # reset prediction values
         self.prediction_values = None
-        self.side_length = side_length
         if not self.poly:
             # find minimal bounding rectangle
             self.poly = self.generate_bounding_poly()
-        self._intersect_grid, self._extent_grid = create_spatial_grid(self.poly, side_length)
+
+        if hasattr(length_or_arr, '__iter__'):
+            # list of polygons supplied
+            self.side_length = None
+            self._intersect_grid = length_or_arr
+            self._extent_grid = [x.extent for x in length_or_arr]
+        else:
+            self.side_length = length_or_arr
+            self._intersect_grid, self._extent_grid = create_spatial_grid(self.poly, self.side_length)
         self.centroids = np.array([t.centroid.coords for t in self._intersect_grid])
         self.a = np.array([t.area for t in self._intersect_grid])
         self.set_sample_points(*args, **kwargs)
@@ -148,7 +163,7 @@ class RocSpatial(object):
         return res
 
 
-class RocSpatialMonteCarloIntegration(RocSpatial):
+class RocSpatialGridMonteCarloIntegration(RocSpatialGrid):
 
     def set_sample_points(self, n_sample_per_grid):
         """ Generate n_sample_per_grid sample points per grid unit
@@ -186,10 +201,10 @@ class RocSpatialMonteCarloIntegration(RocSpatial):
         self.sample_points = DataArray.from_meshgrid(xres, yres)
 
 
-class WeightedRocSpatial(RocSpatial):
+class WeightedRocSpatialGrid(RocSpatialGrid):
 
     def __init__(self, data=None, poly=None, half_life=1.):
-        super(WeightedRocSpatial, self).__init__(data=data, poly=poly)
+        super(WeightedRocSpatialGrid, self).__init__(data=data, poly=poly)
         self.decay_constant = None
         self.set_decay_constant(half_life)
 

@@ -20,7 +20,7 @@ def mc_sampler(poly):
 
 class ValidationBase(object):
 
-    roc_class = roc.RocSpatial
+    roc_class = roc.RocSpatialGrid
     data_class = CartesianSpaceTimeData
 
     def __init__(self, data, model_class, spatial_domain=None, grid_length=None, cutoff_t=None, model_args=None, model_kwargs=None):
@@ -66,7 +66,7 @@ class ValidationBase(object):
     def set_grid(self, grid):
         """
         Set the domain grid for computing SER etc.
-        :param grid: Either a scalar giving the grid square length or an instance of RocSpatial from which the grid
+        :param grid: Either a scalar giving the grid square length or an instance of RocSpatialGrid from which the grid
         will be copied
         """
         print "ValidationBase set_grid"
@@ -300,7 +300,7 @@ class ValidationBase(object):
 
 
 class WeightedValidation(ValidationBase):
-    ## TODO: implement WeightedRocSpatial - should be a fairly trivial extension
+    ## TODO: implement WeightedRocSpatialGrid - should be a fairly trivial extension
     # -> include ALL test data
     # -> BUT modify the time column to ensure that self.cutoff_t corresponds to 0
     # -> only real change is in def testing()?
@@ -309,12 +309,12 @@ class WeightedValidation(ValidationBase):
 
 class ValidationIntegration(ValidationBase):
 
-    roc_class = roc.RocSpatialMonteCarloIntegration
+    roc_class = roc.RocSpatialGridMonteCarloIntegration
 
     def set_grid(self, grid, n_sample_per_grid=10):
         """
         Set the domain grid for computing SER etc.
-        :param grid: Either a scalar giving the grid square length or an instance of RocSpatial from which the grid
+        :param grid: Either a scalar giving the grid square length or an instance of RocSpatialGrid from which the grid
         will be copied
         """
         print "ValidationIntegration set_grid"

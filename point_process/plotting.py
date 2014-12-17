@@ -6,7 +6,7 @@ import numpy as np
 import datetime
 import os
 from analysis import roc
-from analysis.plotting import plot_surface_on_polygon
+from analysis.plotting import plot_surface_function_on_polygon
 from data.models import CartesianSpaceTimeData, DataArray
 from django.contrib.gis import geos
 import dill
@@ -335,7 +335,7 @@ def prediction_heatmap(sepp, t, poly=None, kind=None, **kwargs):
         _poly = poly.simplify()
     else:
         # use basic bounding rectangle
-        r = roc.RocSpatial(sepp.data[:, 1:])
+        r = roc.RocSpatialGrid(sepp.data[:, 1:])
         _poly = r.generate_bounding_poly()
 
     arr_fun = lambda x, y: txy_to_cartesian_data_array(np.ones_like(x) * t, x, y)
@@ -358,7 +358,7 @@ def prediction_heatmap(sepp, t, poly=None, kind=None, **kwargs):
     else:
         raise AttributeError("Supplied kind %s is not recognised", kind)
 
-    return plot_surface_on_polygon(_poly, pred_fun, **kwargs)
+    return plot_surface_function_on_polygon(_poly, pred_fun, **kwargs)
 
 
 def validation_multiplot(res):
@@ -480,10 +480,10 @@ def fluctuation_at_convergence(res, poly=None):
         fxy_mean = fxy.mean(axis=0)
         return (fxy.ptp(axis=0) / fxy_mean).reshape(xy.original_shape)
 
-    plot_surface_on_polygon(poly, bg_mean_density, colorbar=True)
-    plot_surface_on_polygon(poly, bg_rel_range, colorbar=True)
-    plot_surface_on_polygon(poly, weighted_bg_mean_density, colorbar=True)
-    plot_surface_on_polygon(poly, weighted_bg_rel_range, colorbar=True)
+    plot_surface_function_on_polygon(poly, bg_mean_density, colorbar=True)
+    plot_surface_function_on_polygon(poly, bg_rel_range, colorbar=True)
+    plot_surface_function_on_polygon(poly, weighted_bg_mean_density, colorbar=True)
+    plot_surface_function_on_polygon(poly, weighted_bg_rel_range, colorbar=True)
 
 
 def delta_effect(res, nrow=8, ncol=7):
