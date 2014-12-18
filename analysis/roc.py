@@ -16,6 +16,8 @@ class RocSpatial(object):
         self.side_length = None
         self._intersect_grid = None
         self._extent_grid = None
+        self._full_grid_square = None
+        self._grid_labels = None
         self.centroids = None
         self.sample_points = None
         self.a = None
@@ -60,7 +62,7 @@ class RocSpatial(object):
         if not self.poly:
             # find minimal bounding rectangle
             self.poly = self.generate_bounding_poly()
-        self._intersect_grid, self._extent_grid = create_spatial_grid(self.poly, side_length)
+        self._intersect_grid, self._extent_grid, self._full_grid_square = create_spatial_grid(self.poly, side_length)
         self.centroids = np.array([t.centroid.coords for t in self._intersect_grid])
         self.a = np.array([t.area for t in self._intersect_grid])
         self.set_sample_points(*args, **kwargs)
@@ -70,6 +72,7 @@ class RocSpatial(object):
         self.prediction_values = None
         self._intersect_grid = list(roc.igrid)
         self._extent_grid = list(roc.egrid)
+        self._full_grid_square = list(roc.full_grid_square)
         self.centroids = np.array(roc.centroids)
         self.sample_points = np.array(roc.sample_points)
         self.a = np.array(roc.a)
@@ -95,6 +98,12 @@ class RocSpatial(object):
     def ngrid(self):
         if self._intersect_grid is not None:
             return len(self._intersect_grid)
+        raise AttributeError("Grid has not been computed, run set_grid with grid length")
+
+    @property
+    def full_grid_square(self):
+        if self._full_grid_square is not None:
+            return self._full_grid_square
         raise AttributeError("Grid has not been computed, run set_grid with grid length")
 
     def set_prediction(self, prediction):
@@ -150,7 +159,7 @@ class RocSpatial(object):
 
 class RocSpatialMonteCarloIntegration(RocSpatial):
 
-    def set_sample_points(self, n_sample_per_grid):
+    def set_sample_points(self, n_sample_per_grid, respect_boundary=True, *args, **kwargs):
         """ Generate n_sample_per_grid sample points per grid unit
          Return n_sample_per_grid x self.ndata x 2 array, final dim is x, y """
 
@@ -159,29 +168,19 @@ class RocSpatialMonteCarloIntegration(RocSpatial):
         xres = np.random.rand(n_sample_per_grid, self.ngrid) * self.side_length + xmins
         yres = np.random.rand(n_sample_per_grid, self.ngrid) * self.side_length + ymins
 
-        # TODO: disabled this due to unbelievably slow performance.
-
-        # iterate over grid to check points are within area
-        # max_iter = 5
-        # for i in range(self.ngrid):
-        #     this_grid = self.igrid[i]
-        #     idx = np.where([not this_grid.intersects(geos.Point(x, y)) for x, y in zip(xres[:, i], yres[:, i])])[0]
-        #     niter = 1
-        #     while len(idx):
-        #         xres[idx, i] = np.random.rand(len(idx)) * self.side_length + xmins[i]
-        #         yres[idx, i] = np.random.rand(len(idx)) * self.side_length + ymins[i]
-        #         new_idx = []
-        #         for x, y in zip(xres[idx, i], yres[idx, i]):
-        #             try:
-        #                 new_idx.append(not this_grid.intersects(geos.Point(x, y)))
-        #             except Exception:
-        #                 import ipdb; ipdb.set_trace()
-        #         idx = idx[new_idx]
-        #         # idx = idx[np.where([not this_grid.intersects(geos.Point(x, y)) for x, y in zip(xres[idx, i], yres[idx, i])])]
-        #         niter += 1
-        #         if niter > self.max_iter:
-        #             warnings.warn('Reached maximum number of iterations and some points are still outside the grid')
-        #             continue
+        if respect_boundary:
+            # loop over grid squares that are incomplete
+            # import ipdb; ipdb.set_trace()
+            for i in np.where(np.array(self.full_grid_square) == False)[0]:
+                inside_idx = np.array([geos.Point(x, y).within(self.poly) for x, y in zip(xres[:, i], yres[:, i])])
+                # pad empty parts with repeats of the centroid location
+                num_empty = n_sample_per_grid - sum(inside_idx)
+                if num_empty:
+                    cx, cy = self.centroids[i]
+                    rem_x = np.concatenate((xres[inside_idx, i], cx * np.ones(num_empty)))
+                    rem_y = np.concatenate((yres[inside_idx, i], cy * np.ones(num_empty)))
+                    xres[:, i] = rem_x
+                    yres[:, i] = rem_y
 
         self.sample_points = DataArray.from_meshgrid(xres, yres)
 

@@ -55,6 +55,7 @@ r = models.SeppStochasticNn(data=training_data, **model_kwargs)
 r.train(niter=niter)
 
 # centroid method
+
 vb_centroid = {}
 res_centroid = {}
 
@@ -83,6 +84,8 @@ params = [
     (250, 50)
 ]
 
+# sample point method without edge correction
+
 vb_sample_points = {}
 res_sample_points = {}
 
@@ -91,10 +94,21 @@ for t in params:
                                                            model=r,
                                                            spatial_domain=south,
                                                            cutoff_t=120)
-    vb_sample_points[t].set_grid(*t)
+    vb_sample_points[t].set_grid(t[0], t[1], respect_boundary=False)
     res_sample_points[t] = vb_sample_points[t].run(time_step=1, n_iter=30, verbose=True)
 
+# sample point method with edge correction
 
+vb_sample_points_ec = {}
+res_sample_points_ec = {}
+
+for t in params:
+    vb_sample_points_ec[t] = validate.SeppValidationPredefinedModelIntegration(data=res,
+                                                           model=r,
+                                                           spatial_domain=south,
+                                                           cutoff_t=120)
+    vb_sample_points_ec[t].set_grid(t[0], t[1], respect_boundary=True)
+    res_sample_points_ec[t] = vb_sample_points_ec[t].run(time_step=1, n_iter=30, verbose=True)
 
 
 """
