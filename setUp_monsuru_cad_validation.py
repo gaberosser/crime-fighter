@@ -1,6 +1,7 @@
 __author__ = 'gabriel'
 from analysis import cad
 from point_process import models, estimation, validate
+from database import models
 import datetime
 
 # start_date is the FIRST DAY OF THE PREDICTION
@@ -22,7 +23,7 @@ niter = 50
 poly = cad.get_camden_region()
 
 # load grid and create ROC for use in predictions
-## TODO!
+grid_squares = [t.mpoly[0] for t in models.Division.objects.filter(type='monsuru_250m_grid')]
 
 num_validation = 100
 

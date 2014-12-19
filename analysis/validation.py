@@ -63,7 +63,7 @@ class ValidationBase(object):
         if b_train:
             self.train_model(**kwargs)
 
-    def set_grid(self, grid):
+    def set_grid(self, grid, *args, **kwargs):
         """
         Set the domain grid for computing SER etc.
         :param grid: Either a scalar giving the grid square length or an instance of RocSpatialGrid from which the grid
@@ -73,7 +73,7 @@ class ValidationBase(object):
         if isinstance(grid, self.roc_class):
             self.roc.copy_grid(grid)
         else:
-            self.roc.set_grid(grid)
+            self.roc.set_grid(grid, *args, **kwargs)
 
     @property
     def spatial_domain(self):
@@ -311,17 +311,6 @@ class ValidationIntegration(ValidationBase):
 
     roc_class = roc.RocSpatialGridMonteCarloIntegration
 
-    def set_grid(self, grid, n_sample_per_grid=10):
-        """
-        Set the domain grid for computing SER etc.
-        :param grid: Either a scalar giving the grid square length or an instance of RocSpatialGrid from which the grid
-        will be copied
-        """
-        print "ValidationIntegration set_grid"
-        if isinstance(grid, self.roc_class):
-            self.roc.copy_grid(grid)
-        else:
-            self.roc.set_grid(grid, n_sample_per_grid)
 
 if __name__ == "__main__":
     from database import logic, models

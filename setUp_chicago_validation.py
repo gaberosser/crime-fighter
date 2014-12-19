@@ -134,6 +134,8 @@ centroids500 = vb_centroid[500].roc.sample_points
 centroids250 = vb_centroid[250].roc.sample_points
 sp500_10 = vb_sample_points[(500, 10)].roc.sample_points
 sp500_50 = vb_sample_points[(500, 50)].roc.sample_points
+sp500_10_ec = vb_sample_points_ec[(500, 10)].roc.sample_points
+sp500_50_ec = vb_sample_points_ec[(500, 50)].roc.sample_points
 
 fig_size = (12.6,  14.5)
 zoom_fig_size = (9.81333333,  9.66666667)
@@ -191,10 +193,19 @@ plt.savefig('full_static_t121_grid500_spoint50_zoom.png')
 zoom_out()
 [x.set_visible('off') for x in pts]
 
+pts = plt.plot(sp500_10_ec.getdim(0), sp500_10_ec.getdim(1), 'o', color='k', markerfacecolor='w', alpha=0.4, lw=1.5)
+plt.savefig('full_static_t121_grid500_spoint50_ec.png')
+zoom_in()
+plt.savefig('full_static_t121_grid500_spoint50_ec_zoom.png')
+zoom_out()
+[x.set_visible('off') for x in pts]
+
 # show order of grid square selection
 idx_centroid500 = res_centroid[500]['full_static']['prediction_rank'][0]
 idx_sp500_10 = res_sample_points[(500, 10)]['full_static']['prediction_rank'][0]
 idx_sp500_50 = res_sample_points[(500, 50)]['full_static']['prediction_rank'][0]
+idx_sp500_10_ec = res_sample_points_ec[(500, 10)]['full_static']['prediction_rank'][0]
+idx_sp500_50_ec = res_sample_points_ec[(500, 50)]['full_static']['prediction_rank'][0]
 
 plt.close('all')
 plotting.plot_surface_on_polygon((xs, ys, zs), poly=south, fmax=0.99)
@@ -219,3 +230,19 @@ zoom_out()
 for n in range(75):
     plotting.plot_geodjango_shapes(vb_sample_points[(500, 50)].roc.igrid[idx_sp500_50[n]], facecolor='w', hatch='\\', edgecolor='none', alpha=0.6, set_axes=False)
     plt.savefig('full_static_t121_grid500_spoint50_%02dpred.png' % (n+1))
+
+plt.close('all')
+plotting.plot_surface_on_polygon((xs, ys, zs), poly=south, fmax=0.99)
+plotting.plot_geodjango_shapes(vb_centroid[500].roc.igrid, facecolor='none', ax=plt.gca(), alpha=0.3, lw=2, set_axes=False)
+zoom_out()
+for n in range(75):
+    plotting.plot_geodjango_shapes(vb_sample_points_ec[(500, 10)].roc.igrid[idx_sp500_10_ec[n]], facecolor='w', hatch='\\', edgecolor='none', alpha=0.6, set_axes=False)
+    plt.savefig('full_static_t121_grid500_spoint10_ec_%02dpred.png' % (n+1))
+
+plt.close('all')
+plotting.plot_surface_on_polygon((xs, ys, zs), poly=south, fmax=0.99)
+plotting.plot_geodjango_shapes(vb_centroid[500].roc.igrid, facecolor='none', ax=plt.gca(), alpha=0.3, lw=2, set_axes=False)
+zoom_out()
+for n in range(75):
+    plotting.plot_geodjango_shapes(vb_sample_points_ec[(500, 50)].roc.igrid[idx_sp500_50_ec[n]], facecolor='w', hatch='\\', edgecolor='none', alpha=0.6, set_axes=False)
+    plt.savefig('full_static_t121_grid500_spoint50_ec_%02dpred.png' % (n+1))
