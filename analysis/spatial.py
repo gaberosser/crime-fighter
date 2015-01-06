@@ -53,7 +53,7 @@ def create_spatial_grid(spatial_domain, grid_length, offset_coords=None):
                 intersect_polys.append(p)
                 full_extents.append(p.extent)
                 full_grid_square.append(True)
-            if spatial_domain.intersects(p):
+            elif spatial_domain.intersects(p):
                 intersect_polys.append(spatial_domain.intersection(p))
                 full_extents.append(p.extent)
                 full_grid_square.append(False)

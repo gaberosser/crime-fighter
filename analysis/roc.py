@@ -155,8 +155,9 @@ class RocSpatialGrid(object):
         total_area = sum(area)
 
         N = sum(true_counts)
+        n = np.cumsum(true_counts)
         carea = np.cumsum(area) / total_area
-        cfrac = np.cumsum(true_counts) / float(N)
+        cfrac = n / float(N)
         cfrac_max = np.cumsum(true_counts_sorted) / float(N)
         pai = cfrac * (total_area / np.cumsum(area))
 
@@ -165,6 +166,7 @@ class RocSpatialGrid(object):
             'prediction_values': pred_values,
             'cumulative_area': carea,
             'cumulative_crime': cfrac,
+            'cumulative_crime_count': n,
             'cumulative_crime_max': cfrac_max,
             'pai': pai,
         }

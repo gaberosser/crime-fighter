@@ -476,14 +476,24 @@ class VariableBandwidthNnKde(VariableBandwidthKde):
         if self.nn < 1:
             raise AttributeError("The number of nearest neighbours for variable KDE must be >=1")
 
+        # toggle controlling whether too little data for supplied NN results in an error or a silent change of NN
+        self.strict = kwargs.pop('strict', True)
+
         self.nn_distances = []
-        super(VariableBandwidthNnKde, self).__init__(data, *args, **kwargs)
 
         # check requested number NN if supplied.
-        if (self.nn is not None) and (self.nn > self.ndata):
-            warnings.warn("Requested number of NNs (%d) is too large for the size of the dataset (%d)"
-                                 % (self.nn, self.ndata))
-            self.nn = self.ndata
+        # NB cannot use self.ndata as data are not set yet
+        ndata = len(data)
+        if self.nn > (ndata - 1):
+            msg = "Requested number of NNs (%d) is too large for the size of the dataset (%d)" % (self.nn, ndata)
+            if self.strict:
+                raise AttributeError(msg)
+            else:
+                warnings.warn(msg)
+                print msg
+                self.nn = ndata - 1
+
+        super(VariableBandwidthNnKde, self).__init__(data, *args, **kwargs)
 
     def set_bandwidths(self, *args, **kwargs):
         # check number of datapoints > 1
@@ -605,18 +615,28 @@ class VariableBandwidthNnKdeSeparable(FixedBandwidthKde, KdeBaseSeparable):
         self.nn_distances_t = []
         self.nn_distances_s = []
 
-        super(VariableBandwidthNnKdeSeparable, self).__init__(data, *args, **kwargs)
+        # toggle controlling whether too little data for supplied NN results in an error or a silent change of NN
+        self.strict = kwargs.pop('strict', True)
 
         if len(self.nn) != 2:
             raise AttributeError("Separable KDE accepts TWO nearest neighbour numbers")
 
-        for n in self.nn:
+        # check that supplied dataset is sufficiently large to support the requested num_nn
+        # NB cannot use self.ndata as data are not set yet
+        ndata = len(data)
+        for i, n in enumerate(self.nn):
             if n < 1:
                 raise AttributeError("The number of nearest neighbours for variable KDE must be >=1")
-            if n > (self.ndata - 1):
-                raise AttributeError(
-                    "Requested number of NNs (%d) is too large for the size of the dataset (%d)" % (n, self.ndata)
-                )
+            if n > (ndata - 1):
+                msg = "Requested number of NNs (%d) is too large for the size of the dataset (%d)" % (n, ndata)
+                if self.strict:
+                    raise AttributeError(msg)
+                else:
+                    warnings.warn(msg)
+                    print msg
+                    self.nn[i] = ndata - 1
+
+        super(VariableBandwidthNnKdeSeparable, self).__init__(data, *args, **kwargs)
 
     def set_bandwidths(self, *args, **kwargs):
         # set bandwidths separately in the separable dimensions

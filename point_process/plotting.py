@@ -361,8 +361,7 @@ def prediction_heatmap(sepp, t, poly=None, kind=None, **kwargs):
     return plot_surface_function_on_polygon(_poly, pred_fun, **kwargs)
 
 
-def validation_multiplot(res):
-    max_coverage = 0.20
+def validation_multiplot(res, max_coverage=0.2, show_legend=True, legend_loc='upper left'):
     methods = ['full', 'full_static', 'bg', 'bg_static', 'trigger']
     methods = collections.OrderedDict([
         ('full', 'Full'),
@@ -376,16 +375,25 @@ def validation_multiplot(res):
     cc = []
     cc_max = 0.
     for m in methods:
-        x.append(np.mean(res['cumulative_area_%s' % m], axis=0))
-        cc.append(np.mean(res['cumulative_crime_%s' % m], axis=0))
+        x.append(np.mean(res[m]['cumulative_area'], axis=0))
+        # cumulative crime
+        # remove any nan entries, which indicate that NO crimes occurred on that day
+        cc.append(np.nanmean(res[m]['cumulative_crime'], axis=0))
         cc_max = max(cc_max, cc[-1][x[-1] <= max_coverage].max())
 
     plt.figure()
     ax = plt.gca()
     [ax.plot(x[i], cc[i], styles[i]) for i in range(len(methods))]
-    # import ipdb; ipdb.set_trace()
     ax.set_xlim([0, max_coverage])
     ax.set_ylim([0, np.ceil(10 * cc_max) * 0.1])
+
+    if show_legend:
+        plt.legend((
+            'Full',
+            'Full static',
+            'B/G',
+            'Trigger',
+        ), loc=legend_loc)
 
 
 def fluctuation_pre_convergence(res, conv_region=10):
