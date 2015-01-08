@@ -23,11 +23,21 @@ class ValidationBase(object):
     roc_class = roc.RocSpatialGrid
     data_class = CartesianSpaceTimeData
 
-    def __init__(self, data, model_class, spatial_domain=None, grid_length=None, cutoff_t=None, model_args=None, model_kwargs=None):
+    def __init__(self, data, model_class,
+                 data_index=None,
+                 spatial_domain=None,
+                 grid_length=None,
+                 cutoff_t=None,
+                 model_args=None,
+                 model_kwargs=None):
         # sort data in increasing time
         self.data = self.data_class(data)
         sort_idx = np.argsort(self.data.time.toarray(0))
         self.data = self.data.getrows(sort_idx)
+        self.data_index = data_index
+        if data_index is not None:
+            self.data_index = np.array(data_index)
+            self.data_index = self.data_index[sort_idx]
 
         self.model_args = model_args or []
         self.model_kwargs = model_kwargs or {}
@@ -49,7 +59,7 @@ class ValidationBase(object):
         # set roc
         self.roc = self.roc_class(poly=poly)
         # set roc with ALL data initially
-        self.roc.set_data(self.data[:, 1:])
+        self.roc.set_data(self.data[:, 1:], index=self.data_index)
 
 
     def set_t_cutoff(self, cutoff_t, b_train=True, **kwargs):
@@ -95,6 +105,24 @@ class ValidationBase(object):
     def training(self):
         return self.data.getrows(self.t <= self.cutoff_t)
 
+    def _testing_idx(self, dt_plus=None, dt_minus=0., as_point=False):
+        """
+        :param dt_plus: Number of time units ahead of cutoff_t to take as maximum testing data.  If None, take ALL data.
+        :param dt_minus: Number of time units ahead of cutoff_t to take as minimum testing data.  Defaults to 0.
+        :param as_point: If True, return N length list of (time, geos.Point) tuples, else return N x 3 matrix
+        :return: Indices corresponding to the testing data, so that testing data can be extracted as
+                 self.data[indices]
+        """
+        assert dt_minus >= 0., "dt_minus must be positive"
+        bottom = self.cutoff_t + dt_minus
+        if dt_plus:
+            assert dt_plus >= 0., "dt_plus must be positive"
+            ind = (self.t > bottom) & (self.t <= (self.cutoff_t + dt_plus))
+        else:
+            ind = self.t > bottom
+
+        return np.where(ind)[0]
+
     def testing(self, dt_plus=None, dt_minus=0., as_point=False):
         """
         :param dt_plus: Number of time units ahead of cutoff_t to take as maximum testing data.  If None, take ALL data.
@@ -102,17 +130,26 @@ class ValidationBase(object):
         :param as_point: If True, return N length list of (time, geos.Point) tuples, else return N x 3 matrix
         :return: Testing data for comparison with predictions, based on value of cutoff_t.
         """
-        assert dt_minus >= 0., "dt_minus must be positive"
-        bottom = self.cutoff_t + dt_minus
-        if dt_plus:
-            assert dt_plus >= 0., "dt_plus must be positive"
-            d = self.data.getrows((self.t > bottom) & (self.t <= (self.cutoff_t + dt_plus)))
-        else:
-            d = self.data.getrows(self.t > bottom)
+        ind = self._testing_idx(dt_plus, dt_minus, as_point)
+        d = self.data.getrows(ind)
         if as_point:
             return [(t[0], geos.Point(list(t[1:]))) for t in d]
         else:
             return d
+
+    def testing_data_index(self, dt_plus=None, dt_minus=0., as_point=False):
+        """
+        :param dt_plus: Number of time units ahead of cutoff_t to take as maximum testing data.  If None, take ALL data.
+        :param dt_minus: Number of time units ahead of cutoff_t to take as minimum testing data.  Defaults to 0.
+        :param as_point: If True, return N length list of (time, geos.Point) tuples, else return N x 3 matrix
+        :return: The data indices attached to the testing data.  If data_index has not been set, return the lookup
+        indices instead.
+        """
+        ind = self._testing_idx(dt_plus, dt_minus, as_point)
+        if self.data_index is not None:
+            return self.data_index[ind]
+        else:
+            return ind
 
     def train_model(self, *args, **kwargs):
         """ Train the predictor on training data """
@@ -137,7 +174,8 @@ class ValidationBase(object):
         # output should be M x ndata matrix, where M is the number of sample points per grid square
         prediction = self.predict(self.cutoff_t + pred_dt_plus, **kwargs)
         testing_data = self.testing(dt_plus=true_dt_plus, dt_minus=true_dt_minus)
-        self.roc.set_data(testing_data[:, 1:])
+        testing_ind = self.testing_data_index(dt_plus=true_dt_plus, dt_minus=true_dt_minus)
+        self.roc.set_data(testing_data[:, 1:], index=testing_ind)
         self.roc.set_prediction(prediction)
 
         return self.roc.evaluate()

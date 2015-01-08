@@ -70,13 +70,14 @@ def get_crimes_by_type(nicl_type=3, only_new=False, jiggle_scale=None, start_dat
 
 def get_crimes_from_dump(table_name):
     cur = connection.cursor()
-    cur.execute("""SELECT inc_date, ST_X(location), ST_Y(location) FROM %s ORDER BY inc_date;""" % table_name)
+    cur.execute("""SELECT inc_date, ST_X(location), ST_Y(location), id FROM %s ORDER BY inc_date;""" % table_name)
     res = cur.cursor.fetchall()
     t0 = res[0][0]
     t = [(r[0] - t0).total_seconds() / (24 * 60 * 60) for r in res]
     x = [r[1] for r in res]
     y = [r[2] for r in res]
-    return np.vstack((t, x, y)).transpose(), t0
+    i = [r[3] for r in res]
+    return np.vstack((t, x, y)).transpose(), t0, i
 
 
 def dump_crimes_to_table(table_name,
@@ -85,6 +86,10 @@ def dump_crimes_to_table(table_name,
                          jiggle_scale=None,
                          start_date=None,
                          end_date=None):
+    """
+    Extract crimes from the Django table and dump to a standalone table, with the same schema as that used for MA's data.
+    NB the ID column has no meaning here, it's just autoincremented, so this cannot be compared with MA's data.
+    """
     def parse_date(t, t0):
         dt = t0 + datetime.timedelta(days=t)
         return dt.strftime('%Y-%m-%d %H:%M:%S')

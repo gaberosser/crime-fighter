@@ -673,7 +673,7 @@ def import_monsuru_cad_data():
         'monsuru_cad_violence': 'Violence',
         'monsuru_cad_shoplifting': 'Shoplifting',
     }
-    create_sql = """CREATE TABLE {0} (id SERIAL PRIMARY KEY, inc_date DATE);
+    create_sql = """CREATE TABLE {0} (id INTEGER PRIMARY KEY, inc_date DATE);
                     SELECT AddGeometryColumn('{0}', 'location', 27700, 'POINT', 2);"""
     pt_from_text_sql = """ST_GeomFromText('POINT(%f %f)', 27700)"""
 
@@ -685,16 +685,21 @@ def import_monsuru_cad_data():
             print repr(exc)
             pass
         # CREATE
+        print "Create table %s..." % t
         cur.execute(create_sql.format(t))
+        print "Done."
         # POPULATE
         fin = os.path.join(DATADIR, v)
         s = shapefile.Reader(fin)
+        sn1_idx = [zz[0].lower() for zz in s.fields].index('sn1') - 1  # first field entry doesn't actually show up
+        print "Populating table %s..." % t
         for x in s.shapeRecords():
             # import ipdb; ipdb.set_trace()
-            insert_sql = """INSERT INTO {0} (inc_date, location) VALUES ('{1}', {2});""".format(
+            insert_sql = """INSERT INTO {0} (id, inc_date, location) VALUES ({1}, '{2}', {3});""".format(
                 t,
+                x.record[sn1_idx],
                 date_parser(x.record[2]).strftime('%Y-%m-%d'),
                 pt_from_text_sql % (x.shape.points[0][0], x.shape.points[0][1])
             )
             cur.execute(insert_sql)
-
+        print "Done."

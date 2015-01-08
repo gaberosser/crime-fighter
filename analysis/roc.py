@@ -11,7 +11,7 @@ import warnings
 
 class RocSpatialGrid(object):
 
-    def __init__(self, data=None, poly=None):
+    def __init__(self, data=None, poly=None, data_index=None):
         self.poly = poly
         self.side_length = None
         self._intersect_grid = None
@@ -23,7 +23,8 @@ class RocSpatialGrid(object):
         self.a = None
         self.prediction_values = None
         self._data = None
-        self.set_data(data)
+        self.index = None
+        self.set_data(data, index=data_index)
 
     @property
     def data(self):
@@ -36,12 +37,16 @@ class RocSpatialGrid(object):
         return self.data.ndata
         # return len(self.data)
 
-    def set_data(self, data):
+    def set_data(self, data, index=None):
         if data is not None:
             data = DataArray(data)
             if data.nd != 2:
                 raise AttributeError("Data must be a 2D array")
         self._data = data
+        if index is not None:
+            if len(index) != data.ndata:
+                raise AttributeError("Length of index vector must match number of input data")
+        self.index = index
 
     def generate_bounding_poly(self):
         # called when no polygon is provided, computes the bounding rectangle for the data
@@ -145,10 +150,34 @@ class RocSpatialGrid(object):
             ))
         return np.array(n)
 
+    @property
+    def true_grid_index(self):
+        """
+        Return the crime indices in each grid square.
+        The index is self.index if it exists, otherwise just a plain lookup index.
+        """
+        indices = []
+        for xmin, ymin, xmax, ymax in self.egrid:
+            this_idx = (
+                (self.data[:, 0] >= xmin)
+                & (self.data[:, 0] < xmax)
+                & (self.data[:, 1] >= ymin)
+                & (self.data[:, 1] < ymax)
+            )
+            if not np.any(this_idx):
+                indices.append(None)
+            elif self.index is not None:
+                indices.append(self.index[this_idx])
+            else:
+                indices.append(np.where(this_idx)[0])
+        return indices
+
     def evaluate(self):
 
         # count actual crimes in testing dataset on same grid
-        true_counts = self.true_count[self.prediction_rank]
+        true_grid_ind = np.array(self.true_grid_index)[self.prediction_rank]
+        true_counts = np.array([(t.size if t is not None else 0) for t in true_grid_ind])
+        # true_counts = self.true_count[self.prediction_rank]
         true_counts_sorted = np.sort(self.true_count)[::-1]
         pred_values = self.prediction_values[self.prediction_rank]
         area = self.a[self.prediction_rank]
@@ -169,6 +198,7 @@ class RocSpatialGrid(object):
             'cumulative_crime_count': n,
             'cumulative_crime_max': cfrac_max,
             'pai': pai,
+            'ranked_crime_id': true_grid_ind,
         }
 
         return res

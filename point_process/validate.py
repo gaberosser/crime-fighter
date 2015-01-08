@@ -106,16 +106,18 @@ class SeppValidation(validation.ValidationBase):
 
     def __init__(self,
                  data,
-                 spatial_domain=None,
-                 grid_length=None,
-                 cutoff_t=None,
-                 model_args=None,
-                 model_kwargs=None,
-                 pp_class=models.SeppStochasticNn):
+                 # spatial_domain=None,
+                 # grid_length=None,
+                 # cutoff_t=None,
+                 # model_args=None,
+                 # model_kwargs=None,
+                 pp_class=models.SeppStochasticNn,
+                 **kwargs):
         """ Thin wrapper for parent's init method, but pp model class is set """
         self.pp_class = pp_class or models.SeppStochasticNn
-        super(SeppValidation, self).__init__(data, self.pp_class, spatial_domain=spatial_domain, grid_length=grid_length,
-                                           cutoff_t=cutoff_t, model_args=model_args, model_kwargs=model_kwargs)
+        super(SeppValidation, self).__init__(data, self.pp_class, **kwargs)
+        # super(SeppValidation, self).__init__(data, self.pp_class, spatial_domain=spatial_domain, grid_length=grid_length,
+        #                                    cutoff_t=cutoff_t, model_args=model_args, model_kwargs=model_kwargs)
 
     def predict_all(self, t):
         """
@@ -170,7 +172,8 @@ class SeppValidation(validation.ValidationBase):
 
         true_dt_plus = true_dt_plus or pred_dt_plus
         testing_data = self.testing(dt_plus=true_dt_plus, dt_minus=true_dt_minus)
-        self.roc.set_data(testing_data[:, 1:])
+        testing_ind = self.testing_data_index(dt_plus=true_dt_plus, dt_minus=true_dt_minus)
+        self.roc.set_data(testing_data[:, 1:], index=testing_ind)
 
         res = {}
 
@@ -294,17 +297,22 @@ class SeppValidationPredefinedModel(SeppValidationFixedModel):
     def __init__(self,
                  data,
                  model,
-                 spatial_domain=None,
-                 grid_length=None,
-                 cutoff_t=None):
+                 # spatial_domain=None,
+                 # grid_length=None,
+                 # cutoff_t=None,
+                 **kwargs):
         # pass a mock model to parent constructor
         pp_class = mock_pp_class
+        # super(SeppValidationPredefinedModel, self).__init__(
+        #     data,
+        #     spatial_domain=spatial_domain,
+        #     grid_length=grid_length,
+        #     cutoff_t=cutoff_t,
+        #     pp_class=pp_class)
         super(SeppValidationPredefinedModel, self).__init__(
             data,
-            spatial_domain=spatial_domain,
-            grid_length=grid_length,
-            cutoff_t=cutoff_t,
-            pp_class=pp_class)
+            pp_class=pp_class,
+            **kwargs)
         self.pp_class = model.__class__
         self.model = model
 
