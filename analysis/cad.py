@@ -36,16 +36,16 @@ def unix_time(dt):
 
 
 def get_crimes_by_type(nicl_type=3, only_new=False, jiggle_scale=None, start_date=None,
-                       end_date=None):
+                       end_date=None, spatial_domain=None):
     # Get CAD crimes by NICL type
     # data are de-duped, then processed into a (t, x, y) numpy array
     # times are in units of days, relative to t0
 
     if hasattr(nicl_type, '__iter__'):
         qset = []
-        [qset.extend(logic.clean_dedupe_cad(nicl_type=t, only_new=only_new)) for t in nicl_type]
+        [qset.extend(logic.clean_dedupe_cad(nicl_type=t, only_new=only_new, spatial_domain=spatial_domain)) for t in nicl_type]
     else:
-        qset = logic.clean_dedupe_cad(nicl_type=nicl_type, only_new=only_new)
+        qset = logic.clean_dedupe_cad(nicl_type=nicl_type, only_new=only_new, spatial_domain=spatial_domain)
 
     if start_date:
         start_date = start_date.replace(tzinfo=pytz.utc)
@@ -62,10 +62,15 @@ def get_crimes_by_type(nicl_type=3, only_new=False, jiggle_scale=None, start_dat
         xy = jiggle_on_and_off_grid_points(xy[:, 0], xy[:, 1], scale=jiggle_scale)
 
     res = np.hstack((t, xy))
-    # sort data
-    res = res[np.argsort(res[:, 0])]
 
-    return res, t0
+    # sort data
+    sort_idx = np.argsort(res[:, 0])
+    res = res[sort_idx]
+
+    # indices
+    cid = np.array([x.id for x in qset])[sort_idx]
+
+    return res, t0, cid
 
 
 def get_crimes_from_dump(table_name):
@@ -95,7 +100,7 @@ def dump_crimes_to_table(table_name,
         return dt.strftime('%Y-%m-%d %H:%M:%S')
 
     cur = connection.cursor()
-    res, t0 = get_crimes_by_type(nicl_type=nicl_type,
+    res, t0, cid = get_crimes_by_type(nicl_type=nicl_type,
                                  only_new=only_new,
                                  jiggle_scale=jiggle_scale,
                                  start_date=start_date,
@@ -111,9 +116,11 @@ def dump_crimes_to_table(table_name,
     cur.execute(create_sql)
 
     pt_from_text_sql = """ST_GeomFromText('POINT(%f %f)', 27700)"""
-    for x in res:
-        insert_sql = """INSERT INTO {0} (inc_datetime, location) VALUES ('{1}', {2});""".format(
+    for i in range(len(res)):
+        x = res[i]
+        insert_sql = """INSERT INTO {0} (id, inc_datetime, location) VALUES ({1}, '{2}', {3});""".format(
             table_name,
+            cid[i],
             parse_date(x[0], t0),
             pt_from_text_sql % (x[1], x[2])
         )
@@ -414,7 +421,7 @@ def apply_point_process(nicl_type=3,
     if data is not None:
         res = data
     else:
-        res, t0 = get_crimes_by_type(nicl_type=nicl_type, only_new=only_new, jiggle_scale=jiggle_scale)
+        res, t0, cid = get_crimes_by_type(nicl_type=nicl_type, only_new=only_new, jiggle_scale=jiggle_scale)
 
     # define initial estimator
     est = lambda x, y: estimation.estimator_bowers(x, y, ct=1, cd=0.02)
@@ -505,7 +512,7 @@ def validate_point_process(
         ):
 
     # get data
-    res, t0 = get_crimes_by_type(nicl_type=nicl_type, only_new=True, jiggle_scale=jiggle, start_date=start_date)
+    res, t0, cid = get_crimes_by_type(nicl_type=nicl_type, only_new=True, jiggle_scale=jiggle, start_date=start_date)
 
     # find end_date in days from t0
     end_days = (end_date - t0).total_seconds() / SEC_IN_DAY
@@ -548,7 +555,7 @@ def validate_historic_kde(
         raise AttributeError("Specified 'kind' argument not recognised")
 
     # get data
-    res, t0 = get_crimes_by_type(nicl_type=nicl_type, only_new=True, jiggle_scale=None, start_date=start_date)
+    res, t0, cid = get_crimes_by_type(nicl_type=nicl_type, only_new=True, jiggle_scale=None, start_date=start_date)
 
     # find end_date in days from t0
     end_days = (end_date - t0).total_seconds() / SEC_IN_DAY
@@ -609,71 +616,73 @@ def diggle_st_clustering(nicl_type=3):
             w[i, j] = 2 * np.pi * radius / l
 
 
+def daily_iterator(start_date, end_date):
+    d = start_date
+    while True:
+        if d > end_date:
+            raise StopIteration
+        yield (d, d + datetime.timedelta(days=1))
+        d += datetime.timedelta(days=1)
+
 
 class CadByGrid(object):
 
-    def __init__(self, nicl_numbers=range(1, 16), grid=None):
-        if nicl_numbers is None:
-            # include ALL crimes
-            nicl_numbers = [[x.number for x in models.Nicl.objects.all()]]
-        self.nicl_numbers = nicl_numbers
+    def __init__(self, data, t0, data_index=None, grid=None):
+        """
 
-        self.nicl_names = []
-        for nicl in nicl_numbers:
-            if not hasattr(nicl, '__iter__'):
-                nicl = [nicl]
-            self.nicl_names.append(' and '.join([models.Nicl.objects.get(number=x).description for x in nicl]))
-        # self.nicl_names = [models.Nicl.objects.get(number=x).description for x in nicl_numbers]
+        :param data: N x 3 np.ndarray or DataArray (t, x, y), all float
+        :param data_index: length N array containing indices corresponding to data.  If not supplied, lookup index used.
+        :param t0: datetime corresponding to first record
+        :param grid: optional list of grid (multi)polygons, default is CAD 250m grid
+        :return:
+        """
+
         self.grid = grid or models.Division.objects.filter(type='cad_250m_grid')
-        self.shapely_grid = pandas.Series([geodjango_to_shapely([x.mpoly]) for x in self.grid],
-                                          index=[x.name for x in self.grid])
+        self.shapely_grid = [geodjango_to_shapely(x)[0] for x in self.grid]
         # preliminary cad filter
-        self.cad = logic.initial_filter_cad()
+        self.data = data
+        self.t0 = t0
+        self.data_index = np.array(data_index) if data_index is not None else np.arange(len(data))
 
-        self.res, self.start_date, self.end_date = self.compute_array()
-
-    @property
-    def l(self):
-        return len(self.nicl_numbers)
+        self.dates, self.indices = self.compute_array()
 
     @property
-    def m(self):
-        return self.grid.count()
+    def ngrid(self):
+        return len(self.grid)
+
+    @property
+    def start_date(self):
+        sd = self.data[:, 0].min()
+        return self.t0 + datetime.timedelta(days=sd)
+
+    @property
+    def end_date(self):
+        ed = self.data[:, 0].max()
+        return self.t0 + datetime.timedelta(days=ed)
 
     def compute_array(self):
-        res = [[[] for y in range(self.m)] for x in range(self.l)]
+        dates = [[] for y in range(self.ngrid)]
+        indices = [[] for y in range(self.ngrid)]
 
-        start_date = datetime.datetime.now(tz=UK_TZ)
-        end_date = datetime.datetime(1990, 1, 1, tzinfo=UK_TZ)
 
-        for i in range(self.l):
-            nicl = self.nicl_numbers[i]
-            data, t0 = get_crimes_by_type(nicl_type=nicl)
-            dates = [t0 + datetime.timedelta(days=x) for x in data[:, 0]]
-            # filter by crime type and de-dupe
-            # this_qset = self.cad.filter(Q(cl01=nicl) | Q(cl02=nicl) | Q(cl03=nicl)).values(
-            #     'att_map',
-            #     'cris_entry',
-            #     'inc_datetime',
-            #     ).distinct('cris_entry')
+        # iterate over grid
+        for j in range(self.ngrid):
+            this_grid = self.grid[j]
+            this_extent = this_grid.extent
 
-            ## FIXME? this only works if 'grid' is square.  Fine at the moment, may need amending in future.
+            this_idx = (this_extent[0] <= self.data[:, 1]) & (self.data[:, 1] < this_extent[2]) &\
+                       (this_extent[1] <= self.data[:, 2]) & (self.data[:, 2] < this_extent[3])
 
-            # iterate over grid
-            for j in range(self.m):
-                this_grid = self.grid[j]
-                this_extent = this_grid.mpoly.extent
+            these_dates = self.data[this_idx, 0]
+            these_inds = self.data_index[this_idx]
 
-                res[i][j] = [d for d, x, y in zip(dates, data[:, 1], data[:, 2]) if
-                             this_extent[0] <= x < this_extent[2] and this_extent[1] <= y < this_extent[3]]
+            # convert dates from float to datetimes
+            these_dates = [self.t0 + datetime.timedelta(days=x) for x in these_dates]
 
-                # qry = {'att_map__within': this_grid.mpoly}
-                # res[i][j] = [x['inc_datetime'] for x in this_qset.filter(**qry)]
-                if len(res[i][j]):
-                    start_date = min(start_date, min(res[i][j]))
-                    end_date = max(end_date, max(res[i][j]))
+            dates[j] = these_dates
+            indices[j] = these_inds
 
-        return res, start_date, end_date
+        return dates, indices
 
     def all_time_aggregate(self):
         bucket_fun = lambda x: True
@@ -700,26 +709,30 @@ class CadByGrid(object):
         )
         return self.time_aggregate_data(bucket_dict)
 
+    @staticmethod
+    def create_bucket_fun(sd, ed):
+        """ Interesting! If we just generate the lambda function inline in bucket_dict, the scope is updated each time,
+         so the parameters (sd, ed) are also updated.  In essence the final function created is run every time.
+         Instead use a function factory to capture the closure correctly. """
+        return lambda x: sd <= x < ed
+
+    def daily_aggregate_data(self):
+        sd = self.start_date
+        ed = self.end_date
+        g = daily_iterator(sd, ed)
+        bucket_dict = collections.OrderedDict()
+        for a, b in g:
+            bucket_dict[a.strftime('%Y-%m-%d')] = self.create_bucket_fun(a, b)
+        return bucket_dict
+
     def time_aggregate_data(self, bucket_dict):
-        index = [x.name for x in self.grid]
-        columns = self.nicl_names
-        n = len(bucket_dict)
 
-        data = np.zeros((n, self.m, self.l))
-        for i in range(self.l): # crime types
-            for j in range(self.m): # grid squares
-                for k, func in enumerate(bucket_dict.values()): # time buckets
-                    data[k, j, i] = len([x for x in self.res[i][j] if func(x)])
+        data = np.zeros((len(bucket_dict), self.ngrid))
+        for j in range(self.ngrid): # grid squares
+            for k, func in enumerate(bucket_dict.values()): # time buckets
+                data[k, j] = len([x for x in self.dates[j] if func(x)])
 
-        if n == 1:
-            data = np.squeeze(data, axis=(0,))
-            return pandas.DataFrame(data, index=index, columns=columns)
-        else:
-            return pandas.Panel(data, items=bucket_dict.keys(), major_axis=index, minor_axis=columns)
-
-
-    ## TODO: add methods for pivoting the data, aggregating by time, etc
-    ## TODO: look into using ragged DataFrame?
+        return pandas.DataFrame(data, index=bucket_dict.keys())
 
 
 def global_i_analysis():
@@ -1114,7 +1127,7 @@ def pairwise_time_lag_events(max_distance=200, nicl_numbers=3, num_bins=None):
     """ Recreate Fig 1(b) Mohler et al 2011 'Self-exciting point process modeling of crime'
         max_distance is in units of metres. """
 
-    cad, t0 = get_crimes_by_type(nicl_type=nicl_numbers)
+    cad, t0, cid = get_crimes_by_type(nicl_type=nicl_numbers)
     x1, x0 = np.meshgrid(cad[:, 1], cad[:, 1], copy=False)
     y1, y0 = np.meshgrid(cad[:, 2], cad[:, 2], copy=False)
     t1, t0 = np.meshgrid(cad[:, 0], cad[:, 0], copy=False)

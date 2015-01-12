@@ -12,7 +12,7 @@ if __name__ == "__main__":
 
     grid_spacing = 25  # distance between centroids in metres
 
-    res, t0 = cad.get_crimes_by_type(nicl_type=range(1, 17))
+    res, t0, cid = cad.get_crimes_by_type(nicl_type=range(1, 17))
     sk = hotspot.SKernelHistoricVariableBandwidthNn(dt=60, nn=15)
 
     # choose final date 2011/11/1 for training -> 60 days prior ends AFTER crossover to new non-snapped data

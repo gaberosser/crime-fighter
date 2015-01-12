@@ -110,7 +110,7 @@ def fetch_buffered_camden(buf=None):
     return GEOSGeometry(cursor.fetchone()[0])
 
 
-def initial_filter_cad(nicl_type=None, only_new=False):
+def initial_filter_cad_old(nicl_type=None, only_new=False):
     """ Extract CAD data with CRIS entry and geolocation.  Returns QuerySet. """
     qset = models.Cad.objects.exclude(cris_entry__isnull=True).exclude(cris_entry__startswith='NOT')\
         .exclude(att_map__isnull=True)
@@ -121,6 +121,35 @@ def initial_filter_cad(nicl_type=None, only_new=False):
         return qset.filter(inc_datetime__gte=CAD_GEO_CUTOFF)
     else:
         return qset
+
+
+def initial_filter_cad(nicl_type=None, only_new=False, spatial_domain=None):
+    """ Extract CAD data with CRIS entry and geolocation.  Returns QuerySet. """
+    exclude_qry = collections.OrderedDict(
+        {
+            'cris_entry__isnull': True,
+            'cris_entry__startswith': 'NOT',
+            'att_map__isnull': True
+        }
+    )
+    filter_qry = collections.OrderedDict()
+    if only_new:
+        filter_qry['inc_datetime__gte'] = CAD_GEO_CUTOFF
+
+    if spatial_domain:
+        filter_qry['att_map__intersects'] = spatial_domain
+
+    qset = models.Cad.objects
+    for k, v in exclude_qry.items():
+        qset = qset.exclude(**{k: v})
+
+    qset = qset.filter(**filter_qry)
+
+    if nicl_type:
+        qry = Q(cl01=nicl_type) | Q(cl02=nicl_type) | Q(cl03=nicl_type)
+        qset = qset.filter(qry)
+
+    return qset
 
 
 def dedupe_cad(qset):
@@ -134,9 +163,9 @@ def dedupe_cad(qset):
     return deduped
 
 
-def clean_dedupe_cad(nicl_type=None, only_new=False):
+def clean_dedupe_cad(nicl_type=None, only_new=False, spatial_domain=None):
     """ Extract deduped CAD data with CRIS entry and geolocation.  Returns list. """
-    qset = initial_filter_cad(nicl_type=nicl_type, only_new=only_new)
+    qset = initial_filter_cad(nicl_type=nicl_type, only_new=only_new, spatial_domain=spatial_domain)
     return dedupe_cad(qset)
 
 

@@ -106,11 +106,6 @@ class SeppValidation(validation.ValidationBase):
 
     def __init__(self,
                  data,
-                 # spatial_domain=None,
-                 # grid_length=None,
-                 # cutoff_t=None,
-                 # model_args=None,
-                 # model_kwargs=None,
                  pp_class=models.SeppStochasticNn,
                  **kwargs):
         """ Thin wrapper for parent's init method, but pp model class is set """

@@ -7,6 +7,8 @@ from matplotlib import pyplot as plt
 import numpy as np
 from rpy2 import robjects, rinterface
 
+b_save_to_r = False
+
 # start_date is the FIRST DAY OF THE PREDICTION
 start_date = datetime.datetime(2011, 9, 28)
 estimate_kwargs = {
@@ -22,7 +24,8 @@ model_kwargs = {
                            'strict': False},
     'estimation_function': lambda x, y: estimation.estimator_bowers(x, y, **estimate_kwargs)
 }
-niter = 50
+# niter = 50
+niter = 20
 
 poly = cad.get_camden_region()
 
@@ -31,7 +34,8 @@ qset = models.Division.objects.filter(type='monsuru_250m_grid')
 qset = sorted(qset, key=lambda x:int(x.name))
 grid_squares = [t.mpoly[0] for t in qset]
 
-num_validation = 100
+# num_validation = 100
+num_validation = 10
 coverage_20_idx = 81  # this is the closest match to 20pct coverage for the given CAD grid squares
 
 # end date is the last date retrieved from the database of crimes
@@ -50,79 +54,98 @@ for k in kinds:
 
     data, t0, cid = cad.get_crimes_from_dump('monsuru_cad_%s' % k)
     # filter: day 210 is 27/9/2011, so use everything LESS THAN 211
-    training_data = data[data[:, 0] < 211.]
 
-    # train a model
-    r = pp_models.SeppStochasticNn(data=training_data, **model_kwargs)
-    r.set_seed(42)
-    r.train(niter=niter)
+    vb = validate.SeppValidationFixedModel(data=data,
+                                           pp_class=pp_models.SeppStochasticNn,
+                                           data_index=cid,
+                                           spatial_domain=poly,
+                                           cutoff_t=211,
+                                           model_kwargs=model_kwargs,
+                                           )
 
-    sepp_objs[k] = r
-    # disable data sorting (it's already sorted anyway) so that we can lookup cid later
-    vb = validate.SeppValidationPredefinedModel(data=data,
-                                                model=r,
-                                                data_index=cid,
-                                                spatial_domain=poly,
-                                                cutoff_t=211)
     vb.set_grid(grid_squares)
-    res[k] = vb.run(time_step=1, n_iter=num_validation, verbose=True)
+    res[k] = vb.run(time_step=1, n_iter=num_validation, verbose=True,
+                    train_kwargs={'niter': niter})
+
+
+    sepp_objs[k] = vb.model
+
+    # training_data = data[data[:, 0] < 211.]
+    #
+    # # train a model
+    # r = pp_models.SeppStochasticNn(data=training_data, **model_kwargs)
+    # r.set_seed(42)
+    # r.train(niter=niter)
+    #
+    # sepp_objs[k] = r
+    # # disable data sorting (it's already sorted anyway) so that we can lookup cid later
+    # vb = validate.SeppValidationPredefinedModel(data=data,
+    #                                             model=r,
+    #                                             data_index=cid,
+    #                                             spatial_domain=poly,
+    #                                             cutoff_t=211)
+    # vb.set_grid(grid_squares)
+    # res[k] = vb.run(time_step=1, n_iter=num_validation, verbose=True)
+
     vb_objs[k] = vb
     data_dict[k] = data
     cid_dict[k] = cid
 
+
 # write data to files
-outfile = 'sepp_assess.Rdata'
-var_names = []
+if b_save_to_r:
+    outfile = 'sepp_assess.Rdata'
+    var_names = []
 
-# also store captured crimes array for each crime type, for consistency checking afterwards
-captured_crimes_dict = {}
+    # also store captured crimes array for each crime type, for consistency checking afterwards
+    captured_crimes_dict = {}
 
-for k in kinds:
+    for k in kinds:
 
-    # crimes captured at 20 pct coverage
-    captured_crimes = []
-    for i in range(num_validation):
-        this_uncap_ids = [xx for xx in res[k]['full_static']['ranked_crime_id'][i][coverage_20_idx:] if xx is not None]
-        if len(this_uncap_ids):
-            this_uncap_ids = list(np.sort(np.concatenate(this_uncap_ids)))
-        else:
-            this_uncap_ids = []
+        # crimes captured at 20 pct coverage
+        captured_crimes = []
+        for i in range(num_validation):
+            this_uncap_ids = [xx for xx in res[k]['full_static']['ranked_crime_id'][i][coverage_20_idx:] if xx is not None]
+            if len(this_uncap_ids):
+                this_uncap_ids = list(np.sort(np.concatenate(this_uncap_ids)))
+            else:
+                this_uncap_ids = []
 
-        this_cap_ids = [xx for xx in res[k]['full_static']['ranked_crime_id'][i][:coverage_20_idx] if xx is not None]
-        if len(this_cap_ids):
-            this_cap_ids = list(np.sort(np.concatenate(this_cap_ids)))
-        else:
-            this_cap_ids = []
+            this_cap_ids = [xx for xx in res[k]['full_static']['ranked_crime_id'][i][:coverage_20_idx] if xx is not None]
+            if len(this_cap_ids):
+                this_cap_ids = list(np.sort(np.concatenate(this_cap_ids)))
+            else:
+                this_cap_ids = []
 
-        [captured_crimes.append([xx, 1, i + 1]) for xx in this_cap_ids]
-        [captured_crimes.append([xx, 0, i + 1]) for xx in this_uncap_ids]
+            [captured_crimes.append([xx, 1, i + 1]) for xx in this_cap_ids]
+            [captured_crimes.append([xx, 0, i + 1]) for xx in this_uncap_ids]
 
-    var_name = 'captured_crimes_20pct_%s' % k
-    captured_crimes = np.array(captured_crimes, dtype=int)
+        var_name = 'captured_crimes_20pct_%s' % k
+        captured_crimes = np.array(captured_crimes, dtype=int)
 
-    captured_crimes_dict[k] = captured_crimes
+        captured_crimes_dict[k] = captured_crimes
 
-    r_vec = robjects.IntVector(captured_crimes.transpose().flatten())  # R has default assignment order 'F' -> transpose
-    r_mat = robjects.r['matrix'](r_vec, ncol=3)
-    rinterface.globalenv[var_name] = r_mat
-    var_names.append(var_name)
+        r_vec = robjects.IntVector(captured_crimes.transpose().flatten())  # R has default assignment order 'F' -> transpose
+        r_mat = robjects.r['matrix'](r_vec, ncol=3)
+        rinterface.globalenv[var_name] = r_mat
+        var_names.append(var_name)
 
-    # ranking
-    var_name = 'grid_rank_%s' % k
-    # need to add 1 to all rankings as Monsuru's IDs are one-indexed and mine are zero-indexed
-    r_vec = robjects.IntVector(res[k]['full_static']['prediction_rank'].flatten() + 1)
-    r_mat = robjects.r['matrix'](r_vec, ncol=num_validation)
-    rinterface.globalenv[var_name] = r_mat
-    var_names.append(var_name)
+        # ranking
+        var_name = 'grid_rank_%s' % k
+        # need to add 1 to all rankings as Monsuru's IDs are one-indexed and mine are zero-indexed
+        r_vec = robjects.IntVector(res[k]['full_static']['prediction_rank'].flatten() + 1)
+        r_mat = robjects.r['matrix'](r_vec, ncol=num_validation)
+        rinterface.globalenv[var_name] = r_mat
+        var_names.append(var_name)
 
-    # hit rate by crime count
-    var_name = 'crime_count_%s' % k
-    r_vec = robjects.IntVector(res[k]['full_static']['cumulative_crime_count'].flatten())
-    r_mat = robjects.r['matrix'](r_vec, ncol=num_validation)
-    rinterface.globalenv[var_name] = r_mat
-    var_names.append(var_name)
+        # hit rate by crime count
+        var_name = 'crime_count_%s' % k
+        r_vec = robjects.IntVector(res[k]['full_static']['cumulative_crime_count'].flatten())
+        r_mat = robjects.r['matrix'](r_vec, ncol=num_validation)
+        rinterface.globalenv[var_name] = r_mat
+        var_names.append(var_name)
 
-robjects.r.save(*var_names, file=outfile)
+    robjects.r.save(*var_names, file=outfile)
 
 # consistency checks
 for k in kinds:
