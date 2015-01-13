@@ -24,8 +24,8 @@ model_kwargs = {
                            'strict': False},
     'estimation_function': lambda x, y: estimation.estimator_bowers(x, y, **estimate_kwargs)
 }
-# niter = 50
-niter = 20
+niter = 50
+# niter = 20
 
 poly = cad.get_camden_region()
 
@@ -34,9 +34,10 @@ qset = models.Division.objects.filter(type='monsuru_250m_grid')
 qset = sorted(qset, key=lambda x:int(x.name))
 grid_squares = [t.mpoly[0] for t in qset]
 
-# num_validation = 100
-num_validation = 10
+num_validation = 100
+# num_validation = 10
 coverage_20_idx = 81  # this is the closest match to 20pct coverage for the given CAD grid squares
+num_sample_points = 50
 
 # end date is the last date retrieved from the database of crimes
 # have to cast this to a date since the addition operation automatically produces a datetime
@@ -55,7 +56,15 @@ for k in kinds:
     data, t0, cid = cad.get_crimes_from_dump('monsuru_cad_%s' % k)
     # filter: day 210 is 27/9/2011, so use everything LESS THAN 211
 
-    vb = validate.SeppValidationFixedModel(data=data,
+    # vb = validate.SeppValidationFixedModel(data=data,
+    #                                        pp_class=pp_models.SeppStochasticNn,
+    #                                        data_index=cid,
+    #                                        spatial_domain=poly,
+    #                                        cutoff_t=211,
+    #                                        model_kwargs=model_kwargs,
+    #                                        )
+
+    vb = validate.SeppValidationFixedModelIntegration(data=data,
                                            pp_class=pp_models.SeppStochasticNn,
                                            data_index=cid,
                                            spatial_domain=poly,
@@ -63,7 +72,7 @@ for k in kinds:
                                            model_kwargs=model_kwargs,
                                            )
 
-    vb.set_grid(grid_squares)
+    vb.set_grid(grid_squares, num_sample_points)
     res[k] = vb.run(time_step=1, n_iter=num_validation, verbose=True,
                     train_kwargs={'niter': niter})
 

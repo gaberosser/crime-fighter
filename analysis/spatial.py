@@ -68,3 +68,33 @@ def is_clockwise(poly):
     t = dx * ay
     t[ay == 0] = 0.
     return np.sum(t) > 0
+
+
+def is_self_bounding(poly):
+    # check whether this poly is equivalent to its bounding box, i.e. a rectangle
+    a = poly.boundary
+    b = poly.envelope.boundary
+     ## TODO: finish or discard
+
+
+def random_points_within_poly(poly, npts):
+    """
+    Generate n point coordinates that lie within poly
+    NB this can be VERY SLOW if the polygon does not occupy much of its bounding box
+    :return: x, y
+    """
+    xmin, ymin, xmax, ymax = poly.extent
+    dx = xmax - xmin
+    dy = ymax - ymin
+    out_idx = np.ones(npts).astype(bool)
+    x = np.zeros(npts)
+    y = np.zeros(npts)
+
+    while out_idx.sum():
+        xn = np.random.random(size=out_idx.sum()) * dx + xmin
+        yn = np.random.random(size=out_idx.sum()) * dy + ymin
+        x[out_idx] = xn
+        y[out_idx] = yn
+        out_idx = np.array([not geos.Point(a, b).within(poly) for (a, b) in zip(x, y)])
+
+    return x, y

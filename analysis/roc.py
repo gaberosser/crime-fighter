@@ -3,7 +3,7 @@ __author__ = 'gabriel'
 from django.contrib.gis import geos
 import numpy as np
 import math
-from spatial import create_spatial_grid
+from spatial import create_spatial_grid, random_points_within_poly
 from data.models import DataArray
 import collections
 import warnings
@@ -80,6 +80,9 @@ class RocSpatialGrid(object):
             self.side_length = None
             self._intersect_grid = length_or_arr
             self._extent_grid = [x.extent for x in length_or_arr]
+            # assume none of these are full
+            ## FIXME: improve this by checking whether it's a square?
+            self._full_grid_square = [False] * self.ngrid
         else:
             self.side_length = length_or_arr
             self._intersect_grid, self._extent_grid, self._full_grid_square = create_spatial_grid(self.poly, self.side_length)
@@ -210,14 +213,22 @@ class RocSpatialGridMonteCarloIntegration(RocSpatialGrid):
         """ Generate n_sample_per_grid sample points per grid unit
          Return n_sample_per_grid x self.ndata x 2 array, final dim is x, y """
 
-        xmins = np.array([x[0] for x in self.egrid])
-        ymins = np.array([x[1] for x in self.egrid])
-        xres = np.random.rand(n_sample_per_grid, self.ngrid) * self.side_length + xmins
-        yres = np.random.rand(n_sample_per_grid, self.ngrid) * self.side_length + ymins
+        if self.side_length is None:
+            # grid was supplied as an array
+            # slow version: need to iterate over the polygons
+            xres = np.empty((n_sample_per_grid, self.ngrid), dtype=float)
+            yres = np.empty((n_sample_per_grid, self.ngrid), dtype=float)
+            for i, p in enumerate(self.igrid):
+                xres[:, i], yres[:, i] = random_points_within_poly(p, n_sample_per_grid)
+
+        else:
+            xmins = np.array([x[0] for x in self.egrid])
+            ymins = np.array([x[1] for x in self.egrid])
+            xres = np.random.rand(n_sample_per_grid, self.ngrid) * self.side_length + xmins
+            yres = np.random.rand(n_sample_per_grid, self.ngrid) * self.side_length + ymins
 
         if respect_boundary:
             # loop over grid squares that are incomplete
-            # import ipdb; ipdb.set_trace()
             for i in np.where(np.array(self.full_grid_square) == False)[0]:
                 inside_idx = np.array([geos.Point(x, y).within(self.poly) for x, y in zip(xres[:, i], yres[:, i])])
                 # pad empty parts with repeats of the centroid location
