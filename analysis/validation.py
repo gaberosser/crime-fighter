@@ -271,7 +271,18 @@ class ValidationBase(object):
         :param res: output from run method just before this function gets called
         :return: None - modify in place
         """
-        pass
+        # some lists are better converted to numpy arrays
+        convert_to_arr = (
+            'prediction_rank',
+            'cumulative_area',
+            'prediction_values',
+            'cumulative_crime',
+            'cumulative_crime_count',
+            'cumulative_crime_max',
+            'pai'
+        )
+        for k in convert_to_arr:
+            res[k] = np.array(res[k])
 
     def _update(self, time_step, **train_kwargs):
         """

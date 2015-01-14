@@ -241,11 +241,6 @@ class SeppValidation(validation.ValidationBase):
             res[m] = this_res
         res['cumulative_crime_max'] = ccm
 
-        # overwrite all models with the first entry since they are all identical - copies are wasteful
-        # maintain a list because this way the repeat_run code is simpler
-        for i in range(len(res['model'])):
-            res['model'][i] = res['model'][0]
-
 
 class SeppValidationIntegration(validation.ValidationIntegration, SeppValidation):
     pass
@@ -278,6 +273,13 @@ class SeppValidationFixedModel(SeppValidation):
                                                                   true_dt_minus=true_dt_minus,
                                                                   **kwargs)
 
+    def post_process(self, res):
+        super(SeppValidationFixedModel, self).post_process(res)
+        # overwrite all models with the first entry since they are all identical - copies are wasteful
+        # maintain a list because this way the repeat_run code is simpler
+        for i in range(len(res['model'])):
+            res['model'][i] = res['model'][0]
+
 
 class SeppValidationFixedModelIntegration(validation.ValidationIntegration, SeppValidationFixedModel):
     pass
@@ -287,23 +289,15 @@ class mock_pp_class():
     def __init__(self, *args, **kwargs):
         pass
 
+
 class SeppValidationPredefinedModel(SeppValidationFixedModel):
 
     def __init__(self,
                  data,
                  model,
-                 # spatial_domain=None,
-                 # grid_length=None,
-                 # cutoff_t=None,
                  **kwargs):
         # pass a mock model to parent constructor
         pp_class = mock_pp_class
-        # super(SeppValidationPredefinedModel, self).__init__(
-        #     data,
-        #     spatial_domain=spatial_domain,
-        #     grid_length=grid_length,
-        #     cutoff_t=cutoff_t,
-        #     pp_class=pp_class)
         super(SeppValidationPredefinedModel, self).__init__(
             data,
             pp_class=pp_class,

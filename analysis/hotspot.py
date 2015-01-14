@@ -78,13 +78,15 @@ class STKernelBowers(STKernelBase):
         return np.array(m.sum(axis=0).flat)
 
 
-class SKernelHistoric(STKernelBase):
-
-    def __init__(self, dt=None, bdwidth=None):
+class SKernelBase(STKernelBase):
+    """
+    Spatial kernel.  Aggregates data over time, with the time window defined in the input parameter dt.
+    This is the base class, from which different KDE variants inherit.
+    """
+    def __init__(self, dt=None):
         self.dt = dt
-        self.bdwidth = bdwidth
         self.kde = None
-        super(SKernelHistoric, self).__init__()
+        super(SKernelBase, self).__init__()
 
     def set_data(self, data):
         tf = max(data.time)
@@ -94,43 +96,36 @@ class SKernelHistoric(STKernelBase):
             self.data = data.space
 
     def set_kde(self):
-        self.kde = FixedBandwidthKdeScott(self.data)
-        # self.kde = gaussian_kde(self.data.data.transpose(), bw_method=self.bdwidth or 'scott')
+        raise NotImplementedError
 
     def train(self, data):
         self.set_data(SpaceTimeDataArray(data))
         self.set_kde()
+
+    # def predict(self, data_array):
+    #     data_array = DataArray(data_array)
+    #     assert data_array.nd == 2, 'Predict requires a 2D DataArray'
+    #     return self.kde.pdf(data_array)
 
     def predict(self, data_array):
         data_array = SpaceTimeDataArray(data_array)
         return self.kde.pdf(data_array.space)
-        # return self.kde(data_array.data.transpose()).reshape(data_array.original_shape, order='F')
+
+class SKernelHistoric(SKernelBase):
+
+    def __init__(self, dt=None, bdwidth=None):
+        super(SKernelHistoric, self).__init__(dt=dt)
+        self.bdwidth = bdwidth
+
+    def set_kde(self):
+        self.kde = FixedBandwidthKdeScott(self.data)
 
 
-class SKernelHistoricVariableBandwidthNn(STKernelBase):
+class SKernelHistoricVariableBandwidthNn(SKernelBase):
 
     def __init__(self, dt=None, nn=None):
-        self.dt = dt
+        super(SKernelHistoricVariableBandwidthNn, self).__init__(dt=dt)
         self.nn = nn
-        self.kde = None
-        super(SKernelHistoricVariableBandwidthNn, self).__init__()
-
-    def set_data(self, data):
-        tf = max(data.time)
-        if self.dt:
-            #### FIXME?
-            self.data = data.space.getrows(data.time.toarray(0) >= (tf - self.dt))  # only spatial component
-        else:
-            self.data = data.space
 
     def set_kde(self):
         self.kde = VariableBandwidthNnKde(self.data, number_nn=self.nn)
-
-    def train(self, data):
-        self.set_data(SpaceTimeDataArray(data))
-        self.set_kde()
-
-    def predict(self, data_array):
-        data_array = DataArray(data_array)
-        assert data_array.nd == 2, 'Predict requires a 2D DataArray'
-        return self.kde.pdf(data_array)
