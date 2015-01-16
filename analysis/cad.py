@@ -1191,3 +1191,17 @@ def pairwise_distance_events(max_time=14, nicl_numbers=None, num_bins=50):
     fig.subplots_adjust(left=0.15, right=0.95, bottom=0.1, top=0.95, wspace=0.03, hspace=0.01)
     plt.show()
     return res if len(nicl_numbers) > 1 else res[0]
+
+
+def create_poly_file_for_osm_clipping(outfile, buff=100):
+    camden = get_camden_region().buffer(buff)
+    camden.transform(4326)
+    with open(outfile, 'w') as f:
+        f.write('%s\n' % outfile)
+        f.write('1\n')
+        for lon, lat in camden.coords[0]:
+            f.write('%f %f\n' % (lon, lat))
+        f.write('END\n')
+        f.write('END\n')
+    ## Now run: osmosis --read-xml file='unclipped.osm' --bounding-polygon completeWays=yes file='outfile'
+    ## --write-xml file='clipped_buffered_file.osm'
