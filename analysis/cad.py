@@ -3,6 +3,7 @@ import warnings
 import matplotlib as mpl
 from matplotlib import pyplot as plt
 import cartopy.crs as ccrs
+from shapely.geometry import Point as ShapelyPoint
 from scipy.spatial.distance import pdist, squareform
 import collections
 from django.db.models import Q, Count, Sum, Min, Max
@@ -21,6 +22,7 @@ import validation
 from itertools import combinations
 from stats.logic import rook_boolean_connectivity, global_morans_i_p, local_morans_i as lmi
 from django.db import connection
+from database import osm
 
 UK_TZ = pytz.timezone('Europe/London')
 SEC_IN_DAY = float(24 * 60 * 60)
@@ -142,28 +144,34 @@ def get_camden_region():
 
 
 class CadAggregate(object):
-    def __init__(self, nicl_number=None, only_new=False, dedupe=True,
-                 start_date=None, end_date=None):
+    def __init__(self, nicl_number=None, only_new=False, start_date=None, end_date=None):
         self._start_date = start_date
         self._end_date = end_date
         self.nicl_number = nicl_number
         if nicl_number:
-            self.nicl_name = models.Nicl.objects.get(number=nicl_number).description
+            if hasattr(nicl_number, '__iter__'):
+                self.nicl_name = [t.description for t in models.Nicl.objects.filter(number__in=nicl_number)]
+            else:
+                self.nicl_name = models.Nicl.objects.get(number=nicl_number).description
         else:
             self.nicl_name = 'All crime types'
         self.only_new = only_new
-        self.dedupe = dedupe
         self.cad = None
         self.load_data()
 
     def load_data(self):
-        self.cad = logic.initial_filter_cad(nicl_type=self.nicl_number, only_new=self.only_new)
-        if self.start_date:
-            self.cad = self.cad.filter(inc_datetime__gte=self.start_date)
-        if self.end_date:
-            self.cad = self.cad.filter(inc_datetime__lte=self.end_date)
-        if self.dedupe:
-            self.cad = logic.dedupe_cad(self.cad)
+
+        self.cad, t0, cid = get_crimes_by_type(nicl_type=self.nicl_number, only_new=self.only_new,
+                                               start_date=self._start_date, end_date=self._end_date)
+
+
+        # self.cad = logic.initial_filter_cad(nicl_type=self.nicl_number, only_new=self.only_new)
+        # if self.start_date:
+        #     self.cad = self.cad.filter(inc_datetime__gte=self.start_date)
+        # if self.end_date:
+        #     self.cad = self.cad.filter(inc_datetime__lte=self.end_date)
+        # if self.dedupe:
+        #     self.cad = logic.dedupe_cad(self.cad)
 
     @property
     def start_date(self):
@@ -182,28 +190,43 @@ class CadAggregate(object):
 
 
 class CadSpatialGrid(CadAggregate):
-    def __init__(self, nicl_number=None, grid=None, only_new=False, dedupe=True,
-                 start_date=None, end_date=None):
+    def __init__(self, grid=None, **kwargs):
         # defer dedupe until after spatial aggregation
-        super(CadSpatialGrid, self).__init__(nicl_number=nicl_number, only_new=only_new, dedupe=False,
-                                             start_date=start_date, end_date=end_date)
-        self.dedupe = dedupe
+        super(CadSpatialGrid, self).__init__(**kwargs)
         # load grid or use one provided
         self.grid = grid or models.Division.objects.filter(type='cad_250m_grid')
-        self.shapely_grid = pandas.Series([geodjango_to_shapely([x.mpoly]) for x in self.grid],
-                                          index=[x.name for x in self.grid])
+        self.shapely_grid = [geodjango_to_shapely(x.mpoly)[0] for x in self.grid]
+        # self.shapely_grid = pandas.Series([geodjango_to_shapely([x.mpoly]) for x in self.grid],
+        #                                   index=[x.name for x in self.grid])
         # gridded data
         self.data = self.aggregate()
 
     def aggregate(self):
-        return logic.cad_aggregate_grid(self.cad, grid=self.grid, dedupe=self.dedupe)
+        working_cad = np.array(self.cad)
+        res = collections.OrderedDict()
+        for g in self.shapely_grid:
+            # res[g] = np.array([(t, x, y) for (t, x, y) in self.cad if ShapelyPoint(x, y).within(g)])
+            in_grid = []
+            idx = []
+            if working_cad.ndim == 1:
+                import ipdb; ipdb.set_trace()
+            for i in range(working_cad.shape[0]):
+                pt = ShapelyPoint(working_cad[i, 1], working_cad[i, 2])
+                if pt.intersects(g):
+                    in_grid.append(working_cad[i, :])
+                    idx.append(i)
+
+            res[g] = np.array(in_grid)
+            working_cad = np.delete(working_cad, idx, axis=0)
+
+
+        return res
+        # return logic.cad_aggregate_grid(self.cad, grid=self.grid)
 
 
 class CadTemporalAggregation(CadAggregate):
-    def __init__(self, nicl_number=None, only_new=False, dedupe=True,
-                 start_date=None, end_date=None):
-        super(CadTemporalAggregation, self).__init__(nicl_number=nicl_number, only_new=only_new, dedupe=dedupe,
-                                                     start_date=start_date, end_date=end_date)
+    def __init__(self, **kwargs):
+        super(CadTemporalAggregation, self).__init__(**kwargs)
         bucket_dict = self.bucket_dict()
         self.data = []
         self.data = self.bucket_data()
@@ -400,12 +423,15 @@ def apply_sepp_to_data(data,
                        bg_kde_kwargs=None,
                        trigger_kde_kwargs=None,
                        sepp_class=pp_models.SeppStochasticNnReflected,
+                       rng_seed=42,
                        ):
     bg_kde_kwargs = bg_kde_kwargs or {}
     trigger_kde_kwargs = trigger_kde_kwargs or {}
     r = sepp_class(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
                    bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs,
                    estimation_function=estimation_function)
+    if rng_seed:
+        r.set_seed(rng_seed)
     r.train(niter=niter)
     return r
 
@@ -420,7 +446,8 @@ def apply_point_process(nicl_type=3,
                         max_delta_d=500,  # metres
                         sepp_class=pp_models.SeppStochasticNnReflected,
                         tol_p=None,
-                        data=None
+                        data=None,
+                        rng_seed=42,
                         ):
 
     # suggested value:
@@ -446,11 +473,13 @@ def apply_point_process(nicl_type=3,
 
     bg_kde_kwargs = {
         'number_nn': num_nn_bg,
+        'strict': False  # attempt to restore order even if number of BG becomes less than requested NNs
     }
 
     trigger_kde_kwargs = {
         'min_bandwidth': min_bandwidth,
         'number_nn': num_nn_trig,
+        'strict': False  # attempt to restore order even if number of trig becomes less than requested NNs
     }
 
     return apply_sepp_to_data(
@@ -461,7 +490,8 @@ def apply_point_process(nicl_type=3,
         niter=niter,
         bg_kde_kwargs=bg_kde_kwargs,
         trigger_kde_kwargs=trigger_kde_kwargs,
-        sepp_class=sepp_class
+        sepp_class=sepp_class,
+        rng_seed=rng_seed
     )
 
     # r = sepp_class(data=res, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
@@ -843,8 +873,6 @@ def numbers_by_type():
 
 def spatial_density_all_time_all_crimes():
 
-    from database import osm
-
     poly = get_camden_region()
     camden_mpoly = geodjango_to_shapely([get_camden_region()])
     oo = osm.OsmRendererBase(poly, buffer=100)
@@ -877,40 +905,52 @@ def spatial_density_all_time_all_crimes():
     plt.show()
 
 
-def spatial_density_all_time_by_crime():
+def spatial_density_all_time_by_crime(nicl_numbers=None, short_names=None):
 
-    nicl_numbers = [3, 6, 10]
-    short_names = ['Burglary Dwelling', 'Veh Theft', 'Crim Damage']
-    camden_mpoly = geodjango_to_shapely([models.Division.objects.get(name='Camden', type='borough').mpoly])
-    cbg = CadByGrid(nicl_numbers=nicl_numbers)
-    a = cbg.all_time_aggregate()
+    nicl_numbers = nicl_numbers or [3, 6, 10]
+    n = len(nicl_numbers)
+    cbg = {}
 
+    for i in range(n):
+        this_cbg = CadSpatialGrid(nicl_number=nicl_numbers[i])
+        cbg[nicl_numbers[i]] = this_cbg
+
+    return cbg
+
+
+def plot_spatial_density_all_time_by_crime(cad_spatial_grid):
+    n = len(cad_spatial_grid)
+    poly = get_camden_region()
+    xmin, ymin, xmax, ymax = poly.buffer(100).extent
+    oo = osm.OsmRendererBase(poly, buffer=100)
     fig = plt.figure(figsize=(15, 6))
-    axes = [fig.add_subplot(1, cbg.l, i+1, projection=ccrs.OSGB()) for i in range(cbg.l)]
+    axes = [fig.add_subplot(1, n, i+1, projection=ccrs.OSGB()) for i in range(n)]
     fig.subplots_adjust(left=0.05, right=0.95, bottom=0.05, top=0.95, wspace=0.03, hspace=0.01)
-
-    for i in range(cbg.l):
+    count = 0
+    for i, this_cbg in enumerate(cad_spatial_grid.itervalues()):
         ax = axes[i]
-        ds = a[cbg.nicl_names[i]]
-        ax.set_title(cbg.nicl_names[i])
-        ax.set_extent([523000, 533000, 179000, 190000], ccrs.OSGB())
+        oo.render(ax)
+        ds = [len(t) for t in this_cbg.data.values()]
+        # ax.set_title(short_names[i])
+        ax.set_extent([xmin, xmax, ymin, ymax], ccrs.OSGB())
         ax.background_patch.set_visible(False)
         # ax.outline_patch.set_visible(False)
-        cmap = mpl.cm.cool
-        norm = mpl.colors.Normalize()
-        norm.autoscale(ds)
+        cmap = mpl.cm.autumn
+        norm = mpl.colors.Normalize(0, max(ds))
+        # norm.autoscale(ds)
         cax = mpl.colorbar.make_axes(ax, location='bottom', pad=0.02, fraction=0.05, shrink=0.9)
         cbar = mpl.colorbar.ColorbarBase(cax[0], cmap=cmap, norm=norm, orientation='horizontal')
         sm = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
 
-        for j in range(cbg.m):
-            val = ds.values[j]
+        for j in range(len(this_cbg.grid)):
+            val = ds[j]
             fc = sm.to_rgba(val) if val else 'none'
-            ax.add_geometries(geodjango_to_shapely([cbg.grid[j].mpoly]), ccrs.OSGB(), facecolor=fc)
+            ax.add_geometries(this_cbg.shapely_grid[j:j+1], ccrs.OSGB(), facecolor=fc)
 
-        ax.add_geometries(camden_mpoly, ccrs.OSGB(), facecolor='none', edgecolor='black')
+        # ax.add_geometries(geodjango_to_shapely(poly), ccrs.OSGB(), facecolor='none', edgecolor='black')
 
     plt.show()
+
 
 
 def spatial_density_weekday_evening():
@@ -960,6 +1000,7 @@ def spatial_density_weekday_evening():
 
 
 def local_morans_i():
+
     nicl_numbers = [1, 3, (6, 7)]
     short_names = ['Violence', 'Burglary dwelling', 'Theft of/from vehicle']
     camden_mpoly = geodjango_to_shapely([models.Division.objects.get(name='Camden', type='borough').mpoly])
@@ -1007,95 +1048,6 @@ def local_morans_i():
     plt.show()
 
     return local_i
-
-def something_else():
-
-    nicl_cat = {
-        'Burglary Dwelling': models.Nicl.objects.get(number=3),
-        'Violence Against The Person': models.Nicl.objects.get(number=1),
-        'Shoplifting': models.Nicl.objects.get(number=13),
-    }
-
-    grid = models.Division.objects.filter(type='cad_250m_grid')
-    shapely_grid = [geodjango_to_shapely([x.mpoly]) for x in grid]
-
-    cad_qset = models.Cad.objects.exclude(cris_entry__isnull=True).exclude(cris_entry__startswith='NOT').exclude(att_map__isnull=True)
-    res_all = collections.OrderedDict()
-    res_weekly = []
-    camden_mpoly = geodjango_to_shapely([models.Division.objects.get(name='Camden', type='borough').mpoly])
-
-    cad_sections = {}
-
-    l = len(nicl_cat)
-    m = grid.count()
-
-    res = [[[] for y in range(m)] for x in range(l)]
-    start_date = datetime.datetime.now(tz=UK_TZ)
-    end_date = datetime.datetime(1990, 1, 1, tzinfo=UK_TZ)
-
-    for i in range(l):
-        nicl = nicl_cat.values()[i]
-        this_qset = cad_qset.filter(Q(cl01=nicl) | Q(cl02=nicl) | Q(cl03=nicl)).values(
-            'att_map',
-            'cris_entry',
-            'inc_datetime',
-            ).distinct('cris_entry')
-        for j in range(m):
-            this_grid = grid[j]
-            res[i][j] = [x['inc_datetime'] for x in this_qset.filter(att_map__within=this_grid.mpoly)]
-            if len(res[i][j]):
-                start_date = min(start_date, min(res[i][j]))
-                end_date = max(end_date, max(res[i][j]))
-
-    # aggregate over all time
-    all_time = np.zeros((l, m))
-    for i in range(l):
-        for j in range(m):
-            all_time[i, j] += len(res[i][j])
-
-    # aggregate monthly
-    n = len(list(month_iterator(start_date, end_date)))
-    monthly = np.zeros((l, m, n))
-    start_date = start_date.replace(day=1, hour=0, minute=0, second=0)
-
-    for i in range(l):
-        for j in range(m):
-            m_it = month_iterator(start_date, end_date)
-            for k in range(n):
-                sd, ed = m_it.next()
-                monthly[i, j, k] += len([x for x in res[i][j] if sd <= x < ed])
-
-    # aggregate weekday/weekend
-    weekday = np.zeros((l, m, 2))
-
-    for i in range(l):
-        for j in range(m):
-            weekday[i, j, 0] = len([x for x in res[i][j] if x.weekday() < 5])
-            weekday[i, j, 1] = len([x for x in res[i][j] if x.weekday() >= 5])
-
-    # aggregate daytime/evening+night
-    timeofday = np.zeros((l, m, 2))
-
-    am = datetime.time(6, 0, 0, tzinfo=UK_TZ)
-    pm = datetime.time(18, 0, 0, tzinfo=UK_TZ)
-    for i in range(l):
-        for j in range(m):
-            timeofday[i, j, 0] = len([x for x in res[i][j] if am <= x.time() < pm])
-            timeofday[i, j, 1] = len([x for x in res[i][j] if (pm <= x.time()) or (x.time() < am)])
-
-
-## so SLOW:
-# def pairwise_distance(nicl_number=3):
-#     cad = initial_filter_cad()
-#     cad = cad.filter(Q(cl01=nicl_number) | Q(cl02=nicl_number) | Q(cl03=nicl_number)).distinct('cris_entry')
-#     n = cad.count()
-#     p = np.zeros((n, n))
-#     for i in range(n):
-#         a = cad.distance(cad[i].att_map, field_name='att_map')
-#         p[i, i+1:] = np.array([x.distance.m for x in a[i+1:]])
-#         if i % 100 == 0:
-#             print i
-#     return list(cad), p
 
 
 def pairwise_distance(nicl_number=3):

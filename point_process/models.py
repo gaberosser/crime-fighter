@@ -51,6 +51,7 @@ class SepBase(object):
         self.num_bg = []
         self.num_trig = []
         self.l2_differences = []
+        self.log_likelihoods = []
         self.run_times = []
 
         self.__init_extra__()
@@ -210,6 +211,7 @@ class SepBase(object):
         q = new_p - self.p
         err_denom = float(self.p.nnz)
         self.l2_differences.append(math.sqrt(q.multiply(q).sum()) / err_denom)
+        self.log_likelihoods.append(np.sum(np.log(l)))
 
         # update p
         self.p = new_p
