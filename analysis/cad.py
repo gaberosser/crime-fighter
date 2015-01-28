@@ -438,6 +438,8 @@ def apply_sepp_to_data(data,
 
 def apply_point_process(nicl_type=3,
                         only_new=False,
+                        start_date=None,
+                        end_date=None,
                         niter=15,
                         num_nn=None,
                         min_bandwidth=None,
@@ -457,7 +459,8 @@ def apply_point_process(nicl_type=3,
     if data is not None:
         res = data
     else:
-        res, t0, cid = get_crimes_by_type(nicl_type=nicl_type, only_new=only_new, jiggle_scale=jiggle_scale)
+        res, t0, cid = get_crimes_by_type(nicl_type=nicl_type, only_new=only_new, jiggle_scale=jiggle_scale,
+                                          start_date=start_date, end_date=end_date)
 
     # define initial estimator
     est = lambda x, y: estimation.estimator_bowers(x, y, ct=1, cd=0.02)

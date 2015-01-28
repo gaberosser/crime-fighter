@@ -45,7 +45,7 @@ ndays = training_size + num_validation
 # have to cast this to a date since the addition operation automatically produces a datetime
 end_date = start_date + datetime.timedelta(days=num_validation - 1)
 
-res, t0 = chicago.get_crimes_by_type(
+res, t0, cid = chicago.get_crimes_by_type(
     crime_type='burglary',
     start_date=pre_start_date,
     end_date=end_date,
@@ -118,7 +118,7 @@ start_date = end_date + datetime.timedelta(days=1)
 pre_start_date = start_date - datetime.timedelta(days=training_size)
 end_date = start_date + datetime.timedelta(days=num_validation - 1)
 
-res, t0 = chicago.get_crimes_by_type(
+res, t0, cid = chicago.get_crimes_by_type(
     crime_type='burglary',
     start_date=pre_start_date,
     end_date=end_date,

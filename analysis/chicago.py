@@ -85,7 +85,7 @@ def get_crimes_by_type(crime_type='burglary', start_date=None, end_date=None, do
         end_date = datetime.datetime.combine(end_date, datetime.time(0)) - datetime.timedelta(seconds=1)
 
     cursor = connection.cursor()
-    sql = """ SELECT datetime, ST_X(location), ST_Y(location) FROM database_chicago
+    sql = """ SELECT "number", datetime, ST_X(location), ST_Y(location) FROM database_chicago
               WHERE LOWER(primary_type) LIKE '%{0}%' """.format(crime_type.lower())
     if start_date:
         sql += """AND datetime >= '{0}' """.format(start_date.strftime('%Y-%m-%d %H:%M:%S'))
@@ -99,12 +99,13 @@ def get_crimes_by_type(crime_type='burglary', start_date=None, end_date=None, do
 
     cursor.execute(sql)
     res = cursor.fetchall()
-    t = [x[0] for x in res]
+    cid = [x[0] for x in res]
+    t = [x[1] for x in res]
     t0 = min(t)
     t = [(x - t0).total_seconds() / float(60 * 60 * 24) for x in t]
-    res = np.array([(t[i], res[i][1], res[i][2]) for i in range(len(res))])
+    res = np.array([(t[i], res[i][2], res[i][3]) for i in range(len(res))])
     res = res[np.argsort(res[:, 0])]
-    return res, t0
+    return res, t0, cid
 
 
 def pairwise_time_lag_events(max_distance=200, num_bins=None, crime_type='burglary',
@@ -114,7 +115,7 @@ def pairwise_time_lag_events(max_distance=200, num_bins=None, crime_type='burgla
     """ Recreate Fig 1(b) Mohler et al 2011 'Self-exciting point process modeling of crime'
         max_distance is in units of metres. """
 
-    res, t0 = get_crimes_by_type(crime_type=crime_type, start_date=start_date, end_date=end_date, **where_strs)
+    res, t0, cid = get_crimes_by_type(crime_type=crime_type, start_date=start_date, end_date=end_date, **where_strs)
     res = res[np.argsort(res[:, 0])]
 
     # use SEPP model linkage method
@@ -152,7 +153,7 @@ def apply_point_process(start_date=datetime.datetime(2010, 3, 1, 0),
                         seed=42):
 
     print "Getting data..."
-    res, t0 = get_crimes_by_type(
+    res, t0, cid = get_crimes_by_type(
         crime_type='burglary',
         start_date=start_date,
         end_date=end_date,
@@ -249,7 +250,7 @@ def validate_point_process(
     if domain is None:
         domain = compute_chicago_region()
 
-    res, t0 = get_crimes_by_type(
+    res, t0, cid = get_crimes_by_type(
         crime_type='burglary',
         start_date=pre_start_date,
         end_date=end_date,
@@ -354,7 +355,7 @@ def validate_historic_kernel(start_date=datetime.datetime(2001, 3, 1, 0),
     end_date = start_date + datetime.timedelta(days=n_iter)
 
     poly = compute_chicago_region()
-    res, t0 = get_crimes_by_type(
+    res, t0, cid = get_crimes_by_type(
         crime_type='burglary',
         start_date=pre_start_date,
         end_date=end_date
@@ -380,7 +381,7 @@ def validate_historic_kernel_multi(start_date=datetime.datetime(2001, 3, 1, 0),
     pre_start_date = start_date - datetime.timedelta(days=previous_n_days)
 
     poly = compute_chicago_region()
-    res, t0 = get_crimes_by_type(
+    res, t0, cid = get_crimes_by_type(
         crime_type='burglary',
         datetime__gte=pre_start_date
     )
@@ -429,7 +430,7 @@ def implement_delta_effect(outfile, test_domain=None):
                 computation_time = time() - tic
 
                 # validate model for next one month of data
-                data, t0 = get_crimes_by_type(
+                data, t0, cid = get_crimes_by_type(
                     start_date=end_date + datetime.timedelta(days=1),
                     end_date=end_date + datetime.timedelta(days=31),
                     domain=None
@@ -519,7 +520,7 @@ if __name__ == '__main__':
     first_training_size = 50
 
     poly = compute_chicago_region()
-    res, t0 = get_crimes_by_type(
+    res, t0, cid = get_crimes_by_type(
         crime_type='burglary',
         start_date=start_date,
         end_date=end_date
