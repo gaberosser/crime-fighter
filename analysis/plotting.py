@@ -53,6 +53,16 @@ def polygonpatch_from_polygon(poly, **kwargs):
     return PolygonPatch(json.loads(poly.geojson), **kwargs)
 
 
+def plot_shapely_geos(obj_arr, ax=None, **kwargs):
+    ax = ax or plt.gca()
+
+    for t in obj_arr:
+        if isinstance(t, shapely_geometry.LineString):
+            x = np.array(t.xy[0])
+            y = np.array(t.xy[1])
+            ax.plot(x, y, **kwargs)
+
+
 def plot_geodjango_shapes(shapes, ax=None, set_axes=True, **kwargs):
     # shapes is one or an iterable of Geodjango GEOS objects
     # returns plot object(s)
