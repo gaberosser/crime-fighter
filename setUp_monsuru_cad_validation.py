@@ -60,14 +60,15 @@ for k in kinds:
 
     ### SeppValidationFixedModel with centroid ROC sampling
 
-    # b_sepp = True
-    # vb = validate.SeppValidationFixedModel(data=data,
-    #                                        pp_class=pp_models.SeppStochasticNn,
-    #                                        data_index=cid,
-    #                                        spatial_domain=poly,
-    #                                        cutoff_t=211,
-    #                                        model_kwargs=model_kwargs,
-    #                                        )
+    b_sepp = True
+    vb = validate.SeppValidationFixedModel(data=data,
+                                           pp_class=pp_models.SeppStochasticNn,
+                                           data_index=cid,
+                                           spatial_domain=poly,
+                                           cutoff_t=211,
+                                           model_kwargs=model_kwargs,
+                                           )
+    vb.set_grid(grid_squares)
 
     ### SeppValidationFixedModel with integration ROC sampling
 
@@ -122,15 +123,16 @@ for k in kinds:
     # model_objs[k] = vb.model
 
     ### Historic spatial KDE (NN bandwidth, 20 NNs) with integration sampling
-    time_window = 60
-    b_sepp = False
-    sk = hotspot.SKernelHistoricVariableBandwidthNn(dt=60, nn=20)
-    vb = validation.ValidationIntegration(data,
-                                          model_class=hotspot.Hotspot,
-                                          spatial_domain=poly,
-                                          model_args=(sk,),
-                                          cutoff_t=211)
-    vb.set_grid(grid_squares, num_sample_points)
+    # time_window = 60
+    # b_sepp = False
+    # sk = hotspot.SKernelHistoricVariableBandwidthNn(dt=60, nn=20)
+    # vb = validation.ValidationIntegration(data,
+    #                                       model_class=hotspot.Hotspot,
+    #                                       spatial_domain=poly,
+    #                                       model_args=(sk,),
+    #                                       cutoff_t=211)
+    # vb.set_grid(grid_squares, num_sample_points)
+
     res[k] = vb.run(time_step=1, n_iter=num_validation, verbose=True,
                     train_kwargs={'niter': niter})
     model_objs[k] = vb.model

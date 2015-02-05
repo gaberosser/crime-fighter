@@ -38,10 +38,11 @@ def unix_time(dt):
 
 
 def get_crimes_by_type(nicl_type=3, only_new=False, jiggle_scale=None, start_date=None,
-                       end_date=None, spatial_domain=None):
+                       end_date=None, spatial_domain=None, convert_dates=True):
     # Get CAD crimes by NICL type
     # data are de-duped, then processed into a (t, x, y) numpy array
-    # times are in units of days, relative to t0
+    # if convert_dates == True, the t component is converted into a float representing days, relative to t0
+    # otherwise, they are kept as datetime.datetime objects
 
     if hasattr(nicl_type, '__iter__'):
         qset = []
@@ -58,7 +59,10 @@ def get_crimes_by_type(nicl_type=3, only_new=False, jiggle_scale=None, start_dat
 
     xy = np.array([x.att_map.coords for x in qset])
     t0 = np.min([x.inc_datetime for x in qset])
-    t = np.array([[(x.inc_datetime - t0).total_seconds() / SEC_IN_DAY] for x in qset])
+    if convert_dates:
+        t = np.array([[(x.inc_datetime - t0).total_seconds() / SEC_IN_DAY] for x in qset])
+    else:
+        t = np.array([[x.inc_datetime] for x in qset])
     if jiggle_scale:
         # xy = jiggle_all_points_on_grid(xy[:, 0], xy[:, 1])
         xy = jiggle_on_and_off_grid_points(xy[:, 0], xy[:, 1], scale=jiggle_scale)
@@ -161,29 +165,23 @@ class CadAggregate(object):
 
     def load_data(self):
 
-        self.cad, t0, cid = get_crimes_by_type(nicl_type=self.nicl_number, only_new=self.only_new,
-                                               start_date=self._start_date, end_date=self._end_date)
-
-
-        # self.cad = logic.initial_filter_cad(nicl_type=self.nicl_number, only_new=self.only_new)
-        # if self.start_date:
-        #     self.cad = self.cad.filter(inc_datetime__gte=self.start_date)
-        # if self.end_date:
-        #     self.cad = self.cad.filter(inc_datetime__lte=self.end_date)
-        # if self.dedupe:
-        #     self.cad = logic.dedupe_cad(self.cad)
+        self.cad, _, cid = get_crimes_by_type(nicl_type=self.nicl_number,
+                                                            only_new=self.only_new,
+                                                            start_date=self._start_date,
+                                                            end_date=self._end_date,
+                                                            convert_dates=False)
 
     @property
     def start_date(self):
         if self._start_date:
             return self._start_date
-        return min([x.inc_datetime for x in self.cad]).replace(hour=0, minute=0, second=0)
+        return self.cad[:, 0].min()
 
     @property
     def end_date(self):
         if self._end_date:
             return self._end_date
-        return max([x.inc_datetime for x in self.cad])
+        return self.cad[:, 0].max()
 
     def aggregate(self):
         raise NotImplementedError()
@@ -244,7 +242,7 @@ class CadDaily(CadTemporalAggregation):
         """ Interesting! If we just generate the lambda function inline in bucket_dict, the scope is updated each time,
          so the parameters (sd, ed) are also updated.  In essence the final function created is run every time.
          Instead use a function factory to capture the closure correctly. """
-        return lambda x: sd <= x.inc_datetime < ed
+        return lambda x: sd <= x[0] < ed
 
     def bucket_dict(self):
         gen_day = logic.n_day_iterator(self.start_date, self.end_date)
@@ -933,14 +931,11 @@ def plot_spatial_density_all_time_by_crime(cad_spatial_grid):
     for i, this_cbg in enumerate(cad_spatial_grid.itervalues()):
         ax = axes[i]
         oo.render(ax)
-        ds = [len(t) for t in this_cbg.data.values()]
-        # ax.set_title(short_names[i])
+        ds = this_cbg.all_time_aggregate().values.flatten()
         ax.set_extent([xmin, xmax, ymin, ymax], ccrs.OSGB())
         ax.background_patch.set_visible(False)
-        # ax.outline_patch.set_visible(False)
         cmap = mpl.cm.autumn
         norm = mpl.colors.Normalize(0, max(ds))
-        # norm.autoscale(ds)
         cax = mpl.colorbar.make_axes(ax, location='bottom', pad=0.02, fraction=0.05, shrink=0.9)
         cbar = mpl.colorbar.ColorbarBase(cax[0], cmap=cmap, norm=norm, orientation='horizontal')
         sm = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)

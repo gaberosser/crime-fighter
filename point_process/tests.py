@@ -322,11 +322,16 @@ class TestValidate(unittest.TestCase):
             np.random.rand(5000, 2)
         ))
 
-        vb = validate.SeppValidationFixedModel(data, model_kwargs={
-        'max_delta_t': 0.1,
-        'max_delta_d': 0.1,
-        'estimation_function': lambda x, y: estimation.estimator_bowers(x, y, ct=10, cd=10),
-        }, pp_class=models.SeppStochasticStationaryBg)
+        vb = validate.SeppValidationFixedModel(
+            data,
+            model_kwargs={
+                'max_delta_t': 0.1,
+                'max_delta_d': 0.1,
+                'estimation_function': lambda x, y: estimation.estimator_bowers(x, y, ct=10, cd=10),
+
+            },
+            pp_class=models.SeppStochasticStationaryBg)
+        vb.model.set_seed(42)
         vb.set_grid(0.05)
         vb.set_t_cutoff(0.5, b_train=False)
         res = vb.run(time_step=0.05, n_iter=5, train_kwargs={'niter': 5}, verbose=True)
@@ -337,5 +342,15 @@ class TestValidate(unittest.TestCase):
         vb2.set_t_cutoff(0.5)
         res2 = vb2.run(time_step=0.05, n_iter=5, verbose=True)
 
-        for i in range(5):
-            self.assertTrue(np.all(res['cumulative_crime_full'][i] == res2['cumulative_crime_full'][i]))
+        methods = ('bg', 'bg_static', 'trigger', 'full', 'full_static')
+
+        for m in methods:
+            this_res = res[m]
+            this_res2 = res2[m]
+            for (v, v2) in zip(this_res.itervalues(), this_res2.itervalues()):
+                if v.dtype.name == 'object':
+                    self.assertTrue(np.all([np.all([np.all(v[i][j] == v2[i][j]) for j in range(len(v[i]))]) for i in range(len(v))]))
+                else:
+                    self.assertTrue(np.all(v == v2))
+
+
