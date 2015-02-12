@@ -321,6 +321,7 @@ class TestValidate(unittest.TestCase):
             np.linspace(0, 1, 5000).reshape((5000, 1)),
             np.random.rand(5000, 2)
         ))
+        num_validation = 5
 
         vb = validate.SeppValidationFixedModel(
             data,
@@ -334,13 +335,13 @@ class TestValidate(unittest.TestCase):
         vb.model.set_seed(42)
         vb.set_grid(0.05)
         vb.set_t_cutoff(0.5, b_train=False)
-        res = vb.run(time_step=0.05, n_iter=5, train_kwargs={'niter': 5}, verbose=True)
+        res = vb.run(time_step=0.05, n_iter=num_validation, train_kwargs={'niter': 5}, verbose=True)
 
 
         vb2 = validate.SeppValidationPredefinedModel(data, model=vb.model)
         vb2.set_grid(0.05)
         vb2.set_t_cutoff(0.5)
-        res2 = vb2.run(time_step=0.05, n_iter=5, verbose=True)
+        res2 = vb2.run(time_step=0.05, n_iter=num_validation, verbose=True)
 
         methods = ('bg', 'bg_static', 'trigger', 'full', 'full_static')
 
@@ -354,3 +355,31 @@ class TestValidate(unittest.TestCase):
                     self.assertTrue(np.all(v == v2))
 
 
+            cum_crime = this_res['cumulative_crime']
+            cum_crime_count = this_res['cumulative_crime_count']
+            crimes_per_day = cum_crime_count[:, -1].astype(float)
+
+            # compute cumul crime fraction from the count
+            cum_crime_from_count = (cum_crime_count.transpose() / crimes_per_day).transpose()
+
+            # check equality of crime count and crime fraction, ignoring nan
+            cum_crime_frac = cum_crime[~np.all(np.isnan(cum_crime), axis=1)]
+            cum_crime_count_no_nan = cum_crime_from_count[~np.all(np.isnan(cum_crime_from_count), axis=1)]
+            self.assertTrue(np.all(cum_crime_frac == cum_crime_count_no_nan))
+
+            # compute crimes per day and cumulative crime count from ranked IDs
+            crimes_per_day_from_cid = []
+            cum_crime_count_from_cid = []
+            for i in range(num_validation):
+                this_cid = this_res['ranked_crime_id'][i]
+                this_cum_crime_count = np.cumsum([len(t) if t is not None else 0 for t in this_cid])
+                crimes_per_day_from_cid.append(this_cum_crime_count[-1])
+                cum_crime_count_from_cid.append(this_cum_crime_count)
+
+            crimes_per_day_from_cid = np.array(crimes_per_day_from_cid)
+            # check that crimes per day match in counts and in CID arrays
+            self.assertTrue(np.all(crimes_per_day == crimes_per_day_from_cid))
+
+            cum_crime_count_from_cid = np.array(cum_crime_count_from_cid)
+            # check that the cumulative crime count matches that computed  from CID arrays
+            self.assertTrue(np.all(cum_crime_count == cum_crime_count_from_cid))

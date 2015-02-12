@@ -80,7 +80,7 @@ class TestKernelMultivariateNormal(unittest.TestCase):
         vars = self.scale[:x.nd]
         res = multivariate_normal.pdf(x.data, mean=loc, cov=vars)
         if x.original_shape:
-            res = res.reshape(x.original_shape, order='F')
+            res = res.reshape(x.original_shape)
         return res
 
     def expected_marginal_pdf(self, x, dim):

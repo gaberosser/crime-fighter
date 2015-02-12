@@ -30,7 +30,7 @@ class TestSpatial(unittest.TestCase):
             (1, 0),
             (0, 0),
         ])
-        igrid, egrid = spatial.create_spatial_grid(domain, grid_length=0.1) # no offset
+        igrid, egrid, fgs = spatial.create_spatial_grid(domain, grid_length=0.1) # no offset
         self.assertEqual(len(igrid), 100)
         self.assertEqual(len(egrid), 100)
         self.assertAlmostEqual(sum([g.area for g in igrid]), 1.0)
@@ -40,8 +40,9 @@ class TestSpatial(unittest.TestCase):
         for g in egrid:
             self.assertAlmostEqual(g[2], g[0] + 0.1)
             self.assertAlmostEqual(g[3], g[1] + 0.1)
+        self.assertTrue(np.all(fgs))
 
-        igrid, egrid = spatial.create_spatial_grid(domain, grid_length=0.1, offset_coords=(0.05, 0.)) # offset
+        igrid, egrid, fgs = spatial.create_spatial_grid(domain, grid_length=0.1, offset_coords=(0.05, 0.)) # offset
         self.assertEqual(len(igrid), 110)
         self.assertEqual(len(igrid), 110)
         self.assertAlmostEqual(sum([g.area for g in igrid]), 1.0)
@@ -51,23 +52,27 @@ class TestSpatial(unittest.TestCase):
         for g in egrid:
             self.assertAlmostEqual(g[2], g[0] + 0.1)
             self.assertAlmostEqual(g[3], g[1] + 0.1)
+        # 20 grid squares are not fully within the domain
+        self.assertEqual(sum(fgs), 90)
 
-        igrid, egrid = spatial.create_spatial_grid(domain, grid_length=0.1, offset_coords=(0., 1.1)) # offset outside of domain
+        igrid, egrid, fgs = spatial.create_spatial_grid(domain, grid_length=0.1, offset_coords=(0., 1.1)) # offset outside of domain
         self.assertEqual(len(igrid), 100)
         self.assertEqual(len(egrid), 100)
         self.assertAlmostEqual(sum([g.area for g in igrid]), 1.0)
         for g in igrid:
+            self.assertAlmostEqual(g.area, 0.01)
             self.assertTrue(g.intersects(domain))
         for g in egrid:
             self.assertAlmostEqual(g[2], g[0] + 0.1)
             self.assertAlmostEqual(g[3], g[1] + 0.1)
+        self.assertTrue(np.all(fgs))
 
     def test_grid_circle(self):
         """
         Circular domain
         """
         domain = geos.Point([0., 0.]).buffer(1.0, 100)
-        igrid, egrid = spatial.create_spatial_grid(domain, grid_length=0.25)
+        igrid, egrid, fgs = spatial.create_spatial_grid(domain, grid_length=0.25)
         self.assertEqual(len(igrid), 60)
         self.assertEqual(len(igrid), len(egrid))
         self.assertAlmostEqual(sum([g.area for g in igrid]), np.pi, places=3) # should approximate PI
@@ -264,9 +269,10 @@ class TestRoc(unittest.TestCase):
         r.set_grid(0.5)
         tc = r.true_count
 
-        pred = np.linspace(0, 1, r.ngrid)
+        pred = np.linspace(0, 1, r.ngrid).reshape((1, r.ngrid))
+        # check that an error is raised if the incorrect quantity of data is supplied
         with self.assertRaises(AttributeError):
-            r.set_prediction(pred[1:])
+            r.set_prediction(pred[:, 1:])
         r.set_prediction(pred)
         self.assertTrue(np.all(pred == r.prediction_values))
         self.assertListEqual(list(r.prediction_rank), range(r.ngrid)[::-1])
@@ -276,7 +282,7 @@ class TestRoc(unittest.TestCase):
         r.set_grid(0.5)
         with self.assertRaises(AttributeError):
             res = r.evaluate()
-        r.set_prediction(np.linspace(0, 1, r.ngrid))
+        r.set_prediction(np.linspace(0, 1, r.ngrid).reshape((1, r.ngrid)))
         res = r.evaluate()
         self.assertListEqual(list(res['prediction_rank']), range(r.ngrid)[::-1])
         self.assertListEqual(list(res['prediction_values']), list(r.prediction_values[::-1])) # sorted descending
@@ -393,12 +399,12 @@ class TestValidation(unittest.TestCase):
 
         # training set
         training_expctd = self.data[self.data[:, 0] <= cutoff_te]
-        self.assertEqual(vb.training.shape[0], len(training_expctd))
+        self.assertEqual(vb.training.ndata, len(training_expctd))
         self.assertTrue(np.all(vb.training == training_expctd))
 
         # testing set
         testing_expctd = self.data[self.data[:, 0] > cutoff_te]
-        self.assertEqual(vb.testing().shape[0], len(testing_expctd))
+        self.assertEqual(vb.testing().ndata, len(testing_expctd))
         self.assertTrue(np.all(vb.testing() == testing_expctd))
 
         # test when as_point=True
@@ -413,21 +419,21 @@ class TestValidation(unittest.TestCase):
         cutoff_te = 0.3
         vb.set_t_cutoff(cutoff_te)
         testing_expctd = self.data[self.data[:, 0] > cutoff_te]
-        self.assertEqual(vb.testing().shape[0], len(testing_expctd))
+        self.assertEqual(vb.testing().ndata, len(testing_expctd))
         self.assertTrue(np.all(vb.testing() == testing_expctd))
 
         # testing dataset with dt_plus specified
         dt_plus = testing_expctd[2, 0] - cutoff_te
         testing_expctd = testing_expctd[:3]  # three results
-        self.assertEqual(vb.testing(dt_plus=dt_plus).shape[0], len(testing_expctd))
+        self.assertEqual(vb.testing(dt_plus=dt_plus).ndata, len(testing_expctd))
         self.assertTrue(np.all(vb.testing(dt_plus=dt_plus) == testing_expctd))
 
         # testing dataset with dt_plus and dt_minus
         dt_plus = self.data[self.data[:, 0] > cutoff_te][17, 0] - cutoff_te
         dt_minus = self.data[self.data[:, 0] > cutoff_te][10, 0] - cutoff_te
         testing_expctd = self.data[(self.data[:, 0] > (cutoff_te + dt_minus)) & (self.data[:, 0] <= (cutoff_te + dt_plus))]
-        self.assertEqual(vb.testing(dt_plus=dt_plus, dt_minus=dt_minus).shape[0], 7)
-        self.assertEqual(vb.testing(dt_plus=dt_plus, dt_minus=dt_minus).shape[0], len(testing_expctd))
+        self.assertEqual(vb.testing(dt_plus=dt_plus, dt_minus=dt_minus).ndata, 7)
+        self.assertEqual(vb.testing(dt_plus=dt_plus, dt_minus=dt_minus).ndata, len(testing_expctd))
         self.assertTrue(np.all(vb.testing(dt_plus=dt_plus, dt_minus=dt_minus) == testing_expctd))
 
     def test_training(self):
@@ -489,7 +495,8 @@ class TestValidation(unittest.TestCase):
         mocroc.centroids = np.array([[0., 0.],
                                      [1., 1.]])
         mocroc.egrid = range(2) # needs to have the correct length, contents not used
-        mocroc.sample_points = range(2)
+        mocroc.sample_points = DataArray([[0., 0.],
+                                         [1., 1.]])
         vb.roc = mocroc
 
         res = vb._iterate_run(pred_dt_plus=0.2, true_dt_plus=None, true_dt_minus=0.)
@@ -503,8 +510,15 @@ class TestValidation(unittest.TestCase):
         self.assertTrue(vb.roc.set_prediction.called)
         self.assertEqual(vb.roc.set_prediction.call_count, 1)
         self.assertEqual(len(vb.roc.set_prediction.call_args[0]), 1)
-        t = (vb.cutoff_t + 0.2) * np.ones(2)
-        pred_expctd = vb.model.predict(t, np.array([0., 1.]), np.array([0., 1.]))
+        t = (vb.cutoff_t + 0.2)
+        # expected prediction values at (0,0), (1,1)
+        pred_arg = DataArray(
+            np.array([
+                [t, 0., 0.],
+                [t, 1., 1.]
+            ])
+        )
+        pred_expctd = vb.model.predict(pred_arg)
         self.assertTrue(np.all(vb.roc.set_prediction.call_args[0][0] == pred_expctd))
 
         # set grid
@@ -588,8 +602,10 @@ class TestValidation(unittest.TestCase):
             res = vb.run(time_step=0.1)
         vb.set_grid(0.1)
         res = vb.run(time_step=0.1)
-
         expct_call_count = math.ceil((1 - t0) / 0.1)
         for v in res.values():
-            self.assertEqual(len(v), expct_call_count)
+            # only test the length of iterable values, as the res dict also contains some parameter values
+            # that are float or int
+            if hasattr(v, '__iter__'):
+                self.assertEqual(len(v), expct_call_count)
 
