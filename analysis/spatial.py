@@ -98,3 +98,28 @@ def random_points_within_poly(poly, npts):
         out_idx = np.array([not geos.Point(a, b).within(poly) for (a, b) in zip(x, y)])
 
     return x, y
+
+
+def jiggle_on_grid_points(data, grid_polys):
+    """
+    Introduce random jiggle to all points in the data whose spatial location lies exactly on the centroid of a grid
+    polygon.
+    :param data: Numpy array, as returned by get_crimes_by_type
+    :param grid_polys: Iterable containing geos polygon objects
+    :return: new_data - with same times as the original events, but jiggled where necessary
+    """
+    new_data = []
+    centroids = np.array([t.centroid.coords for t in grid_polys])
+    for t in data:
+        x = t[1]
+        y = t[2]
+        idx = np.where(np.sum(centroids == t[1:], axis=1) == 2)[0]
+        if idx:
+            assert len(idx) == 1, "Overlapping polygons are not supported"
+            idx = idx[0]
+            this_datum = (t[0],) + random_points_within_poly(grid_polys[idx], 1)
+        else:
+            this_datum = t
+        new_data.append(this_datum)
+
+    return np.array(new_data)

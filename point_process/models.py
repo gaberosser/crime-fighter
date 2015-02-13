@@ -21,7 +21,8 @@ class SepBase(object):
                  max_delta_d=None,
                  bg_kde_kwargs=None,
                  trigger_kde_kwargs=None,
-                 parallel=True):
+                 parallel=True,
+                 **kwargs):
 
         self.p = p
         self.data = None
@@ -54,9 +55,9 @@ class SepBase(object):
         self.log_likelihoods = []
         self.run_times = []
 
-        self.__init_extra__()
+        self.__init_extra__(**kwargs)
 
-    def __init_extra__(self):
+    def __init_extra__(self, **kwargs):
         """
         Function that gets called immediately after __init__
         Use this if any tweaks / defaults need to be applied at this stage
@@ -199,13 +200,22 @@ class SepBase(object):
         print "self.trigger_density() in %f s" % (time() - tic)
         g = sparse.csr_matrix((trigger, self.linkage), shape=(self.ndata, self.ndata))
 
-        # recompute P
-        # NB use LIL sparse matrix to avoid warnings about expensive structure changes, then convert at end.
+        # recompute P, making sure to maintain stored zeros
+        # NB: summing sparse matrices automatically collapses any zero entries in the result, so don't do it
         l = g.sum(axis=0) + m
-        new_p = sparse.lil_matrix((self.ndata, self.ndata))
-        new_p[range(self.ndata), range(self.ndata)] = m / l
-        new_p[self.linkage] = trigger / l.flat[self.linkage[1]]
-        new_p = new_p.tocsr()
+        trigger_component = trigger / np.array(l.flat[self.linkage[1]]).squeeze()
+        bg_component = np.array(m / l).squeeze()
+        # create equivalent to linkage_idx for the diagonal BG entries
+        bg_linkage = (range(self.ndata), range(self.ndata))
+        new_p = sparse.csr_matrix((bg_component, bg_linkage), shape=(self.ndata, self.ndata))
+        new_p[self.linkage] = trigger_component
+
+        # NB use LIL sparse matrix to avoid warnings about expensive structure changes, then convert at end.
+        # l = g.sum(axis=0) + m
+        # new_p = sparse.lil_matrix((self.ndata, self.ndata))
+        # new_p[range(self.ndata), range(self.ndata)] = m / l
+        # new_p[self.linkage] = trigger / l.flat[self.linkage[1]]
+        # new_p = new_p.tocsr()
 
         # compute difference
         q = new_p - self.p
@@ -237,13 +247,7 @@ class SepBase(object):
         for i in range(niter):
             ps.append(self.p)
             tic = time()
-            try:
-                self._iterate()
-            except Exception as exc:
-                print repr(exc)
-                raise
-                # warnings.warn("Stopping training algorithm prematurely due to error on iteration %d." % (i+1))
-                # break
+            self._iterate()
 
             # record time taken
             self.run_times.append(time() - tic)
@@ -292,7 +296,8 @@ class Sepp(SepBase):
     def set_linkages(self):
         # set self.linkage, self.linkage_col, self.interpoint_data
         self.linkage = linkages(self.data, self.max_delta_t, self.max_delta_d)
-        self.interpoint_data = self.data[self.linkage[1]] - self.data[self.linkage[0]]
+        # self.interpoint_data = self.data[self.linkage[1]] - self.data[self.linkage[0]]
+        self.interpoint_data = self.data.getrows(self.linkage[1]) - self.data.getrows(self.linkage[0])
         self.linkage_cols = dict(
             [(i, np.concatenate((self.linkage[0][self.linkage[1] == i], [i,]))) for i in range(self.ndata)]
         )
@@ -311,6 +316,9 @@ class Sepp(SepBase):
         using the time component leads to the background 'fading out' when predicting into the future.
         Integral over all data dimensions should return num_bg
         """
+        # if no background component, return zeroes
+        if self.bg_kde is None:
+            return np.zeros(target_data.ndata)
 
         num_bg = self.p.diagonal().sum()
 
@@ -329,6 +337,10 @@ class Sepp(SepBase):
         Integral over all data dimensions should return num_trig / num_events... This kernel is then summed over all
         data points, returning a total mass of num_trig as required.
         """
+        # if no trigger component, return zeroes
+        if self.trigger_kde is None:
+            return np.zeros(delta_data.ndata)
+
         return self.trigger_kde.pdf(delta_data, normed=False) / self.ndata
 
     def trigger_density_in_place(self, target_data, source_data=None):
@@ -340,8 +352,6 @@ class Sepp(SepBase):
             pass
         else:
             source_data = self.data
-
-        print "SEPP trigger_density_in_place num source_data = %d" % len(source_data)
 
         link_source, link_target = linkages(source_data, self.max_delta_t, self.max_delta_d, data_target=target_data)
         trigger = sparse.csr_matrix((source_data.ndata, target_data.ndata))
@@ -372,7 +382,6 @@ class Sepp(SepBase):
         else:
             source_data = self.data
 
-
         bg = self.background_density(target_data, spatial_only=spatial_bg_only)
         trigger = self.trigger_density_in_place(target_data, source_data=source_data)
 
@@ -388,10 +397,11 @@ class SeppStochastic(Sepp):
     bg_kde_class = pp_kde.FixedBandwidthKdeSeparable
     trigger_kde_class = pp_kde.FixedBandwidthKde
 
-
-    def __init_extra__(self):
-        super(SeppStochastic, self).__init_extra__()
+    def __init_extra__(self, **kwargs):
+        super(SeppStochastic, self).__init_extra__(**kwargs)
         self.rng = np.random.RandomState()
+        if 'seed' in kwargs:
+            self.set_seed(kwargs['seed'])
         self.bg_kde_kwargs['parallel'] = self.parallel
         self.trigger_kde_kwargs['parallel'] = self.parallel
 
@@ -428,11 +438,15 @@ class SeppStochastic(Sepp):
 
         bg_idx = [x for x, y in zip(causes, effects) if x == y]
         if not len(bg_idx):
-            raise ValueError("No BG events remaining")
+            warnings.warn("No BG events remaining")
+
         cause_effect = zip(*[(x, y) for x, y in zip(causes, effects) if x != y])
         if not len(cause_effect):
-            raise ValueError("No trigger events remaining")
-        cause_idx, effect_idx = cause_effect
+            warnings.warn("No trigger events remaining")
+            cause_idx = []
+            effect_idx = []
+        else:
+            cause_idx, effect_idx = cause_effect
 
         return bg_idx, list(cause_idx), list(effect_idx)
 
@@ -445,8 +459,16 @@ class SeppStochastic(Sepp):
 
         # compute KDEs
         try:
-            self.bg_kde = self.bg_kde_class(self.data[bg_idx], **self.bg_kde_kwargs)
-            self.trigger_kde = self.trigger_kde_class(interpoint, **self.trigger_kde_kwargs)
+            if len(bg_idx):
+                self.bg_kde = self.bg_kde_class(self.data[bg_idx], **self.bg_kde_kwargs)
+            else:
+                # override the KDE
+                self.bg_kde = None
+            if len(interpoint) > 1:
+                self.trigger_kde = self.trigger_kde_class(interpoint, **self.trigger_kde_kwargs)
+            else:
+                # override the KDE
+                self.trigger_kde = None
 
         except AttributeError as exc:
             print "Error.  Num BG: %d, num trigger %d" % (self.num_bg[-1], self.num_trig[-1])
@@ -507,9 +529,8 @@ class SeppStochasticNn(SeppStochastic):
     bg_kde_class = pp_kde.VariableBandwidthNnKdeSeparable
     trigger_kde_class = pp_kde.VariableBandwidthNnKde
 
-    def __init_extra__(self):
-        super(SeppStochastic, self).__init_extra__()
-        self.rng = np.random.RandomState()
+    def __init_extra__(self, **kwargs):
+        super(SeppStochasticNn, self).__init_extra__(**kwargs)
         if 'number_nn' not in self.trigger_kde_kwargs:
             self.trigger_kde_kwargs['number_nn'] = 100 if self.ndim == 1 else 15
         if 'number_nn' not in self.bg_kde_kwargs:

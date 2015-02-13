@@ -66,13 +66,19 @@ def compute_chicago_land_buffer():
     return new_poly.difference(mpoly)
 
 
-def get_crimes_by_type(crime_type='burglary', start_date=None, end_date=None, domain=None, **where_strs):
+def get_crimes_by_type(crime_type='burglary',
+                       start_date=None,
+                       end_date=None,
+                       domain=None,
+                       convert_dates=True,
+                       **where_strs):
     """
     Get all matching crimes from the Chicago dataset
     :param crime_type:
     :param start_date:
     :param end_date:
     :param domain: geos.GEOSGeometry object
+    :param convert_dates: If True, dates are converted to the number of days after t0 (float)
     :param where_strs:
     :return:
     """
@@ -99,12 +105,21 @@ def get_crimes_by_type(crime_type='burglary', start_date=None, end_date=None, do
 
     cursor.execute(sql)
     res = cursor.fetchall()
-    cid = [x[0] for x in res]
-    t = [x[1] for x in res]
-    t0 = min(t)
-    t = [(x - t0).total_seconds() / float(60 * 60 * 24) for x in t]
-    res = np.array([(t[i], res[i][2], res[i][3]) for i in range(len(res))])
-    res = res[np.argsort(res[:, 0])]
+    cid = np.array([x[0] for x in res])
+    t0 = min([x[1] for x in res])
+    xy = np.array([(res[i][2], res[i][3]) for i in range(len(res))])
+    if convert_dates:
+        t = np.array([[(x[1] - t0).total_seconds() / float(60 * 60 * 24)] for x in res])
+    else:
+        t = np.array([[x[1]] for x in res])
+    # res = np.array([(t[i], res[i][2], res[i][3]) for i in range(len(res))])
+    res = np.hstack((t, xy))
+
+    # sort data
+    sort_idx = np.argsort(res[:, 0])
+    res = res[sort_idx]
+    cid = cid[sort_idx]
+
     return res, t0, cid
 
 
@@ -214,20 +229,22 @@ def apply_point_process(start_date=datetime.datetime(2010, 3, 1, 0),
 
 
 def validate_point_process(
-        start_date=datetime.datetime(2012, 3, 1, 0),
-        training_size=365,
-        num_validation=20,
-        num_pp_iter=20,
-        grid=500,
-        n_sample_per_grid=10,
+        start_date=datetime.datetime(2011, 12, 3, 0),
+        training_size=277,
+        num_validation=30,
+        num_pp_iter=75,
+        grid=250,
+        n_sample_per_grid=20,
         prediction_dt=1, true_dt_plus=1,
         domain=None,
         model_kwargs=None):
 
+
+
     if not model_kwargs:
         model_kwargs = {
-            'max_delta_t': 30,
-            'max_delta_d': 200,
+            'max_delta_t': 60,
+            'max_delta_d': 400,
             'bg_kde_kwargs': {'number_nn': [101, 16]},
             'trigger_kde_kwargs': {'number_nn': 15,
                                    'min_bandwidth': [0.3, 5, 5]}
@@ -256,7 +273,7 @@ def validate_point_process(
         end_date=end_date,
         domain=domain,
     )
-    vb = validate.SeppValidationFixedModel(res, spatial_domain=domain, model_kwargs=model_kwargs)
+    vb = validate.SeppValidationFixedModelIntegration(res, spatial_domain=domain, model_kwargs=model_kwargs)
     vb.set_grid(grid, n_sample_per_grid=n_sample_per_grid)
     vb.set_t_cutoff(training_size, b_train=False)
 

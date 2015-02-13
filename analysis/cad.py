@@ -23,6 +23,7 @@ from itertools import combinations
 from stats.logic import rook_boolean_connectivity, global_morans_i_p, local_morans_i as lmi
 from django.db import connection
 from database import osm
+from spatial import random_points_within_poly
 
 UK_TZ = pytz.timezone('Europe/London')
 SEC_IN_DAY = float(24 * 60 * 60)
@@ -51,9 +52,13 @@ def get_crimes_by_type(nicl_type=3, only_new=False, jiggle_scale=None, start_dat
         qset = logic.clean_dedupe_cad(nicl_type=nicl_type, only_new=only_new, spatial_domain=spatial_domain)
 
     if start_date:
+        if not isinstance(start_date, datetime.datetime):
+            start_date = datetime.datetime.combine(start_date, datetime.time(23, 59, 59))
         start_date = start_date.replace(tzinfo=pytz.utc)
         qset = [x for x in qset if x.inc_datetime >= start_date]
     if end_date:
+        if not isinstance(end_date, datetime.datetime):
+            end_date = datetime.datetime.combine(end_date, datetime.time(23, 59, 59))
         end_date = end_date.replace(tzinfo=pytz.utc)
         qset = [x for x in qset if x.inc_datetime <= end_date]
 
@@ -348,20 +353,18 @@ def cad_spatial_repeat_analysis(nicl_type=3):
     return on_grid, off_grid_rpt, off_grid
 
 
-def jiggle_on_grid_points(x, y):
-    """ randomly distribute points located at the centroid of the grid squares in order to avoid the issues arising from
-        spurious exact repeats. """
-    divs = models.Division.objects.filter(type='cad_250m_grid')
-    centroids = np.array([t.centroid.coords for t in divs.centroid()])
-    res = []
-    for t in zip(x, y):
-        nt = t
-        if np.any(np.sum(centroids == t, axis=1) == 2):
-            # pick new coords
-            nt = (np.random.random(2) * 250 - 125) + t
-            # print t, " -> ", nt
-        res.append(nt)
-    return np.array(res)
+# def jiggle_on_grid_points(x, y)
+    # divs = models.Division.objects.filter(type='cad_250m_grid')
+    # centroids = np.array([t.centroid.coords for t in divs.centroid()])
+    # res = []
+    # for t in zip(x, y):
+    #     nt = t
+    #     if np.any(np.sum(centroids == t, axis=1) == 2):
+    #         # pick new coords
+    #         nt = (np.random.random(2) * 250 - 125) + t
+    #         # print t, " -> ", nt
+    #     res.append(nt)
+    # return np.array(res)
 
 
 def jiggle_on_and_off_grid_points(x, y, scale=5):

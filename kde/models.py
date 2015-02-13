@@ -59,8 +59,7 @@ def set_nn_bandwidths(normed_data, raw_stdevs, num_nn, **kwargs):
         nn_obj = NearestNeighbors(num_nn).fit(normed_data)
         dist, _ = nn_obj.kneighbors(normed_data)
     except ValueError as exc:
-        ## should never end up here as num_nn is set at instantiation
-        ipdb.set_trace()
+        ## Most likely cause of this error is zero in the raw standard deviations due to repeated values
         warnings.warn("Insufficient data, reducing number of nns to %d" % normed_data.ndata)
         nn_obj = NearestNeighbors(normed_data.ndata).fit(normed_data)
         dist, _ = nn_obj.kneighbors(normed_data)
@@ -69,23 +68,26 @@ def set_nn_bandwidths(normed_data, raw_stdevs, num_nn, **kwargs):
 
     nn_distances = dist[:, -1]
 
-    if np.any(np.isinf(nn_distances)):
-        raise AttributeError("Encountered np.inf values in NN distances")
+    ## TODO: is this really necessary if the minimum bandwidth parameter has been set?
+    ## it's fiddly and a bit woolly, in that it arbitrarily changes the number of NNs
 
-    # check for NN distances below tolerance
-    intol_idx = np.where(nn_distances < tol)[0]
-    if len(intol_idx):
-        intol_data = normed_data[intol_idx]
-        nn_obj.n_neighbors = normed_data.ndata
-        dist, _ = nn_obj.kneighbors(intol_data)
-        # for each point, perform a NN distance lookup on ALL valid NNs and use the first one above tol
-        for i, j in enumerate(intol_idx):
-            d = dist[i][num_nn + 1:]
-            nn_distances[j] = d[d > tol][0]
-        print "Found %d NN distances below tolerance, of which %d were exactly zero." % (
-            len(intol_idx),
-            sum(nn_distances == 0)
-        )
+    # if np.any(np.isinf(nn_distances)):
+    #     raise AttributeError("Encountered np.inf values in NN distances")
+    #
+    # # check for NN distances below tolerance
+    # intol_idx = np.where(nn_distances < tol)[0]
+    # if len(intol_idx):
+    #     intol_data = normed_data[intol_idx]
+    #     nn_obj.n_neighbors = normed_data.ndata
+    #     dist, _ = nn_obj.kneighbors(intol_data)
+    #     # for each point, perform a NN distance lookup on ALL valid NNs and use the first one above tol
+    #     for i, j in enumerate(intol_idx):
+    #         d = dist[i][num_nn + 1:]
+    #         nn_distances[j] = d[d > tol][0]
+    #     print "Found %d NN distances below tolerance, of which %d were exactly zero." % (
+    #         len(intol_idx),
+    #         sum(nn_distances == 0)
+    #     )
 
     nn_distances = nn_distances.reshape((normed_data.ndata, 1))
     bandwidths = raw_stdevs * nn_distances
@@ -192,6 +194,9 @@ class KdeBase(object):
             self.data = data
         else:
             self.data = self.data_class(data)
+
+        if self.data.ndata == 0:
+            raise AttributeError("Supplied data array is empty")
 
         self.parallel = parallel
 
@@ -641,14 +646,27 @@ class VariableBandwidthNnKdeSeparable(FixedBandwidthKde, KdeBaseSeparable):
     def set_bandwidths(self, *args, **kwargs):
         # set bandwidths separately in the separable dimensions
 
+        # split min_bandwidth if present
+        mb = kwargs.pop('min_bandwidth', None)
+        if mb:
+            mb_t = mb[0]
+            mb_s = mb[1:]
+        else:
+            mb_t = None
+            mb_s = None
+
         # time
         self.nn_distances_t, bandwidths_t = set_nn_bandwidths(self.data.time / self.raw_std_devs[0],
-                                                         self.raw_std_devs[0],
-                                                         self.nn[0], **kwargs)
+                                                              self.raw_std_devs[0],
+                                                              self.nn[0],
+                                                              min_bandwidth=mb_t,
+                                                              **kwargs)
         # space
         self.nn_distances_s, bandwidths_s = set_nn_bandwidths(self.data.space / self.raw_std_devs[1:],
-                                                         self.raw_std_devs[1:],
-                                                         self.nn[1], **kwargs)
+                                                              self.raw_std_devs[1:],
+                                                              self.nn[1],
+                                                              min_bandwidth=mb_s,
+                                                              **kwargs)
         self.bandwidths = np.hstack((bandwidths_t, bandwidths_s))
 
 
