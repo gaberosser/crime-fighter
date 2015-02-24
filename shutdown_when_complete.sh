@@ -1,5 +1,10 @@
 #!/bin/bash
 
+if [ $EUID != 0 ]; then
+    sudo "$0" "$@"
+    exit $?
+fi
+
 if [ -f "/home/gabriel/signal/shut_me_down_goddamnit" ]
     then
     rm /home/gabriel/signal/shut_me_down_goddamnit

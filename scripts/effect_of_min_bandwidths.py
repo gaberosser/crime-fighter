@@ -7,65 +7,75 @@ from matplotlib import pyplot as plt
 import numpy as np
 import os
 import dill
+from scipy import stats
+import io
 
 ROOT_DIR = '/home/gabriel/pickled_results'
 
-def validation_results(vres):
-    '''
-    :param vres: output from validation 'run' method
-    :return:
-    '''
-    # fig = plt.figure()
-    # ax = fig.add_subplot(111)
-    hit_rate = []
-    pai = []
-    for k, res in vres.iteritems():
-        if not res:
-            # skip unconverged
-            tmp = k + (None, None,)
-            hit_rate.append(tmp)
-            pai.append(tmp)
-            continue
-        x = res['full']['cumulative_area'].mean(axis=0)
-        hr_m = np.nanmean(res['full']['cumulative_crime'], axis=0)
-        hr_std = np.nanstd(res['full']['cumulative_crime'], axis=0)
-        pai_m = np.nanmean(res['full']['pai'], axis=0)
-        pai_std = np.nanstd(res['full']['pai'], axis=0)
-        idx = np.where(x >= 0.2)[0][0]
-        hit_rate.append(k + (hr_m[idx], hr_std[idx]))
-        pai.append(k + (pai_m[idx], pai_std[idx]))
+# global parameters
+num_sample_points = 20
 
-    return hit_rate, pai
+estimate_kwargs = {
+    'ct': 1,
+    'cd': 0.02
+}
+model_kwargs = {
+    'max_delta_t': 60,
+    'max_delta_d': 400,
+    'bg_kde_kwargs': {'number_nn': [100, 15],
+                      'min_bandwidth': None,  # replace this on each iteration
+                      'strict': False},
+    'trigger_kde_kwargs': {'number_nn': 15,
+                           'min_bandwidth': None,  # replace this on each iteration
+                           'strict': False},
+    'estimation_function': lambda x, y: estimation.estimator_bowers(x, y, **estimate_kwargs),
+    'seed': 42,  # doesn't matter what this is, just want it fixed
+}
+
+niter = 75
+
+
+
+def test_fade_out(coverage=0.2, min_bandwidth=(0.5, 50), plot=False):
+    res = io.load_camden_validation_evaluation(coverage)
+    linregress_keys = ('slope', 'intercept', 'rval', 'pval', 'stderr')
+    out = {}
+    for k in res.keys():
+        # full portion
+
+        this_res = res[k][min_bandwidth]
+        n = this_res['hit_rate'].size
+        idx = ~np.isnan(this_res['hit_rate'])
+        t = np.arange(n)[idx]
+        hr = this_res['hit_rate'][idx]
+        pai = this_res['pai'][idx]
+        out[k] = {
+            'hit_rate': dict([(x, y) for x, y in zip(linregress_keys, stats.linregress(t, hr))]),
+            'pai': dict([(x, y) for x, y in zip(linregress_keys, stats.linregress(t, pai))]),
+        }
+
+        if plot:
+            fig = plt.figure(k)
+            ax = fig.add_subplot(111)
+            ax.plot(t, pai, 'ko')
+            ax.plot(t, out[k]['pai']['intercept'] + t * out[k]['pai']['slope'], 'k--')
+            ax.set_xlabel('Prediction day', fontsize=14)
+            ax.set_ylabel('PAI', fontsize=14)
+            ax.set_ylim([-0.02/coverage, 1.02/coverage])
+
+    return out
 
 
 if __name__ == '__main__':
+
+    ## CAMDEN
 
     # start_date is the FIRST DAY OF THE PREDICTION
     start_date = datetime.datetime(2011, 12, 3)
     # equivalent in number of days from t0 (1/3/2011)
     start_day_number = 277
     # start_day_number = 385
-    num_sample_points = 20
 
-    estimate_kwargs = {
-        'ct': 1,
-        'cd': 0.02
-    }
-    model_kwargs = {
-        'max_delta_t': 60,
-        'max_delta_d': 400,
-        'bg_kde_kwargs': {'number_nn': [100, 15],
-                          'min_bandwidth': None,  # replace this on each iteration
-                          'strict': False},
-        'trigger_kde_kwargs': {'number_nn': 15,
-                               'min_bandwidth': None,  # replace this on each iteration
-                               'strict': False},
-        'estimation_function': lambda x, y: estimation.estimator_bowers(x, y, **estimate_kwargs),
-        'seed': 42,  # doesn't matter what this is, just want it fixed
-    }
-
-    niter = 75
-    # niter = 25
     num_validation = 120
 
     min_t_bds = [0, 0.5, 1, 2]
@@ -82,12 +92,11 @@ if __name__ == '__main__':
     # define crime types
     crime_types = {
         # 'burglary': 3,
-        # 'robbery': 5,
-        'theft_of_vehicle': 6,
+        'robbery': 5,
+        # 'theft_of_vehicle': 6,
         # 'violence': 1,
     }
 
-    # try:
     for (name, n) in crime_types.items():
         print "Crime type: %s" % name
         try:
