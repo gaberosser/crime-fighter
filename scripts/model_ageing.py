@@ -1,13 +1,13 @@
 __author__ = 'gabriel'
 from analysis import cad, chicago
-from point_process import models as pp_models, estimation, validate, plotting as pp_plotting
+from point_process import models as pp_models, estimation, validate
 from database import models
 import datetime
-from matplotlib import pyplot as plt
 import numpy as np
 import os
 import dill
 import io
+from utils import shutdown_decorator
 
 ROOT_DIR = '/home/gabriel/pickled_results'
 
@@ -31,17 +31,6 @@ model_kwargs = {
 }
 
 niter = 75
-
-
-def shutdown_decorator(func, *args, **kwargs):
-
-    def wrapper():
-        func()
-        with open('/home/gabriel/signal/shut_me_down_goddamnit', 'w') as f:
-            pass
-
-    return wrapper
-
 
 ## CAMDEN
 @shutdown_decorator
@@ -167,7 +156,6 @@ def run_chicago():
 
             if not os.path.isdir(base_dir):
                 os.makedirs(base_dir)
-                os.makedirs(base_dir)
 
             with open(os.path.join(base_dir, 'sepp_obj.pickle'), 'w') as f:
                 dill.dump(sepp_objs, f)
@@ -180,3 +168,61 @@ def run_chicago():
             with open(os.path.join(base_dir, 'errors'), 'a') as f:
                 f.write(repr(exc))
                 f.write('\n')
+
+
+def analyse_chicago(coverage=0.2):
+
+    crime_types = {
+        'burglary': 'burglary',
+        # 'robbery': 'robbery',
+        # 'theft_of_vehicle': 'motor vehicle theft',
+        # 'violence': 'assault',
+    }
+
+    pai = {}
+    hr = {}
+    hr30 = {}
+    pai30 = {}
+
+    for k in crime_types.keys():
+        base_dir = os.path.join(ROOT_DIR, 'chicago', 'model_ageing', k)
+        with open(os.path.join(base_dir, 'validation.pickle'), 'r') as f:
+            vres = dill.load(f)
+        this_pai = {}
+        this_hr = {}
+        this_hr30 = {}
+        this_pai30 = {}
+        for n in vres.keys():
+            if vres[n] is None:
+                continue
+            this = vres[n]['full']
+            x = this['cumulative_area'].mean(axis=0)
+            idx = np.where(x >= coverage)[0][0]
+
+            tmp_hr = this['cumulative_crime'][:, idx]
+            tmp_pai = this['pai'][:, idx]
+            not_nan_idx = ~np.isnan(tmp_hr)
+            this_hr[n] = tmp_hr[not_nan_idx]
+            this_pai[n] = tmp_pai[not_nan_idx]
+
+            # split into chunks of approximately 30 days
+            thr30 = {}
+            tpai30 = {}
+            l = len(x)
+            start_idx = range(0, l, 30)
+            for i in start_idx:
+                thr = tmp_hr[i:i+30]
+                thr = thr[~np.isnan(thr)]
+                tpai = tmp_pai[i:i+30]
+                tpai = tpai[~np.isnan(tpai)]
+                thr30[n + i] = thr
+                tpai30[n + i] = tpai
+            this_hr30[n] = thr30
+            this_pai30[n] = tpai30
+
+        hr[k] = this_hr
+        pai[k] = this_pai
+        hr30[k] = this_hr30
+        pai30[k] = this_pai30
+
+    return hr, pai, hr30, pai30

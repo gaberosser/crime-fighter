@@ -2,7 +2,6 @@ __author__ = 'gabriel'
 import numpy as np
 from network.geos import NetworkPoint
 from warnings import warn
-import ipdb
 
 
 def negative_time_dimension(data_array):

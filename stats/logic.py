@@ -1,7 +1,6 @@
 __author__ = 'gabriel'
 import numpy as np
 from pandas import DataFrame, Series
-from django.contrib.gis.geos import Polygon, MultiPolygon, LinearRing
 
 
 def truncated_acf_1d(x, max_lag=None):
@@ -116,6 +115,8 @@ def intersection_boolean_connectivity(areal_unit_qset, distance=None):
 
 def rook_boolean_connectivity(areal_unit_qset):
     """ Boolean connectivity, two regions are connected if they share a line """
+    from django.contrib.gis.geos import Polygon
+
     names = [x.name for x in areal_unit_qset]
     W = DataFrame(dict([(x, 0.) for x in names]), index=names)
 

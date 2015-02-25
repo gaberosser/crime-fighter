@@ -9,6 +9,7 @@ import os
 import dill
 from scipy import stats
 import io
+from utils import shutdown_decorator
 
 ROOT_DIR = '/home/gabriel/pickled_results'
 
@@ -66,9 +67,8 @@ def test_fade_out(coverage=0.2, min_bandwidth=(0.5, 50), plot=False):
     return out
 
 
-if __name__ == '__main__':
-
-    ## CAMDEN
+@shutdown_decorator
+def camden():
 
     # start_date is the FIRST DAY OF THE PREDICTION
     start_date = datetime.datetime(2011, 12, 3)
@@ -91,14 +91,18 @@ if __name__ == '__main__':
 
     # define crime types
     crime_types = {
-        # 'burglary': 3,
+        'burglary': 3,
         'robbery': 5,
-        # 'theft_of_vehicle': 6,
-        # 'violence': 1,
+        'theft_of_vehicle': 6,
+        'violence': 1,
     }
 
     for (name, n) in crime_types.items():
         print "Crime type: %s" % name
+        base_dir = os.path.join(ROOT_DIR, 'camden', name)
+        if not os.path.isdir(base_dir):
+            os.makedirs(base_dir)
+
         try:
             data, t0, cid = cad.get_crimes_by_type(n)
 
@@ -150,8 +154,3 @@ if __name__ == '__main__':
             with open(os.path.join(ROOT_DIR, 'camden', name, 'errors'), 'a') as f:
                 f.write(repr(exc))
                 f.write('\n')
-
-    # finally, write the shutdown file
-
-    f = open('/home/gabriel/signal/shut_me_down_goddamnit', 'w')
-    f.close()
