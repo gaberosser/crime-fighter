@@ -2,8 +2,8 @@ __author__ = 'gabriel'
 import numpy as np
 import os
 import dill
+from . import ROOT_DIR
 
-ROOT_DIR = '/home/gabriel/pickled_results'
 
 def validation_full(vres, coverage=0.2):
     '''

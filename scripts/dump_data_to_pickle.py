@@ -5,14 +5,14 @@ from analysis import cad, chicago
 from database import models
 import datetime
 from analysis.spatial import geodjango_to_shapely
+from . import DATA_DIR
 
 """
 This script loads CAD and Chicago data from the database and dumps it to a pickled array for use on Legion
 """
 
-ROOT_DIR = '/home/gabriel/pickled_data/'
-if not os.path.isdir(ROOT_DIR):
-    os.makedirs(ROOT_DIR)
+if not os.path.isdir(DATA_DIR):
+    os.makedirs(DATA_DIR)
 
 # regional boundaries
 
@@ -27,7 +27,7 @@ boundaries = {
 for k in boundaries:
     boundaries[k] = geodjango_to_shapely(boundaries[k]).simplify(0)
 
-with open(os.path.join(ROOT_DIR, 'boundaries.pickle'), 'w') as f:
+with open(os.path.join(DATA_DIR, 'boundaries.pickle'), 'w') as f:
     pickle.dump(boundaries, f)
 
 ## CAMDEN
@@ -44,7 +44,7 @@ crime_types = {
 }
 
 for k, n in crime_types.items():
-    this_path = os.path.join(ROOT_DIR, 'camden')
+    this_path = os.path.join(DATA_DIR, 'camden')
     if not os.path.isdir(this_path):
         os.makedirs(this_path)
     data, t0, cid = cad.get_crimes_by_type(n)
@@ -63,7 +63,7 @@ crime_types = {
 }
 
 for k, n in crime_types.items():
-    this_path = os.path.join(ROOT_DIR, 'chicago_south')
+    this_path = os.path.join(DATA_DIR, 'chicago_south')
     if not os.path.isdir(this_path):
         os.makedirs(this_path)
     data, t0, cid = chicago.get_crimes_by_type(crime_type=n,

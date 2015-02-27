@@ -134,7 +134,6 @@ class SeppValidation(validation.ValidationBase):
         }
 
     def _update(self, time_step, incremental=False, **train_kwargs):
-        print "SEPP _update"
         # take a copy of P now if needed
         if incremental:
             pre_p = self.model.p.copy()
@@ -154,14 +153,12 @@ class SeppValidation(validation.ValidationBase):
         self.train_model(**train_kwargs)
 
     def _initial_setup(self, **train_kwargs):
-        print "_initial_setup"
         """
         Initial setup for SEPP model.  NB, p matrix has not yet been computed.
         """
         self.train_model(**train_kwargs)
 
     def _iterate_run(self, pred_dt_plus, true_dt_plus, true_dt_minus, **kwargs):
-        print "SEPP _iterate_run"
 
         true_dt_plus = true_dt_plus or pred_dt_plus
         testing_data = self.testing(dt_plus=true_dt_plus, dt_minus=true_dt_minus)
@@ -194,7 +191,6 @@ class SeppValidation(validation.ValidationBase):
     def compute_new_p(self, pre_training):
         """ Compute the new initial estimate of p based on the previous value.
         Assumes that the new training set is the old set with additional records. """
-        print "SEPP compute_new_p"
         num_old = len(pre_training)
         num_new = len(self.training)
         if (num_new - num_old) < 0:

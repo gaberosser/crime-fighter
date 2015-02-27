@@ -9,10 +9,8 @@ import pickle
 from scipy import stats
 import io
 import logging
+from . import ROOT_DIR, DATA_DIR
 
-
-ROOT_DIR = '/home/gabriel/pickled_results'
-DATA_DIR = '/home/gabriel/pickled_data'
 LOG_DIR = os.path.join(ROOT_DIR, 'logs')
 
 # global parameters
@@ -24,6 +22,7 @@ estimate_kwargs = {
     'cd': 0.02
 }
 model_kwargs = {
+    'parallel': False,
     'max_delta_t': 60,
     'max_delta_d': 400,
     'bg_kde_kwargs': {'number_nn': [100, 15],
@@ -104,7 +103,7 @@ def chicago_south_side(min_bandwidth, crime_type):
         logger.error(repr(exc))
     else:
         logger.info("Saving results.")
-        with open(os.path.join(out_dir, '-'.join([str(t) for t in min_bandwidth]) + '-validation.pickle')) as f:
+        with open(os.path.join(out_dir, '-'.join([str(t) for t in min_bandwidth]) + '-validation.pickle'), 'w') as f:
             pickle.dump(res, f)
-        with open(os.path.join(out_dir, '-'.join([str(t) for t in min_bandwidth]) + '-vb_obj.pickle')) as f:
+        with open(os.path.join(out_dir, '-'.join([str(t) for t in min_bandwidth]) + '-vb_obj.pickle'), 'w') as f:
             pickle.dump(vb, f)
