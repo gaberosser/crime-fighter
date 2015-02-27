@@ -1,6 +1,6 @@
 
 __author__ = 'gabriel'
-from django.contrib.gis import geos
+from shapely.geometry import Point
 import numpy as np
 import math
 import hotspot
@@ -10,11 +10,12 @@ from data.models import CartesianSpaceTimeData
 
 
 def mc_sampler(poly):
-    x_min, y_min, x_max, y_max = poly.extent
+    # poly is a shapely polygon
+    x_min, y_min, x_max, y_max = poly.bounds
     while True:
         x = np.random.random() * (x_max - x_min) + x_min
         y = np.random.random() * (y_max - y_min) + y_min
-        if poly.intersects(geos.Point([x, y])):
+        if poly.intersects(Point(x, y)):
             yield (x, y)
 
 
@@ -127,13 +128,13 @@ class ValidationBase(object):
         """
         :param dt_plus: Number of time units ahead of cutoff_t to take as maximum testing data.  If None, take ALL data.
         :param dt_minus: Number of time units ahead of cutoff_t to take as minimum testing data.  Defaults to 0.
-        :param as_point: If True, return N length list of (time, geos.Point) tuples, else return N x 3 matrix
+        :param as_point: If True, return N length list of (time, Point) tuples, else return N x 3 matrix
         :return: Testing data for comparison with predictions, based on value of cutoff_t.
         """
         ind = self._testing_idx(dt_plus, dt_minus, as_point)
         d = self.data.getrows(ind)
         if as_point:
-            return [(t[0], geos.Point(list(t[1:]))) for t in d]
+            return [(t[0], Point(list(t[1:]))) for t in d]
         else:
             return d
 
@@ -141,7 +142,7 @@ class ValidationBase(object):
         """
         :param dt_plus: Number of time units ahead of cutoff_t to take as maximum testing data.  If None, take ALL data.
         :param dt_minus: Number of time units ahead of cutoff_t to take as minimum testing data.  Defaults to 0.
-        :param as_point: If True, return N length list of (time, geos.Point) tuples, else return N x 3 matrix
+        :param as_point: If True, return N length list of (time, Point) tuples, else return N x 3 matrix
         :return: The data indices attached to the testing data.  If data_index has not been set, return the lookup
         indices instead.
         """

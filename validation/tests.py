@@ -9,8 +9,6 @@ import mock
 import math
 import collections
 from shapely import geometry
-## TODO: remove the following dependency
-from django.contrib.gis import geos
 
 
 class TestRoc(unittest.TestCase):
@@ -153,7 +151,7 @@ class TestValidation(unittest.TestCase):
         stk = hotspot.SKernelHistoric(1, bdwidth=0.3)
 
     def test_mcsampler(self):
-        poly = geos.Polygon([
+        poly = geometry.Polygon([
             (0, 0),
             (0, 1),
             (1, 1),
@@ -165,13 +163,13 @@ class TestValidation(unittest.TestCase):
             rvs = np.array([mcs.next() for i in range(10)])
 
         for r in rvs:
-            self.assertTrue(geos.Point(list(r)).intersects(poly))
+            self.assertTrue(geometry.Point(list(r)).intersects(poly))
 
         # square domain so every rand() call should have generated a valid RV
         self.assertEqual(m.call_count, 20)
 
         # triangular poly
-        poly = geos.Polygon([
+        poly = geometry.Polygon([
             (0, 0),
             (0, 1),
             (1, 0),
@@ -183,13 +181,13 @@ class TestValidation(unittest.TestCase):
             rvs = np.array([mcs.next() for i in range(10)])
 
         for r in rvs:
-            self.assertTrue(geos.Point(list(r)).intersects(poly))
+            self.assertTrue(geometry.Point(list(r)).intersects(poly))
 
         ncalls = m.call_count
-        x_min, y_min, x_max, y_max = poly.extent
+        x_min, y_min, x_max, y_max = poly.bounds
         expct_draws = np.random.RandomState(42).rand(ncalls).reshape((ncalls / 2, 2)) * np.array([x_max-x_min, y_max-y_min]) + \
             np.array([x_min, y_min])
-        in_idx = np.where([geos.Point(list(x)).intersects(poly) for x in expct_draws])[0]
+        in_idx = np.where([geometry.Point(list(x)).intersects(poly) for x in expct_draws])[0]
         self.assertEqual(len(in_idx), 10)
         for x, y in zip(expct_draws[in_idx, :], rvs):
             self.assertListEqual(list(x), list(y))
@@ -255,8 +253,8 @@ class TestValidation(unittest.TestCase):
         self.assertEqual(len(tst), len(testing_expctd))
         for i in range(len(testing_expctd)):
             self.assertEqual(tst[i][0], testing_expctd[i, 0])
-            self.assertIsInstance(tst[i][1], geos.Point)
-            self.assertListEqual(list(tst[i][1].coords), list(testing_expctd[i, 1:]))
+            self.assertIsInstance(tst[i][1], geometry.Point)
+            self.assertListEqual([tst[i][1].x, tst[i][1].y], list(testing_expctd[i, 1:]))
 
         # change cutoff_t
         cutoff_te = 0.3
