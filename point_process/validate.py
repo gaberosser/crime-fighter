@@ -1,14 +1,12 @@
+from validation import validation
+
 __author__ = 'gabriel'
 import numpy as np
-import math
-import runner
 from utils import augmented_matrix
-from analysis import validation
 import models
 from scipy import sparse
 import copy
-from time import time
-from data.models import DataArray, CartesianSpaceTimeData
+from data.models import CartesianSpaceTimeData
 
 
 def confusion_matrix(p_inferred, linkage_col, t=0.5):
@@ -324,13 +322,8 @@ class SeppValidationPredefinedModelIntegration(validation.ValidationIntegration,
 
 
 if __name__ == "__main__":
-    from database import logic, models as d_models
-    from scipy.stats import multivariate_normal
-    from point_process import models as pp_models
+    from database import models as d_models
     from point_process import simulate, estimation
-    from analysis import hotspot
-    from analysis import plotting
-    import matplotlib as mpl
     from matplotlib import pyplot as plt
     camden = d_models.Division.objects.get(name='Camden')
     xm = 526500

@@ -1,17 +1,16 @@
+from validation import validation, hotspot
+
 __author__ = 'gabriel'
 import warnings
 import collections
-from django.contrib.gis.geos import Polygon, MultiPolygon, LinearRing, Point
+from django.contrib.gis.geos import Polygon, Point
 import numpy as np
 import datetime
 from time import time
-import pytz
-from database import logic, models
+from database import models
 from point_process import estimation, models as pp_models, validate
-from analysis import validation, hotspot
 import settings
 import os
-from django.contrib.gis.gdal import DataSource
 from django.db import connection
 from matplotlib import pyplot as plt
 import dill

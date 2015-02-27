@@ -1,3 +1,5 @@
+from validation import roc
+
 __author__ = 'gabriel'
 import matplotlib as mpl
 from matplotlib import pyplot as plt
@@ -5,11 +7,9 @@ from matplotlib import ticker
 import numpy as np
 import datetime
 import os
-from analysis import roc
 from analysis.plotting import plot_surface_function_on_polygon
 from data.models import CartesianSpaceTimeData, DataArray
 from django.contrib.gis import geos
-import dill
 import collections
 
 
@@ -125,8 +125,6 @@ def plot_txy_y_marginals(k, norm=1.0, y_max=None, **kwargs):
 
 
 def data_scatter_movie(data, outdir=None, **kwargs):
-
-    from matplotlib import animation
 
     outdir = outdir or 'output/%s/' % datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     if not os.path.isdir(outdir):

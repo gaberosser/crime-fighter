@@ -1,11 +1,12 @@
 __author__ = 'gabriel'
-from analysis import cad, validation, hotspot
+import datetime
+
+from analysis import cad
 from point_process import models as pp_models, estimation, validate, plotting as pp_plotting
 from database import models
-import datetime
-from matplotlib import pyplot as plt
 import numpy as np
 from rpy2 import robjects, rinterface
+
 
 b_save_to_r = True
 output_file = 'kde_variable_bandwidth_nn_assess.Rdata'

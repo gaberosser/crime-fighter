@@ -1,29 +1,26 @@
+from validation import validation, hotspot
+
 __author__ = 'gabriel'
 import warnings
 import matplotlib as mpl
 from matplotlib import pyplot as plt
 import cartopy.crs as ccrs
 from shapely.geometry import Point as ShapelyPoint
-from scipy.spatial.distance import pdist, squareform
+from scipy.spatial.distance import pdist
 import collections
-from django.db.models import Q, Count, Sum, Min, Max
-from django.contrib.gis.measure import D
-from django.contrib.gis.geos import Polygon, MultiPolygon, LinearRing, Point
+from django.db.models import Q
+from django.contrib.gis.geos import Point
 from plotting import geodjango_to_shapely, plot_geodjango_shapes
-from database.views import month_iterator, week_iterator
 import pandas
 import numpy as np
 import datetime
 import pytz
 from database import logic, models
 from point_process import estimation, models as pp_models, validate
-import hotspot
-import validation
 from itertools import combinations
 from stats.logic import rook_boolean_connectivity, global_morans_i_p, local_morans_i as lmi
 from django.db import connection
 from database import osm
-from spatial import random_points_within_poly
 
 UK_TZ = pytz.timezone('Europe/London')
 SEC_IN_DAY = float(24 * 60 * 60)

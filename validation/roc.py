@@ -1,12 +1,10 @@
 __author__ = 'gabriel'
 
-from django.contrib.gis import geos
 import numpy as np
 import math
-from spatial import create_spatial_grid, random_points_within_poly
+from analysis.spatial import create_spatial_grid, random_points_within_poly
 from data.models import DataArray
-import collections
-import warnings
+from shapely.geometry import Point, Polygon
 
 
 class RocSpatialGrid(object):
@@ -52,7 +50,7 @@ class RocSpatialGrid(object):
         # called when no polygon is provided, computes the bounding rectangle for the data
         xmin, ymin = np.min(self.data, axis=0)
         xmax, ymax = np.max(self.data, axis=0)
-        return geos.Polygon([
+        return Polygon([
                 (xmin, ymin),
                 (xmax, ymin),
                 (xmax, ymax),
@@ -64,7 +62,7 @@ class RocSpatialGrid(object):
         '''
         Set the ROC grid.
         :param length_or_arr: Either a scalar, interpreted as the side length of the grid square, OR an array of
-          geos.Polygon or geos.MultiPolygon objects
+          shapely Polygon or shapely MultiPolygon objects
         :param args: Passed to set_sample_points
         :param kwargs: Passed to set_sample_points
         :return: None
@@ -79,14 +77,15 @@ class RocSpatialGrid(object):
             # list of polygons supplied
             self.side_length = None
             self._intersect_grid = length_or_arr
-            self._extent_grid = [x.extent for x in length_or_arr]
+            self._extent_grid = [x.bounds for x in length_or_arr]
             # assume none of these are full
             ## FIXME: improve this by checking whether it's a square?
             self._full_grid_square = [False] * self.ngrid
         else:
             self.side_length = length_or_arr
             self._intersect_grid, self._extent_grid, self._full_grid_square = create_spatial_grid(self.poly, self.side_length)
-        self.centroids = np.array([t.centroid.coords for t in self._intersect_grid])
+        centroid_coords = lambda x: (x.x, x.y)
+        self.centroids = np.array([centroid_coords(t.centroid) for t in self._intersect_grid])
         self.a = np.array([t.area for t in self._intersect_grid])
         self.set_sample_points(*args, **kwargs)
 
@@ -230,7 +229,7 @@ class RocSpatialGridMonteCarloIntegration(RocSpatialGrid):
         if respect_boundary:
             # loop over grid squares that are incomplete
             for i in np.where(np.array(self.full_grid_square) == False)[0]:
-                inside_idx = np.array([geos.Point(x, y).within(self.poly) for x, y in zip(xres[:, i], yres[:, i])])
+                inside_idx = np.array([Point(x, y).within(self.poly) for x, y in zip(xres[:, i], yres[:, i])])
                 # pad empty parts with repeats of the centroid location
                 num_empty = n_sample_per_grid - sum(inside_idx)
                 if num_empty:

@@ -1,10 +1,8 @@
+from validation import roc, hotspot
+
 __author__ = 'gabriel'
-import hotspot
 import cad
-import roc
 import datetime
-import ogr
-import os
 import shapefile
 from django.contrib.gis import geos
 

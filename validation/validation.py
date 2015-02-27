@@ -1,12 +1,12 @@
+
 __author__ = 'gabriel'
 from django.contrib.gis import geos
 import numpy as np
 import math
+import hotspot
 import roc
 import collections
-from data.models import DataArray, CartesianSpaceTimeData
-from time import time
-import ipdb
+from data.models import CartesianSpaceTimeData
 
 
 def mc_sampler(poly):
@@ -362,11 +362,7 @@ class ValidationIntegration(ValidationBase):
 
 
 if __name__ == "__main__":
-    from database import logic, models
-    from scipy.stats import multivariate_normal
-    from point_process import models as pp_models, estimation
-    from point_process import simulate
-    import hotspot
+    from database import models
     from analysis import plotting
     import matplotlib as mpl
     from matplotlib import pyplot as plt

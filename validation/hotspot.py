@@ -6,6 +6,7 @@ from kde.models import FixedBandwidthKdeScott, VariableBandwidthNnKde
 from data.models import DataArray, CartesianSpaceTimeData, SpaceTimeDataArray
 from point_process.utils import linkages
 
+
 class Hotspot(object):
 
     def __init__(self, stkernel, data=None):

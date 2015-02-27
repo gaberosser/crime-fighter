@@ -1,7 +1,34 @@
 __author__ = 'gabriel'
 import math
-from django.contrib.gis import geos
 import numpy as np
+from shapely import geometry
+
+
+try:
+    from django.contrib.gis import geos
+    HAS_GEODJANGO = True
+except ImportError:
+    geos = None
+    HAS_GEODJANGO = False
+
+def geodjango_to_shapely(geos_obj):
+    """ Convert geodjango geometry to shapely for plotting etc
+        inputs: x is a sequence of geodjango geometry objects """
+    assert HAS_GEODJANGO, "Requires Geodjango"
+
+    geodjango_poly_to_shapely = lambda t: geometry.Polygon(shell=t.coords[0], holes=t.coords[1:])
+
+    converters = {
+        geos.Point: lambda t: geometry.Point(t.coords),
+        geos.LineString: lambda t: geometry.LineString(t.coords),
+        geos.Polygon: lambda t: geodjango_poly_to_shapely(t),
+        geos.MultiPolygon: lambda t: geometry.MultiPolygon([geodjango_poly_to_shapely(x) for x in t])
+    }
+
+    if not issubclass(geos_obj.__class__, geos.GEOSGeometry):
+        raise TypeError("Require object that inherits from geos.GEOSGeometry")
+
+    return converters[type(geos_obj)](geos_obj)   # FIXME: why is PyCharm complaining about this line?!
 
 
 def bounding_box_grid(spatial_domain, grid_length, offset_coords=None):
@@ -13,7 +40,11 @@ def bounding_box_grid(spatial_domain, grid_length, offset_coords=None):
     :return: array of x an dy coords of vertices
     """
     offset_coords = offset_coords or (0, 0)
-    xmin, ymin, xmax, ymax = spatial_domain.extent
+
+    if HAS_GEODJANGO and isinstance(spatial_domain, geos.Polygon):
+        spatial_domain = geodjango_to_shapely(spatial_domain)
+
+    xmin, ymin, xmax, ymax = spatial_domain.bounds
 
     # 1) create grid over entire bounding box
     sq_x_l = math.ceil((offset_coords[0] - xmin) / grid_length)
@@ -35,6 +66,13 @@ def create_spatial_grid(spatial_domain, grid_length, offset_coords=None):
     :return: list of grid vertices and centroids (both (x,y) pairs)
     """
 
+    if HAS_GEODJANGO and isinstance(spatial_domain, geos.Polygon):
+        polygon = geos.Polygon
+    elif isinstance(spatial_domain, geometry.Polygon):
+        polygon = geometry.Polygon
+    else:
+        raise TypeError("spatial_domain must be of type django.contrib.gis.geos.Polygon or shapely.geometry.Polygon")
+
     intersect_polys = []
     full_extents = []
     full_grid_square = []
@@ -42,7 +80,7 @@ def create_spatial_grid(spatial_domain, grid_length, offset_coords=None):
 
     for ix in range(len(edges_x) - 1):
         for iy in range(len(edges_y) - 1):
-            p = geos.Polygon((
+            p = polygon((
                 (edges_x[ix], edges_y[iy]),
                 (edges_x[ix+1], edges_y[iy]),
                 (edges_x[ix+1], edges_y[iy+1]),
@@ -51,11 +89,11 @@ def create_spatial_grid(spatial_domain, grid_length, offset_coords=None):
             ))
             if p.within(spatial_domain):
                 intersect_polys.append(p)
-                full_extents.append(p.extent)
+                full_extents.append(p.bounds)
                 full_grid_square.append(True)
             elif spatial_domain.intersects(p):
                 intersect_polys.append(spatial_domain.intersection(p))
-                full_extents.append(p.extent)
+                full_extents.append(p.bounds)
                 full_grid_square.append(False)
 
     return intersect_polys, full_extents, full_grid_square
