@@ -1,17 +1,15 @@
 __author__ = 'gabriel'
-from analysis import cad, spatial
-from point_process import models as pp_models, estimation, validate, plotting as pp_plotting
 import datetime
-from matplotlib import pyplot as plt
-import numpy as np
 import os
-import pickle
-from scipy import stats
-import io
+# import pickle
+import dill as pickle
 import logging
-from . import ROOT_DIR, DATA_DIR
+import sys
+from point_process import models as pp_models, estimation, validate
+# from settings import OUT_DIR, IN_DIR
+from . import OUT_DIR, IN_DIR
 
-LOG_DIR = os.path.join(ROOT_DIR, 'logs')
+LOG_DIR = os.path.join(OUT_DIR, 'logs')
 
 # global parameters
 num_sample_points = 20
@@ -36,6 +34,11 @@ model_kwargs = {
 }
 
 niter = 75  # number of SEPP iterations before convergence is assumed
+num_validation = 120  # number of predict - assess cycles
+
+## DEBUGGING:
+# niter = 5  # number of SEPP iterations before convergence is assumed
+# num_validation = 5  # number of predict - assess cycles
 
 # start_date is the FIRST DATE FOR WHICH DATA ARE USED
 start_date = datetime.datetime(2011, 3, 1)
@@ -43,16 +46,15 @@ start_date = datetime.datetime(2011, 3, 1)
 # number of days from t0 (1/3/2011) at which we start predictions
 start_day_number = 277
 
-num_validation = 120
 
 # end_date is the maximum required date
 end_date = start_date + datetime.timedelta(days=start_day_number + num_validation)
 
 
 def chicago_south_side(min_bandwidth, crime_type):
-    data_file = os.path.join(DATA_DIR, 'chicago_south', '%s.pickle' % crime_type)
-    poly_file = os.path.join(DATA_DIR, 'boundaries.pickle')
-    out_dir = os.path.join(ROOT_DIR, 'chicago_south', 'min_bandwidth')
+    data_file = os.path.join(IN_DIR, 'chicago_south', '%s.pickle' % crime_type)
+    poly_file = os.path.join(IN_DIR, 'boundaries.pickle')
+    out_dir = os.path.join(OUT_DIR, 'chicago_south', 'min_bandwidth')
     log_file = os.path.join(out_dir, '-'.join([str(t) for t in min_bandwidth]) + '.log')
 
     if not os.path.isdir(out_dir):
@@ -87,12 +89,13 @@ def chicago_south_side(min_bandwidth, crime_type):
     model_kwargs['trigger_kde_kwargs']['min_bandwidth'] = [min_bandwidth[0], min_bandwidth[1], min_bandwidth[1]]
     model_kwargs['bg_kde_kwargs']['min_bandwidth'] = model_kwargs['trigger_kde_kwargs']['min_bandwidth']
     logger.info("Instantiating validation object")
-    vb = validate.SeppValidationFixedModelIntegration(data=data,
-                                           pp_class=pp_models.SeppStochasticNn,
-                                           spatial_domain=south_side_poly,
-                                           cutoff_t=start_day_number,
-                                           model_kwargs=model_kwargs,
-                                           )
+    vb = validate.SeppValidationFixedModelIntegration(
+        data=data,
+        pp_class=pp_models.SeppStochasticNn,
+        spatial_domain=south_side_poly,
+        cutoff_t=start_day_number,
+        model_kwargs=model_kwargs,
+    )
 
     logger.info("Setting validation grid")
     vb.set_grid(250, num_sample_points)
@@ -101,9 +104,21 @@ def chicago_south_side(min_bandwidth, crime_type):
         res = vb.run(time_step=1, n_iter=this_num_validation, verbose=True, train_kwargs={'niter': niter})
     except Exception as exc:
         logger.error(repr(exc))
+        raise exc
     else:
         logger.info("Saving results.")
-        with open(os.path.join(out_dir, '-'.join([str(t) for t in min_bandwidth]) + '-validation.pickle'), 'w') as f:
+        file_stem = os.path.join(out_dir, crime_type + '_' + '-'.join(['%.2f' % t for t in min_bandwidth]))
+        with open(file_stem + '-validation.pickle', 'w') as f:
             pickle.dump(res, f)
-        with open(os.path.join(out_dir, '-'.join([str(t) for t in min_bandwidth]) + '-vb_obj.pickle'), 'w') as f:
+        with open(file_stem + '-vb_obj.pickle', 'w') as f:
             pickle.dump(vb, f)
+
+
+if __name__ == '__main__':
+    assert len(sys.argv) == 4, "Two input arguments required"
+    crime_type = sys.argv[1]
+    t = float(sys.argv[2])
+    d = float(sys.argv[3])
+    print (t, d, crime_type)
+    chicago_south_side([t, d], crime_type)
+
