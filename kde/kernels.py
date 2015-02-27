@@ -4,7 +4,6 @@ import numpy as np
 import math
 from scipy import special
 from data.models import DataArray, Data, exp
-import ipdb
 
 PI = np.pi
 

@@ -1,7 +1,6 @@
 __author__ = 'gabriel'
 
 from utils import linkages
-import ipdb
 from kde import models as pp_kde
 import numpy as np
 from time import time

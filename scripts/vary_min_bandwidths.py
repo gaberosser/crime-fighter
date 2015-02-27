@@ -55,7 +55,7 @@ def chicago_south_side(min_bandwidth, crime_type):
     data_file = os.path.join(IN_DIR, 'chicago_south', '%s.pickle' % crime_type)
     poly_file = os.path.join(IN_DIR, 'boundaries.pickle')
     out_dir = os.path.join(OUT_DIR, 'chicago_south', 'min_bandwidth')
-    log_file = os.path.join(out_dir, '-'.join([str(t) for t in min_bandwidth]) + '.log')
+    log_file = os.path.join(out_dir, crime_type + '-' + '-'.join(['%.2f' % t for t in min_bandwidth]) + '.log')
 
     if not os.path.isdir(out_dir):
         os.makedirs(out_dir)
