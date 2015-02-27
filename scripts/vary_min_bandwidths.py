@@ -115,10 +115,8 @@ def chicago_south_side(min_bandwidth, crime_type):
 
 
 if __name__ == '__main__':
-    assert len(sys.argv) == 4, "Two input arguments required"
+    assert len(sys.argv) == 4, "Three input arguments required"
     crime_type = sys.argv[1]
     t = float(sys.argv[2])
     d = float(sys.argv[3])
-    print (t, d, crime_type)
     chicago_south_side([t, d], crime_type)
-
