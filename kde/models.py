@@ -9,7 +9,6 @@ from kde import kernels
 from stats.logic import weighted_stdev
 from sklearn.neighbors import NearestNeighbors
 from data.models import Data, DataArray, SpaceTimeDataArray, CartesianSpaceTimeData, negative_time_dimension
-import ipdb  # just in case
 import warnings
 
 # some utility functions
@@ -64,6 +63,7 @@ def set_nn_bandwidths(normed_data, raw_stdevs, num_nn, **kwargs):
         nn_obj = NearestNeighbors(normed_data.ndata).fit(normed_data)
         dist, _ = nn_obj.kneighbors(normed_data)
     except Exception as exc:
+        import ipdb
         ipdb.set_trace()
 
     nn_distances = dist[:, -1]

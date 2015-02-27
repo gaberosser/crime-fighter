@@ -2,7 +2,7 @@ __author__ = 'gabriel'
 import numpy as np
 import os
 import dill
-from . import ROOT_DIR
+from . import OUT_DIR
 
 
 def validation_full(vres, coverage=0.2):
@@ -49,8 +49,23 @@ def load_camden_validation_evaluation(coverage=0.2):
     names = ('burglary', 'violence', 'robbery', 'theft_of_vehicle')
 
     for name in names:
-        with open(os.path.join(ROOT_DIR, 'camden', name, 'validation.pickle'), 'r') as f:
+        with open(os.path.join(OUT_DIR, 'camden', name, 'validation.pickle'), 'r') as f:
             vres = dill.load(f)
             res[name] = validation_full(vres, coverage=coverage)
 
     return res
+
+
+def load_chicago_south_ageing(coverage=0.2):
+
+    out = {}
+    names = ('burglary', 'violence', 'robbery', 'theft_of_vehicle')
+    base_dir = os.path.join(OUT_DIR, 'chicago', 'model_ageing')
+
+    for name in names:
+        with open(os.path.join(base_dir, name, 'validation.pickle'), 'r') as f:
+            vres = dill.load(f)
+        tmp = validation_full(vres)
+        out[name] = dict([(k, val) for k, val in tmp.iteritems() if val is not None])
+    return out
+
