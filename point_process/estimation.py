@@ -98,15 +98,16 @@ def estimator_bowers(data, linkage, ct=1, cd=10, matrix_init=sparse.csr_matrix):
         (data[linkage[1], 2] - data[linkage[0], 2]) ** 2
     ))
 
+    diag_linkage = (np.arange(n), np.arange(n))
 
-    P[linkage[0], linkage[1]] = tt * dd
-    # diagonal
-    P[range(n), range(n)] = 1.
-
+    P_trig = sparse.csr_matrix((tt * dd, linkage), shape=(n, n))
+    P_bg = sparse.csr_matrix((np.ones(n), diag_linkage), shape=(n, n))
+    P = P_trig + P_bg
     colsums = P.sum(axis=0).flat
-    P[linkage[0], linkage[1]] = P[linkage[0], linkage[1]] / colsums[linkage[1]]
-    P[range(n), range(n)] = P[range(n), range(n)] / colsums[range(n)]
+    P_trig[linkage] = P_trig[linkage] / colsums[linkage[1]]
+    P_bg[diag_linkage] = P_bg[diag_linkage] / colsums[diag_linkage[1]]
 
+    P = P_trig + P_bg
     return matrix_init(P)
 
 
