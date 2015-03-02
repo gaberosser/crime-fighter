@@ -161,6 +161,7 @@ class ValidationBase(object):
 
     def train_model(self, *args, **kwargs):
         """ Train the predictor on training data """
+        logger.info("train_model")
         self.model.train(self.training, *args, **kwargs)
 
     def prediction_array(self, t):
@@ -209,6 +210,7 @@ class ValidationBase(object):
         :param kwargs: kwargs for the run function itself
         :return: results dictionary.
         """
+        logger.info("run")
         if bool(t_upper) and bool(n_iter):
             logger.exception("Both t_upper AND n_iter were supplied, but only one is supported")
             raise AttributeError("Both t_upper AND n_iter were supplied, but only one is supported")
@@ -246,6 +248,7 @@ class ValidationBase(object):
             while count < n_iter:
                 if count == 0:
                     # initial training
+                    logger.info("_initial_setup")
                     self._initial_setup(**train_kwargs)
                 else:
                     # update model as required and update the cutoff time

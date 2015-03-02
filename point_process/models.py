@@ -233,11 +233,14 @@ class SepBase(object):
         self.p = new_p
 
     def train(self, data=None, niter=30, verbose=True, tol_p=None):
-
+        logger.info("train")
         if data is not None:
             # set data, linkages and p
+            logger.info("set data")
             self.set_data(data)
+            logger.info("set linkages")
             self.set_linkages()
+            logger.info("estimate p")
             self.initial_estimate()
         elif self.data is None:
             raise AttributeError("No data supplied")
@@ -250,7 +253,9 @@ class SepBase(object):
 
         ps = []
 
+        logger.info("start training iterations")
         for i in range(niter):
+            logger.info("iteration %d" % i)
             ps.append(self.p)
             tic = time()
             self._iterate()
