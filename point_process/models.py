@@ -9,7 +9,14 @@ from scipy import sparse
 import math
 from data import models as data_models
 import copy
+import logging
 
+
+logger = logging.getLogger('point_process.models')
+# default: output all logs to console
+ch = logging.StreamHandler()
+logger.setLevel(logging.DEBUG)
+logger.addHandler(ch)
 
 class SepBase(object):
     def __init__(self,
@@ -183,7 +190,7 @@ class SepBase(object):
 
         tic = time()
         self.set_kdes()
-        print "self.set_kdes() in %f s" % (time() - tic)
+        logger.info("self.set_kdes() in %f s" % (time() - tic))
 
         # strip spatially overlapping points from p
         # self.delete_overlaps()
@@ -191,12 +198,12 @@ class SepBase(object):
         # evaluate BG at data points
         tic = time()
         m = self.background_density(self.data)
-        print "self.background_density() in %f s" % (time() - tic)
+        logger.info("self.background_density() in %f s" % (time() - tic))
 
         # evaluate trigger KDE at all interpoint distances
         tic = time()
         trigger = self.trigger_density(self.interpoint_data)
-        print "self.trigger_density() in %f s" % (time() - tic)
+        logger.info("self.trigger_density() in %f s" % (time() - tic))
         g = sparse.csr_matrix((trigger, self.linkage), shape=(self.ndata, self.ndata))
 
         # recompute P, making sure to maintain stored zeros
@@ -253,17 +260,17 @@ class SepBase(object):
 
             if verbose:
                 num_bg = self.p.diagonal().sum()
-                print "Completed %d / %d iterations in %.3f s.  L2 norm = %e. No. BG: %.2f, no. trig.: %.2f" % (
+                logger.info("Completed %d / %d iterations in %.3f s.  L2 norm = %e. No. BG: %.2f, no. trig.: %.2f" % (
                     i+1,
                     niter,
                     self.run_times[-1],
                     self.l2_differences[-1],
                     num_bg,
-                    self.ndata - num_bg)
+                    self.ndata - num_bg))
 
             if tol_p is not None and self.l2_differences[-1] < tol_p:
                 if verbose:
-                    print "Training terminated in %d iterations as tolerance has been met." % (i+1)
+                    logger.info("Training terminated in %d iterations as tolerance has been met." % (i+1))
                 break
         return ps
 
@@ -470,7 +477,7 @@ class SeppStochastic(Sepp):
                 self.trigger_kde = None
 
         except AttributeError as exc:
-            print "Error.  Num BG: %d, num trigger %d" % (self.num_bg[-1], self.num_trig[-1])
+            logger.error("Unable to set_kdes. Num BG: %d, num trigger %d" % (self.num_bg[-1], self.num_trig[-1]))
             raise exc
 
     @property
@@ -508,7 +515,7 @@ class SeppStochasticStationaryBg(SeppStochastic):
             self.trigger_kde = self.trigger_kde_class(interpoint, **self.trigger_kde_kwargs)
 
         except AttributeError as exc:
-            print "Error.  Num BG: %d, num trigger %d" % (self.num_bg[-1], self.num_trig[-1])
+            logger.error("Unable to set_kdes. Num BG: %d, num trigger %d" % (self.num_bg[-1], self.num_trig[-1]))
             raise exc
 
     def background_density(self, target_data, spatial_only=True):
@@ -563,7 +570,7 @@ class SeppStochasticNnIsotropicTrigger(SeppStochasticNn):
             self.trigger_kde = self.trigger_kde_class(interpoint, **self.trigger_kde_kwargs)
 
         except AttributeError as exc:
-            print "Error.  Num BG: %d, num trigger %d" % (self.num_bg[-1], self.num_trig[-1])
+            logger.error("Unable to set_kdes.  Num BG: %d, num trigger %d" % (self.num_bg[-1], self.num_trig[-1]))
             raise exc
 
     def trigger_density(self, delta_data):

@@ -7,7 +7,14 @@ import hotspot
 import roc
 import collections
 from data.models import CartesianSpaceTimeData
+import logging
 
+
+logger = logging.getLogger('validation.validation')
+# default: output all logs to console
+ch = logging.StreamHandler()
+logger.setLevel(logging.DEBUG)
+logger.addHandler(ch)
 
 def mc_sampler(poly):
     # poly is a shapely polygon
@@ -169,7 +176,6 @@ class ValidationBase(object):
         return self.model.predict(self.prediction_array(t))
 
     def _iterate_run(self, pred_dt_plus, true_dt_plus, true_dt_minus, **kwargs):
-        print "ValidationBase _iterate_run"
         true_dt_plus = true_dt_plus or pred_dt_plus
         # run prediction
         # output should be M x ndata matrix, where M is the number of sample points per grid square
@@ -204,6 +210,7 @@ class ValidationBase(object):
         :return: results dictionary.
         """
         if bool(t_upper) and bool(n_iter):
+            logger.exception("Both t_upper AND n_iter were supplied, but only one is supported")
             raise AttributeError("Both t_upper AND n_iter were supplied, but only one is supported")
 
         verbose = kwargs.pop('verbose', True)
@@ -217,6 +224,7 @@ class ValidationBase(object):
         elif n_iter:
             # check that this number of iterations is possible
             if (self.cutoff_t + (n_iter - 1) * time_step + true_dt_minus) > self.data[-1, 0]:
+                logger.exception("The requested number of iterations is too great for the supplied data.")
                 raise AttributeError("The requested number of iterations is too great for the supplied data.")
         else:
             n_iter = math.ceil((self.data[-1, 0] - self.cutoff_t) / time_step)
@@ -230,7 +238,7 @@ class ValidationBase(object):
 
 
         if verbose:
-            print "Running %d validation iterations..." % n_iter
+            logger.info("Running %d validation iterations..." % n_iter)
 
         count = 0
 
@@ -244,9 +252,9 @@ class ValidationBase(object):
                     self._update(time_step, **train_kwargs)
 
                 if verbose:
-                    print "Running validation with cutoff time %s (iteration %d / %d)" % (str(self.cutoff_t),
-                                                                                          count + 1,
-                                                                                          n_iter)
+                    logger.info("Running validation with cutoff time %s (iteration %d / %d)" % (str(self.cutoff_t),
+                                                                                                count + 1,
+                                                                                                n_iter))
 
                 # predict and assess iteration
                 this_res = self._iterate_run(pred_dt_plus, true_dt_plus, true_dt_minus, **pred_kwargs)
@@ -319,7 +327,7 @@ class ValidationBase(object):
         res['true_dt_minus'] = true_dt_minus
 
         if verbose:
-            print "Running %d repeat validation iterations..." % n_iter
+            logger.info("Running %d repeat validation iterations..." % n_iter)
 
         count = 0
 
@@ -329,9 +337,9 @@ class ValidationBase(object):
             self.set_t_cutoff(this_cutoff_t, b_train=False)  # no need to train
 
             if verbose:
-                print "Running repeat validation with cutoff time %s (iteration %d / %d)" % (str(self.cutoff_t),
-                                                                                             count + 1,
-                                                                                             n_iter)
+                logger.info("Running repeat validation with cutoff time %s (iteration %d / %d)" % (str(self.cutoff_t),
+                                                                                                   count + 1,
+                                                                                                   n_iter))
 
             # copy model
             self.model = run_res['model'][count]

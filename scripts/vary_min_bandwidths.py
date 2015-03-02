@@ -33,12 +33,12 @@ model_kwargs = {
     'seed': 42,  # doesn't matter what this is, just want it fixed
 }
 
-niter = 75  # number of SEPP iterations before convergence is assumed
-num_validation = 120  # number of predict - assess cycles
+# niter = 75  # number of SEPP iterations before convergence is assumed
+# num_validation = 120  # number of predict - assess cycles
 
 ## DEBUGGING:
-# niter = 5  # number of SEPP iterations before convergence is assumed
-# num_validation = 5  # number of predict - assess cycles
+niter = 5  # number of SEPP iterations before convergence is assumed
+num_validation = 5  # number of predict - assess cycles
 
 # start_date is the FIRST DATE FOR WHICH DATA ARE USED
 start_date = datetime.datetime(2011, 3, 1)
@@ -60,13 +60,19 @@ def chicago_south_side(min_bandwidth, crime_type):
     if not os.path.isdir(out_dir):
         os.makedirs(out_dir)
 
-    # set logger
+    # set loggers
     logger = logging.getLogger('vary_min_bandwidths.chicago_south_side')
     logger.setLevel(logging.DEBUG)
     fh = logging.FileHandler(log_file)
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     fh.setFormatter(formatter)
     logger.addHandler(fh)
+
+    for t in ('point_process.models', 'validation.validation'):
+        this_logger = logging.getLogger(t)
+        this_logger.setLevel(logging.DEBUG)
+        this_logger.handlers = []  # clear existing handlers
+        this_logger.addHandler(fh)  # replace with the same file output
 
     logger.info("Logger set.  Script started.")
     logger.info("Crime type: %s. Min bandwidths %s" % (crime_type, str(min_bandwidth)))
