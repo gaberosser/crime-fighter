@@ -22,7 +22,7 @@ model_kwargs = {
     'max_delta_t': None,  # replace this on each iteration
     'max_delta_d': None,  # replace this on each iteration
     'bg_kde_kwargs': {'number_nn': [100, 15],
-                      'min_bandwidth': [],
+                      'min_bandwidth': None,
                       'strict': False},
     'trigger_kde_kwargs': {'number_nn': 15,
                            'min_bandwidth': None,  # replace this on each iteration
@@ -31,8 +31,8 @@ model_kwargs = {
     'seed': 42,  # doesn't matter what this is, just want it fixed
 }
 
-# niter = 75  # number of SEPP iterations before convergence is assumed
-# num_validation = 120  # number of predict - assess cycles
+niter = 75  # number of SEPP iterations before convergence is assumed
+num_validation = 120  # number of predict - assess cycles
 
 ## DEBUGGING:
 # niter = 5  # number of SEPP iterations before convergence is assumed

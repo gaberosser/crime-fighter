@@ -9,8 +9,8 @@
 # 2. Request wallclock time (format hours:minutes:seconds).
 #$ -l h_rt=1:0:0
 
-# 3. Request 1 gigabyte of RAM.
-#$ -l mem=1G
+# 3. Request RAM.
+#$ -l mem=2G
 
 # 4. Request 15 gigabyte of TMPDIR space (default is 10 GB)
 #$ -l tmpfs=10G
@@ -36,6 +36,6 @@ min_t_bd=`sed -n ${number}p $paramfile | awk '{print $2}'`
 min_d_bd=`sed -n ${number}p $paramfile | awk '{print $3}'`
 
 # 9. Run the program (replace echo with your binary and options).
-source $HOME/scripts/python_modules.sh
+source $HOME/scripts/setup_modules.sh
 cd $HOME/Scratch/crime-fighter
 python -m scripts.vary_min_bandwidths $crime_type $min_t_bd $min_d_bd
