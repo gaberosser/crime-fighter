@@ -37,37 +37,37 @@ niter = 75
 
 
 
-def test_fade_out(coverage=0.2, min_bandwidth=(0.5, 50), plot=False):
-    res = io.load_camden_validation_evaluation(coverage)
-    linregress_keys = ('slope', 'intercept', 'rval', 'pval', 'stderr')
-    out = {}
-    for k in res.keys():
-        # full portion
+# def test_fade_out(coverage=0.2, min_bandwidth=(0.5, 50), plot=False):
+#     res = io.load_camden_validation_evaluation(coverage)
+#     linregress_keys = ('slope', 'intercept', 'rval', 'pval', 'stderr')
+#     out = {}
+#     for k in res.keys():
+#         # full portion
+#
+#         this_res = res[k][min_bandwidth]
+#         n = this_res['hit_rate'].size
+#         idx = ~np.isnan(this_res['hit_rate'])
+#         t = np.arange(n)[idx]
+#         hr = this_res['hit_rate'][idx]
+#         pai = this_res['pai'][idx]
+#         out[k] = {
+#             'hit_rate': dict([(x, y) for x, y in zip(linregress_keys, stats.linregress(t, hr))]),
+#             'pai': dict([(x, y) for x, y in zip(linregress_keys, stats.linregress(t, pai))]),
+#         }
+#
+#         if plot:
+#             fig = plt.figure(k)
+#             ax = fig.add_subplot(111)
+#             ax.plot(t, pai, 'ko')
+#             ax.plot(t, out[k]['pai']['intercept'] + t * out[k]['pai']['slope'], 'k--')
+#             ax.set_xlabel('Prediction day', fontsize=14)
+#             ax.set_ylabel('PAI', fontsize=14)
+#             ax.set_ylim([-0.02/coverage, 1.02/coverage])
+#
+#     return out
 
-        this_res = res[k][min_bandwidth]
-        n = this_res['hit_rate'].size
-        idx = ~np.isnan(this_res['hit_rate'])
-        t = np.arange(n)[idx]
-        hr = this_res['hit_rate'][idx]
-        pai = this_res['pai'][idx]
-        out[k] = {
-            'hit_rate': dict([(x, y) for x, y in zip(linregress_keys, stats.linregress(t, hr))]),
-            'pai': dict([(x, y) for x, y in zip(linregress_keys, stats.linregress(t, pai))]),
-        }
 
-        if plot:
-            fig = plt.figure(k)
-            ax = fig.add_subplot(111)
-            ax.plot(t, pai, 'ko')
-            ax.plot(t, out[k]['pai']['intercept'] + t * out[k]['pai']['slope'], 'k--')
-            ax.set_xlabel('Prediction day', fontsize=14)
-            ax.set_ylabel('PAI', fontsize=14)
-            ax.set_ylim([-0.02/coverage, 1.02/coverage])
-
-    return out
-
-
-@shutdown_decorator
+# @shutdown_decorator
 def camden():
 
     # start_date is the FIRST DAY OF THE PREDICTION
@@ -99,7 +99,7 @@ def camden():
 
     for (name, n) in crime_types.items():
         print "Crime type: %s" % name
-        base_dir = os.path.join(ROOT_DIR, 'camden', name)
+        base_dir = os.path.join(ROOT_DIR, 'camden', 'min_bandwidth', name)
         if not os.path.isdir(base_dir):
             os.makedirs(base_dir)
 
@@ -143,14 +143,14 @@ def camden():
                     res[(t, d)] = None
                     sepp_objs[(t, d)] = None
                     vb_objs[(t, d)] = None
-            with open(os.path.join(ROOT_DIR, 'camden', name, 'sepp_obj.pickle'), 'w') as f:
+            with open(os.path.join(base_dir, 'sepp_obj.pickle'), 'w') as f:
                 dill.dump(sepp_objs, f)
-            with open(os.path.join(ROOT_DIR, 'camden', name, 'validation_obj.pickle'), 'w') as f:
+            with open(os.path.join(base_dir, 'validation_obj.pickle'), 'w') as f:
                 dill.dump(vb_objs, f)
-            with open(os.path.join(ROOT_DIR, 'camden', name, 'validation.pickle'), 'w') as f:
+            with open(os.path.join(base_dir, 'validation.pickle'), 'w') as f:
                 dill.dump(res, f)
 
         except Exception as exc:
-            with open(os.path.join(ROOT_DIR, 'camden', name, 'errors'), 'a') as f:
+            with open(os.path.join(base_dir, 'errors'), 'a') as f:
                 f.write(repr(exc))
                 f.write('\n')
