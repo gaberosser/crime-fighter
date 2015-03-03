@@ -36,6 +36,7 @@ min_t_bd=`sed -n ${number}p $paramfile | awk '{print $2}'`
 min_d_bd=`sed -n ${number}p $paramfile | awk '{print $3}'`
 
 # 9. Run the program (replace echo with your binary and options).
-source $HOME/scripts/setup_modules.sh
+cd $HOME
+source .bashrc
 cd $HOME/Scratch/crime-fighter
 python -m scripts.vary_min_bandwidths_trigger_only $crime_type $min_t_bd $min_d_bd
