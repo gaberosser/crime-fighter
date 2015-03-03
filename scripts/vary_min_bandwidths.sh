@@ -1,5 +1,14 @@
 #!/bin/bash -l
 
+# set the location
+LOCATION=camden
+# LOCATION=chicago_south
+
+# set the run type
+MODULE=scripts.vary_min_bandwidths
+# MODULE=scripts.vary_min_bandwidths_trigger_only
+
+
 # Batch script to run an array job on Legion with the upgraded
 # software stack under SGE.
 
@@ -39,5 +48,5 @@ min_d_bd=`sed -n ${number}p $paramfile | awk '{print $3}'`
 cd $HOME
 source .bashrc
 cd $HOME/Scratch/crime-fighter
-python -m scripts.vary_min_bandwidths $crime_type $min_t_bd $min_d_bd
+python -m $MODULE $LOCATION $crime_type $min_t_bd $min_d_bd
 
