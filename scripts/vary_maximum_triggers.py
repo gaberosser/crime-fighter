@@ -19,13 +19,13 @@ estimate_kwargs = {
 }
 model_kwargs = {
     'parallel': False,
-    'max_delta_t': None,  # replace this on each iteration
-    'max_delta_d': None,  # replace this on each iteration
+    # 'max_delta_t': 60, # set on each iteration
+    # 'max_delta_d': 400, # set on each iteration
     'bg_kde_kwargs': {'number_nn': [100, 15],
-                      'min_bandwidth': None,
+                      'min_bandwidth': None,  ## FIXED
                       'strict': False},
     'trigger_kde_kwargs': {'number_nn': 15,
-                           'min_bandwidth': None,  # replace this on each iteration
+                           'min_bandwidth': [0.5, 20, 20],  # FIXED
                            'strict': False},
     'estimation_function': lambda x, y: estimation.estimator_bowers(x, y, **estimate_kwargs),
     'seed': 42,  # doesn't matter what this is, just want it fixed
@@ -44,22 +44,20 @@ start_date = datetime.datetime(2011, 3, 1)
 # number of days from t0 (1/3/2011) at which we start predictions
 start_day_number = 277
 
-
 # end_date is the maximum required date
 end_date = start_date + datetime.timedelta(days=start_day_number + num_validation)
 
 
-def chicago_south_side(min_bandwidth, crime_type):
-    data_file = os.path.join(IN_DIR, 'chicago_south', '%s.pickle' % crime_type)
-    poly_file = os.path.join(IN_DIR, 'boundaries.pickle')
-    out_dir = os.path.join(OUT_DIR, 'chicago_south', 'min_bandwidth')
-    log_file = os.path.join(out_dir, crime_type + '-' + '-'.join(['%.2f' % t for t in min_bandwidth]) + '.log')
+def run_me(location_dir, location_poly, max_delta_t, max_delta_d, crime_type):
+    data_file = os.path.join(IN_DIR, location_dir, '%s.pickle' % crime_type)
+    out_dir = os.path.join(OUT_DIR, location_dir, 'max_triggers')
+    log_file = os.path.join(out_dir, crime_type + '-' + '%d-%d.log' % (max_delta_t, max_delta_d))
 
     if not os.path.isdir(out_dir):
         os.makedirs(out_dir)
 
     # set loggers
-    logger = logging.getLogger('vary_min_bandwidths.chicago_south_side')
+    logger = logging.getLogger('vary_max_triggers.%s' % location_dir)
     logger.setLevel(logging.DEBUG)
     fh = logging.FileHandler(log_file)
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -73,14 +71,11 @@ def chicago_south_side(min_bandwidth, crime_type):
         this_logger.addHandler(fh)  # replace with the same file output
 
     logger.info("Logger set.  Script started.")
-    logger.info("Crime type: %s. Min bandwidths %s" % (crime_type, str(min_bandwidth)))
+    logger.info("Crime type: %s. Max delta t %d, max delta d %d" % (crime_type, max_delta_t, max_delta_d))
 
     # load data
     with open(data_file, 'r') as f:
         data = pickle.load(f)
-    with open(poly_file, 'r') as f:
-        boundaries = pickle.load(f)
-        south_side_poly = boundaries['chicago_south']
     logger.info("Loaded data.")
 
     # check that num_validation iterations is feasible
@@ -90,13 +85,13 @@ def chicago_south_side(min_bandwidth, crime_type):
     else:
         this_num_validation = num_validation
 
-    model_kwargs['trigger_kde_kwargs']['min_bandwidth'] = [min_bandwidth[0], min_bandwidth[1], min_bandwidth[1]]
-    model_kwargs['bg_kde_kwargs']['min_bandwidth'] = model_kwargs['trigger_kde_kwargs']['min_bandwidth']
+    model_kwargs['max_delta_t'] = max_delta_t
+    model_kwargs['max_delta_d'] = max_delta_d
     logger.info("Instantiating validation object")
     vb = validate.SeppValidationFixedModelIntegration(
         data=data,
         pp_class=pp_models.SeppStochasticNn,
-        spatial_domain=south_side_poly,
+        spatial_domain=location_poly,
         cutoff_t=start_day_number,
         model_kwargs=model_kwargs,
     )
@@ -111,16 +106,37 @@ def chicago_south_side(min_bandwidth, crime_type):
         raise exc
     else:
         logger.info("Saving results.")
-        file_stem = os.path.join(out_dir, crime_type + '_' + '-'.join(['%.2f' % t for t in min_bandwidth]))
+        file_stem = os.path.join(out_dir, crime_type + '_' + '%d-%d' % (max_delta_t, max_delta_d))
         with open(file_stem + '-validation.pickle', 'w') as f:
             pickle.dump(res, f)
         with open(file_stem + '-vb_obj.pickle', 'w') as f:
             pickle.dump(vb, f)
 
 
+def chicago_south_side(max_delta_t, max_delta_d, crime_type):
+    location_dir = 'chicago_south'
+    poly_file = os.path.join(IN_DIR, 'boundaries.pickle')
+    with open(poly_file, 'r') as f:
+        boundaries = pickle.load(f)
+        location_poly = boundaries['chicago_south']
+    run_me(location_dir, location_poly, max_delta_t, max_delta_d, crime_type)
+
+
+def camden(max_delta_t, max_delta_d, crime_type):
+    location_dir = 'camden'
+    poly_file = os.path.join(IN_DIR, 'boundaries.pickle')
+    with open(poly_file, 'r') as f:
+        boundaries = pickle.load(f)
+        location_poly = boundaries['camden']
+    run_me(location_dir, location_poly, max_delta_t, max_delta_d, crime_type)
+
+
 if __name__ == '__main__':
-    assert len(sys.argv) == 4, "Three input arguments required"
-    crime_type = sys.argv[1]
-    t = float(sys.argv[2])
-    d = float(sys.argv[3])
-    chicago_south_side([t, d], crime_type)
+    assert len(sys.argv) == 5, "Four input arguments required"
+    crime_type = sys.argv[2]
+    t = float(sys.argv[3])
+    d = float(sys.argv[4])
+    if sys.argv[1] == 'camden':
+        camden(t, d, crime_type)
+    elif sys.argv[1] == 'chicago_south':
+        chicago_south_side(t, d, crime_type)
