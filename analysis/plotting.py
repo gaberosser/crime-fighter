@@ -9,7 +9,7 @@ import matplotlib.patches as mpatches
 import matplotlib.path as mpath
 from descartes import PolygonPatch
 import json
-from analysis.spatial import is_clockwise, bounding_box_grid
+from analysis.spatial import is_clockwise, bounding_box_grid, geodjango_to_shapely
 
 
 def centre_axes(ax=None):
@@ -58,8 +58,7 @@ def plot_shapely_geos(obj_arr, ax=None, **kwargs):
 
     for t in obj_arr:
         if isinstance(t, shapely_geometry.LineString):
-            x = np.array(t.xy[0])
-            y = np.array(t.xy[1])
+            x, y = t.xy
             ax.plot(x, y, **kwargs)
 
 
@@ -117,7 +116,7 @@ def plot_geodjango_shapes(shapes, ax=None, set_axes=True, **kwargs):
 def plot_surface_function_on_polygon(poly, func, ax=None, dx=None, offset_coords=None, cmap=cm.jet, nlevels=50,
                             vmin=None, vmax=None, fmax=None, colorbar=False, **kwargs):
     """
-    :param poly: geos Polygon or Multipolygon defining region
+    :param poly: geos Polygon or Multipolygon defining region OR Shapely equivalents
     :param func: function accepting two vectorized input arrays returning the values to be plotted
     :param dx: interval distance between grid points
     :param offset_coords: iterable giving the (x, y) coordinates of a grid point, default = (0, 0)
@@ -132,7 +131,10 @@ def plot_surface_function_on_polygon(poly, func, ax=None, dx=None, offset_coords
     if fmax and vmax:
         raise AttributeError("Either specify vmax OR fmax")
 
-    x_min, y_min, x_max, y_max = poly.extent
+    if isinstance(poly, geos.GEOSGeometry):
+        poly = geodjango_to_shapely(poly)
+
+    x_min, y_min, x_max, y_max = poly.bounds
 
     if not dx:
         dx = ((x_max - x_min) + (y_max - y_min)) / 100
@@ -169,14 +171,15 @@ def plot_surface_function_on_polygon(poly, func, ax=None, dx=None, offset_coords
     if colorbar:
         plt.colorbar(cont, shrink=0.9)
 
-    poly_verts = list(poly.exterior_ring.coords)
+    poly_verts = list(poly.exterior.coords)
     # check handedness of poly
     if is_clockwise(poly):
         poly_verts = poly_verts[::-1]
 
     # mask_outside_polygon(poly_verts, ax=ax)
     mask_contour(cont, poly_verts, ax=ax, show_clip_path=True)
-    plot_geodjango_shapes(poly, ax=ax, facecolor='none')
+
+    # plot_geodjango_shapes(poly, ax=ax, facecolor='none')
 
     plt.draw()
 
@@ -242,6 +245,7 @@ def plot_surface_on_polygon((x, y, z), poly=None, ax=None, cmap=cm.jet, nlevels=
 
         # mask_outside_polygon(poly_verts, ax=ax)
         mask_contour(cont, poly_verts, ax=ax, show_clip_path=True)
+        plot_shapely_geos([poly.exterior], ax=ax, facecolor='none')
         # plot_geodjango_shapes(poly, ax=ax, facecolor='none')
 
     plt.draw()

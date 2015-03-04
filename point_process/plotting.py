@@ -328,9 +328,9 @@ def txy_to_cartesian_data_array(t, x, y):
 
 
 def prediction_heatmap(sepp, t, poly=None, kind=None, **kwargs):
-
+    # poly should be a Shapely polygon
     if poly:
-        _poly = poly.simplify()
+        _poly = poly.simplify(1)
     else:
         # use basic bounding rectangle
         r = roc.RocSpatialGrid(sepp.data[:, 1:])

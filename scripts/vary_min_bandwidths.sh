@@ -38,7 +38,7 @@ MODULE=scripts.vary_min_bandwidths
 
 # 8. Parse parameter file to get variables.
 number=$SGE_TASK_ID
-paramfile=/home/ucesga2/Scratch/crime-fighter/scripts/vary_min_bandwidth_params.txt
+paramfile=/home/ucesga2/Scratch/crime-fighter/scripts/parameters/vary_min_bandwidths.txt
 
 crime_type=`sed -n ${number}p $paramfile | awk '{print $1}'`
 min_t_bd=`sed -n ${number}p $paramfile | awk '{print $2}'`

@@ -100,7 +100,7 @@ def create_spatial_grid(spatial_domain, grid_length, offset_coords=None):
 
 
 def is_clockwise(poly):
-    c = np.array(poly.coords[0])
+    c = np.array(poly.exterior.coords)
     dx = np.diff(c[:, 0])
     ay = c[:-1, 1] + c[1:, 1]
     t = dx * ay
