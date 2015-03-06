@@ -128,6 +128,8 @@ def camden(max_delta_t, max_delta_d, crime_type):
     with open(poly_file, 'r') as f:
         boundaries = pickle.load(f)
         location_poly = boundaries['camden']
+    # set min_bandwidths
+    model_kwargs['bg_kde_kwargs']['min_bandwidth'] = [0.25, 10]
     run_me(location_dir, location_poly, max_delta_t, max_delta_d, crime_type)
 
 
