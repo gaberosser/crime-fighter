@@ -31,6 +31,13 @@ model_kwargs = {
     'seed': 42,  # doesn't matter what this is, just want it fixed
 }
 
+min_bandwidth_by_crime_type_camden = {
+    'burglary': [0, 10, 10],
+    'robbery': [0.25, 0, 0],
+    'violence': [0.25, 0, 0],
+    'theft_of_vehicle': [0.25, 10, 10],
+}
+
 niter = 75  # number of SEPP iterations before convergence is assumed
 num_validation = 120  # number of predict - assess cycles
 
@@ -119,6 +126,10 @@ def chicago_south_side(max_delta_t, max_delta_d, crime_type):
     with open(poly_file, 'r') as f:
         boundaries = pickle.load(f)
         location_poly = boundaries['chicago_south']
+
+    # set min_bandwidths  TODO
+    model_kwargs['trigger_kde_kwargs']['min_bandwidth'] = model_kwargs['bg_kde_kwargs']['min_bandwidth'] = [0., 0, 0]
+
     run_me(location_dir, location_poly, max_delta_t, max_delta_d, crime_type)
 
 
@@ -128,8 +139,11 @@ def camden(max_delta_t, max_delta_d, crime_type):
     with open(poly_file, 'r') as f:
         boundaries = pickle.load(f)
         location_poly = boundaries['camden']
+
     # set min_bandwidths
-    model_kwargs['bg_kde_kwargs']['min_bandwidth'] = [0.25, 10]
+    model_kwargs['trigger_kde_kwargs']['min_bandwidth'] = model_kwargs['bg_kde_kwargs']['min_bandwidth'] = \
+        min_bandwidth_by_crime_type_camden[crime_type]
+
     run_me(location_dir, location_poly, max_delta_t, max_delta_d, crime_type)
 
 

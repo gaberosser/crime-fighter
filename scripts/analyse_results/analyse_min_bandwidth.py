@@ -166,18 +166,22 @@ for ct in sepp_objs.keys():
 # prediction accuracy - look for significant differences using the paired sample t-test
 # a more refined method is BEST by Kruschke
 
-from scipy import stats
+from scipy import stats, sparse
 
 hr, pai, missing = mangle_data.load_camden_min_bandwidths()
+sig_level = 0.05
 min_t = [0, .25, .5, 1, 2]
 min_d = [0, 10, 20, 50, 100]
 tt, dd = np.meshgrid(min_t, min_d)
 
 diff_pai_20 = {}
+diff_pai_20_map = {}
 for ct in hr.keys():
     diff_pai_20[ct] = {}
+    diff_pai_20_map[ct] = {}
     for i, t in enumerate(min_t):
-        zz = np.zeros((len(min_d), len(min_d)))
+        zz = sparse.csr_matrix((len(min_d), len(min_d)))
+        # every possible min_d combination
         for j, d0 in enumerate(min_d):
             for k in range(j+1, len(min_d)):
                 d1 = min_d[k]
@@ -190,5 +194,12 @@ for ct in hr.keys():
                     continue
                 tstat = (x1 - x0).mean() / std_err
                 zz[j, k] = stats.t.sf(np.abs(tstat), x0.size - 1)
-            # zz[i, j] = t
+
+        # check for significance using Bonferroni's correction
+        bonferroni_sig_level = (1 - (1 - sig_level) ** zz.nnz) / float(zz.nnz)
+        diff_pai_20_map[ct][t] = np.where((zz.toarray() < bonferroni_sig_level) & (zz.toarray() != 0))
         diff_pai_20[ct][t] = zz
+
+
+# search for significant differences (one-sided)
+
