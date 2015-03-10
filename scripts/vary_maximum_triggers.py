@@ -58,7 +58,7 @@ end_date = start_date + datetime.timedelta(days=start_day_number + num_validatio
 def run_me(location_dir, location_poly, max_delta_t, max_delta_d, crime_type):
     data_file = os.path.join(IN_DIR, location_dir, '%s.pickle' % crime_type)
     out_dir = os.path.join(OUT_DIR, location_dir, 'max_triggers')
-    log_file = os.path.join(out_dir, crime_type + '-' + '%d-%d.log' % (max_delta_t, max_delta_d))
+    log_file = os.path.join(out_dir, crime_type + '_' + '%d-%d.log' % (max_delta_t, max_delta_d))
 
     if not os.path.isdir(out_dir):
         os.makedirs(out_dir)
@@ -105,15 +105,15 @@ def run_me(location_dir, location_poly, max_delta_t, max_delta_d, crime_type):
 
     logger.info("Setting validation grid")
     vb.set_grid(250, num_sample_points)
+    file_stem = os.path.join(out_dir, crime_type + '_' + '%d-%d' % (max_delta_t, max_delta_d))
     try:
         logger.info("Starting validation run.")
         res = vb.run(time_step=1, n_iter=this_num_validation, verbose=True, train_kwargs={'niter': niter})
     except Exception as exc:
         logger.error(repr(exc))
-        raise exc
-    else:
-        logger.info("Saving results.")
-        file_stem = os.path.join(out_dir, crime_type + '_' + '%d-%d' % (max_delta_t, max_delta_d))
+        res = None
+    finally:
+        logger.info("Saving results (or None).")
         with open(file_stem + '-validation.pickle', 'w') as f:
             pickle.dump(res, f)
         with open(file_stem + '-vb_obj.pickle', 'w') as f:
