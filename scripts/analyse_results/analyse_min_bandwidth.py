@@ -144,26 +144,122 @@ for i, d in enumerate(min_d):
 ## likelihoods
 
 # plots
+
+styles_by_d = {
+    0: 'k-',
+    10: 'r-',
+    20: 'g-',
+    50: 'k--',
+    100: 'r--'
+}
+
+styles_by_t = {
+    0: 'k-',
+    0.25: 'k--',
+    0.5: 'r-',
+    1: 'r--',
+    2: 'b'
+}
+
+ll_max = {}
+ll_min = {}
+ll_range = {}
+
 for ct in sepp_objs.keys():
     fig = plt.figure(ct)
     ax = fig.add_subplot(111)
-    for k, v in sepp_objs[ct].iteritems():
+
+    ll_max[ct] = np.max([np.nanmax(v.log_likelihoods) for v in sepp_objs[ct].values() if v is not None])
+    ll_min[ct] = np.min([np.nanmin(v.log_likelihoods) for v in sepp_objs[ct].values() if v is not None])
+    ll_range[ct] = ll_max[ct] - ll_min[ct]
+    leg = []
+
+    for k, v in sorted(sepp_objs[ct].items(), key=lambda x: x[0][1]):
         if v:
-            ax.plot(v.log_likelihoods)
+            line = ax.plot((np.array(v.log_likelihoods) - ll_min[ct]) / ll_range[ct], styles_by_d[k[1]])
+            if k[0] == 0:
+                line[0].set_label(r'$h_{d,\mathrm{min}}=%d$' % k[1])
+            ax.set_xlabel('Iteration', fontsize=14)
+            ax.set_ylabel('Log likelihood (AU)', fontsize=14)
+
+        ax.legend()
+            # styling by t: all jumbled up
+            # ax.plot(v.log_likelihoods, styles_by_t[k[0]])
 
 
 stationary_idx = 25  # point after which the LL is stationary - need to generate plots as in previous code to find this
 
 lls = {}
+
 for ct in sepp_objs.keys():
     lls[ct] = {}
+
     for k, v in sepp_objs[ct].iteritems():
         if v:
             data = np.array(v.log_likelihoods[stationary_idx:])
-            lls[ct][k] = (data.mean(), data.std(ddof=1))
-    sorted(lls[ct].items(), key=lambda x: x[1][0])
+            mstd = (data.mean(), data.std(ddof=1))
+            lls[ct][k] = mstd
 
-# prediction accuracy - look for significant differences using the paired sample t-test
+
+############################
+
+# aggregate over values of min_t
+styles_by_d = {
+    0: 'k-',
+    10: 'r-',
+    20: 'b-',
+    50: 'g-',
+    100: 'c-'
+}
+
+fig = plt.figure("ll")
+ax = fig.add_subplot(111)
+i = 1
+di = 0.2
+for ct in sepp_objs.keys():
+    max_ll = -1e10
+    min_ll = 0
+    m = {}
+    s = {}
+    for d in min_d:
+        obs = []
+        for t in min_t:
+            obs.extend(sepp_objs[ct][(t, d)].log_likelihoods if sepp_objs[ct][(t, d)] else [])
+
+        obs = np.array(obs)
+        if not len(obs):
+            continue
+        m[d] = np.nanmean(obs)
+        s[d] = np.nanstd(obs, ddof=1)
+        max_ll = max(max_ll, np.nanmax(obs))
+        min_ll = min(min_ll, np.nanmin(obs))
+
+    for d in min_d:
+        if d not in m:
+            continue
+        m[d] = (m[d] - min_ll) / (max_ll - min_ll)
+        s[d] /= (max_ll - min_ll)
+        hbar = ax.bar(i - di/4, 2 * s[d], bottom=m[d] - s[d], color=styles_by_d[d][0], width=di/2)
+        if ct == 'violence':
+            hbar.set_label(r'$h_{d,\mathrm{min}}=%d$' % d)
+    i += di
+
+ax.set_xlim([1 - di, 1 + 6 * di])
+ax.set_ylim([-0.2, 1.2])
+ax.set_yticks([0, 0.5, 1])
+ax.set_yticklabels([r'$0\%$', r'$50\%$', r'$100\%$'])
+ax.set_xticks([1 + n * di for n in range(4)])
+ax.set_xticklabels([t.replace('_', ' ') for t in sepp_objs.keys()], rotation=45)
+ax.set_ylabel('Normalised log likelihood', fontsize=16)
+ax.set_xlabel('Crime type', fontsize=16)
+ax.legend()
+ax.set_position([0.12, 0.24, 0.96, 0.96])
+
+
+############################
+
+
+# prediction accuracy - look for significant differences using the Wilcoxon Signed-Rank test
 # a more refined method is BEST by Kruschke
 
 from scipy import stats, sparse
@@ -174,11 +270,11 @@ min_t = [0, .25, .5, 1, 2]
 min_d = [0, 10, 20, 50, 100]
 tt, dd = np.meshgrid(min_t, min_d)
 
-diff_pai_20 = {}
-diff_pai_20_map = {}
+diff_pai_20_by_t = {}
+diff_pai_20_by_t_map = {}
 for ct in hr.keys():
-    diff_pai_20[ct] = {}
-    diff_pai_20_map[ct] = {}
+    diff_pai_20_by_t[ct] = {}
+    diff_pai_20_by_t_map[ct] = {}
     for i, t in enumerate(min_t):
         zz = sparse.csr_matrix((len(min_d), len(min_d)))
         # every possible min_d combination
@@ -189,16 +285,45 @@ for ct in hr.keys():
                 x1 = pai[ct]['full_static'][(t, d1)]
                 if x0 is None or x1 is None:
                     continue
-                std_err = (x1 - x0).std(ddof=1) / np.sqrt(x0.size)
-                if std_err == 0:
-                    continue
-                tstat = (x1 - x0).mean() / std_err
-                zz[j, k] = stats.t.sf(np.abs(tstat), x0.size - 1)
+                zz[j, k] = stats.wilcoxon(x1, x0)[1]
+                # std_err = (x1 - x0).std(ddof=1) / np.sqrt(x0.size)
+                # if std_err == 0:
+                #     continue
+                # tstat = (x1 - x0).mean() / std_err
+                # zz[j, k] = stats.t.sf(np.abs(tstat), x0.size - 1)
 
         # check for significance using Bonferroni's correction
         bonferroni_sig_level = (1 - (1 - sig_level) ** zz.nnz) / float(zz.nnz)
-        diff_pai_20_map[ct][t] = np.where((zz.toarray() < bonferroni_sig_level) & (zz.toarray() != 0))
-        diff_pai_20[ct][t] = zz
+        diff_pai_20_by_t_map[ct][t] = np.where((zz.toarray() < bonferroni_sig_level) & (zz.toarray() != 0))
+        diff_pai_20_by_t[ct][t] = zz
+
+diff_pai_20_by_d = {}
+diff_pai_20_by_d_map = {}
+for ct in hr.keys():
+    diff_pai_20_by_d[ct] = {}
+    diff_pai_20_by_d_map[ct] = {}
+    for i, d in enumerate(min_d):
+        zz = sparse.csr_matrix((len(min_t), len(min_t)))
+        # every possible min_d combination
+        for j, t0 in enumerate(min_t):
+            for k in range(j+1, len(min_t)):
+                t1 = min_t[k]
+                x0 = pai[ct]['full_static'][(t0, d)]
+                x1 = pai[ct]['full_static'][(t1, d)]
+                if x0 is None or x1 is None:
+                    continue
+                try:
+                    zz[j, k] = stats.wilcoxon(x1, x0)[1]
+                except ValueError:
+                    # this occurs when the two arrays are identical
+                    print "Identical arrays %s, %s" % (str((t0, d)), str((t1, d)))
+                    pass
+
+        diff_pai_20_by_d[ct][d] = zz
+        # check for significance using Bonferroni's correction
+        if zz.nnz:
+            bonferroni_sig_level = (1 - (1 - sig_level) ** zz.nnz) / float(zz.nnz)
+            diff_pai_20_by_d_map[ct][d] = np.where((zz.toarray() < bonferroni_sig_level) & (zz.toarray() != 0))
 
 
 # search for significant differences (one-sided)
