@@ -350,20 +350,6 @@ def cad_spatial_repeat_analysis(nicl_type=3):
     return on_grid, off_grid_rpt, off_grid
 
 
-# def jiggle_on_grid_points(x, y)
-    # divs = models.Division.objects.filter(type='cad_250m_grid')
-    # centroids = np.array([t.centroid.coords for t in divs.centroid()])
-    # res = []
-    # for t in zip(x, y):
-    #     nt = t
-    #     if np.any(np.sum(centroids == t, axis=1) == 2):
-    #         # pick new coords
-    #         nt = (np.random.random(2) * 250 - 125) + t
-    #         # print t, " -> ", nt
-    #     res.append(nt)
-    # return np.array(res)
-
-
 def jiggle_on_and_off_grid_points(x, y, scale=5):
     """ randomly jiggle points that are
         a) off-grid but non-unique, in order to avoid exact overlaps
