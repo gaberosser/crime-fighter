@@ -1,11 +1,11 @@
 __author__ = 'gabriel'
 import pickle
 import os
-from analysis import cad, chicago
+from analysis import cad, chicago, spatial
 from database import models
 import datetime
 from analysis.spatial import geodjango_to_shapely
-from . import DATA_DIR
+from . import IN_DIR as DATA_DIR
 
 """
 This script loads CAD and Chicago data from the database and dumps it to a pickled array for use on Legion
@@ -33,6 +33,8 @@ with open(os.path.join(DATA_DIR, 'boundaries.pickle'), 'w') as f:
 ## CAMDEN
 
 start_date = datetime.datetime(2011, 3, 1)
+# snapping polys
+grid_polys = [t.mpoly.simplify() for t in models.Division.objects.filter(type='cad_250m_grid')]
 
 # define crime types
 
@@ -50,6 +52,10 @@ for k, n in crime_types.items():
     data, t0, cid = cad.get_crimes_by_type(n)
     with open(os.path.join(this_path, '%s.pickle' % k), 'w') as f:
         pickle.dump(data, f)
+    # jiggle on-grid crimes
+    jdata = spatial.jiggle_on_grid_points(data, grid_polys)
+    with open(os.path.join(this_path, '%s_jiggle.pickle' % k), 'w') as f:
+        pickle.dump(jdata, f)
 
 ## CHICAGO
 

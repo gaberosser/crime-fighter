@@ -8,8 +8,8 @@ from point_process import plotting
 location = 'chicago_south'
 
 sepp_objs, prop_trigger, missing_data = mangle_data.load_trigger_background(location=location)
-sepp_objs_to, prop_trigger_to, missing_data_to = mangle_data.load_trigger_background(
-    location=location, variant='min_bandwidth_trigger_only')
+# sepp_objs_to, prop_trigger_to, missing_data_to = mangle_data.load_trigger_background(
+#     location=location, variant='min_bandwidth_trigger_only')
 
 min_t = [0, .25, .5, 1, 2]
 min_d = [0, 10, 20, 50, 100]
@@ -18,16 +18,16 @@ tt, dd = np.meshgrid(min_t, min_d)
 ## fraction of crimes attributed to triggering (matrix)
 
 trigger_frac = {}
-trigger_frac_to = {}
+# trigger_frac_to = {}
 for ct in prop_trigger.keys():
     zz = np.zeros_like(tt)
-    zz_to = np.zeros_like(tt)
+    # zz_to = np.zeros_like(tt)
     for i in range(zz.size):
         t = tt.flat[i]; d = dd.flat[i]
         zz.flat[i] = prop_trigger[ct][(t, d)]
-        zz_to.flat[i] = prop_trigger_to[ct][(t, d)]
+        # zz_to.flat[i] = prop_trigger_to[ct][(t, d)]
     trigger_frac[ct] = zz
-    trigger_frac_to[ct] = zz_to
+    # trigger_frac_to[ct] = zz_to
 
 
 ## triggering plots
@@ -177,14 +177,14 @@ for ct in sepp_objs.keys():
     for k, v in sorted(sepp_objs[ct].items(), key=lambda x: x[0][1]):
         if v:
             line = ax.plot((np.array(v.log_likelihoods) - ll_min[ct]) / ll_range[ct], styles_by_d[k[1]])
+            # line = ax.plot((np.array(v.log_likelihoods) - ll_min[ct]) / ll_range[ct], styles_by_t[k[0]])
             if k[0] == 0:
                 line[0].set_label(r'$h_{d,\mathrm{min}}=%d$' % k[1])
             ax.set_xlabel('Iteration', fontsize=14)
             ax.set_ylabel('Log likelihood (AU)', fontsize=14)
 
-        ax.legend()
-            # styling by t: all jumbled up
-            # ax.plot(v.log_likelihoods, styles_by_t[k[0]])
+        # ax.legend()
+
 
 
 stationary_idx = 25  # point after which the LL is stationary - need to generate plots as in previous code to find this
@@ -215,7 +215,7 @@ styles_by_d = {
 fig = plt.figure("ll")
 ax = fig.add_subplot(111)
 i = 1
-di = 0.2
+# di = 0.2
 for ct in sepp_objs.keys():
     max_ll = -1e10
     min_ll = 0
@@ -239,20 +239,25 @@ for ct in sepp_objs.keys():
             continue
         m[d] = (m[d] - min_ll) / (max_ll - min_ll)
         s[d] /= (max_ll - min_ll)
-        hbar = ax.bar(i - di/4, 2 * s[d], bottom=m[d] - s[d], color=styles_by_d[d][0], width=di/2)
+        # hbar = ax.bar(i - di/4, 2 * s[d], bottom=m[d] - s[d], color=styles_by_d[d][0], width=di/2)
+        hbar = ax.bar(i, 2 * s[d], bottom=m[d] - s[d], color=styles_by_d[d][0], width=1)
         if ct == 'violence':
             hbar.set_label(r'$h_{d,\mathrm{min}}=%d$' % d)
-    i += di
+        i += 1
+    # i += di
+    i += 2
 
-ax.set_xlim([1 - di, 1 + 6 * di])
+# ax.set_xlim([1 - di, 1 + 6 * di])
+ax.set_xlim([0, 28])
 ax.set_ylim([-0.2, 1.2])
 ax.set_yticks([0, 0.5, 1])
 ax.set_yticklabels([r'$0\%$', r'$50\%$', r'$100\%$'])
-ax.set_xticks([1 + n * di for n in range(4)])
+# ax.set_xticks([1 + n * di for n in range(4)])
+ax.set_xticks([3.5, 9.5, 15.5, 21.5])
 ax.set_xticklabels([t.replace('_', ' ') for t in sepp_objs.keys()], rotation=45)
 ax.set_ylabel('Normalised log likelihood', fontsize=16)
 ax.set_xlabel('Crime type', fontsize=16)
-ax.legend()
+ax.legend(loc=4)
 ax.set_position([0.12, 0.24, 0.96, 0.96])
 
 
@@ -264,7 +269,8 @@ ax.set_position([0.12, 0.24, 0.96, 0.96])
 
 from scipy import stats, sparse
 
-hr, pai, missing = mangle_data.load_camden_min_bandwidths()
+a, hr, pai, missing = mangle_data.load_min_bandwidths_mean_predictive_performance(location=location)
+# hr, pai, missing = mangle_data.load_camden_min_bandwidths()
 sig_level = 0.05
 min_t = [0, .25, .5, 1, 2]
 min_d = [0, 10, 20, 50, 100]
