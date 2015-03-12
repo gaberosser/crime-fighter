@@ -10,6 +10,10 @@ from stats.logic import weighted_stdev
 from sklearn.neighbors import NearestNeighbors
 from data.models import Data, DataArray, SpaceTimeDataArray, CartesianSpaceTimeData, negative_time_dimension
 import warnings
+import logging
+
+
+logger = logging.getLogger(__name__)
 
 # some utility functions
 
@@ -62,34 +66,9 @@ def set_nn_bandwidths(normed_data, raw_stdevs, num_nn, **kwargs):
         warnings.warn("Insufficient data, reducing number of nns to %d" % normed_data.ndata)
         nn_obj = NearestNeighbors(normed_data.ndata).fit(normed_data)
         dist, _ = nn_obj.kneighbors(normed_data)
-    except Exception as exc:
-        import ipdb
-        ipdb.set_trace()
 
-    nn_distances = dist[:, -1]
+    nn_distances = dist[:, -1].reshape((normed_data.ndata, 1))
 
-    ## TODO: is this really necessary if the minimum bandwidth parameter has been set?
-    ## it's fiddly and a bit woolly, in that it arbitrarily changes the number of NNs
-
-    # if np.any(np.isinf(nn_distances)):
-    #     raise AttributeError("Encountered np.inf values in NN distances")
-    #
-    # # check for NN distances below tolerance
-    # intol_idx = np.where(nn_distances < tol)[0]
-    # if len(intol_idx):
-    #     intol_data = normed_data[intol_idx]
-    #     nn_obj.n_neighbors = normed_data.ndata
-    #     dist, _ = nn_obj.kneighbors(intol_data)
-    #     # for each point, perform a NN distance lookup on ALL valid NNs and use the first one above tol
-    #     for i, j in enumerate(intol_idx):
-    #         d = dist[i][num_nn + 1:]
-    #         nn_distances[j] = d[d > tol][0]
-    #     print "Found %d NN distances below tolerance, of which %d were exactly zero." % (
-    #         len(intol_idx),
-    #         sum(nn_distances == 0)
-    #     )
-
-    nn_distances = nn_distances.reshape((normed_data.ndata, 1))
     bandwidths = raw_stdevs * nn_distances
 
     # apply minimum bandwidth constraint if required
@@ -489,14 +468,15 @@ class VariableBandwidthNnKde(VariableBandwidthKde):
         # check requested number NN if supplied.
         # NB cannot use self.ndata as data are not set yet
         ndata = len(data)
-        if self.nn > (ndata - 1):
+        if self.nn > ndata:
             msg = "Requested number of NNs (%d) is too large for the size of the dataset (%d)" % (self.nn, ndata)
             if self.strict:
                 raise AttributeError(msg)
             else:
+                logger.warn(msg)
                 warnings.warn(msg)
                 print msg
-                self.nn = ndata - 1
+                self.nn = ndata
 
         super(VariableBandwidthNnKde, self).__init__(data, *args, **kwargs)
 
@@ -504,7 +484,24 @@ class VariableBandwidthNnKde(VariableBandwidthKde):
         # check number of datapoints > 1
         if self.ndata <= 1:
             raise AttributeError("2 or more datapoints required for variable bandwidth KDE")
-        self.nn_distances, self.bandwidths = set_nn_bandwidths(self.normed_data, self.raw_std_devs, self.nn, **kwargs)
+        if np.all(self.raw_std_devs == 0):
+            raise AttributeError("Something has gone very wrong: all dimensions have zero standard deviation.")
+
+        if np.any(self.raw_std_devs == 0):
+            msg = "One or more dimensions have zero standard deviation."
+            if self.strict:
+                raise AttributeError(msg)
+            else:
+                logger.warn(msg)
+            effective_std = self.raw_std_devs
+            effective_std[effective_std == 0] = 1.
+            normed_data = self.data / effective_std
+        else:
+            normed_data = self.normed_data
+
+        self.nn_distances, self.bandwidths = set_nn_bandwidths(normed_data, self.raw_std_devs, self.nn, **kwargs)
+        if np.any(self.bandwidths == 0):
+            raise AttributeError("Zero bandwidths present.")
 
 
 class WeightedFixedBandwidthKde(FixedBandwidthKde):

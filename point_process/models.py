@@ -478,6 +478,8 @@ class SeppStochastic(Sepp):
         except AttributeError as exc:
             logger.error("Unable to set_kdes. Num BG: %d, num trigger %d" % (self.num_bg[-1], self.num_trig[-1]))
             raise exc
+        # except Exception as exc:
+        #     import ipdb; ipdb.set_trace()
 
     @property
     def weighted_bg_kde(self):
