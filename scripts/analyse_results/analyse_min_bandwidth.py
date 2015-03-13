@@ -190,15 +190,45 @@ for ct in sepp_objs.keys():
 stationary_idx = 25  # point after which the LL is stationary - need to generate plots as in previous code to find this
 
 lls = {}
+lls_norm = {}
 
 for ct in sepp_objs.keys():
     lls[ct] = {}
-
+    lls_norm[ct] = {}
     for k, v in sepp_objs[ct].iteritems():
         if v:
             data = np.array(v.log_likelihoods[stationary_idx:])
             mstd = (data.mean(), data.std(ddof=1))
             lls[ct][k] = mstd
+        else:
+            lls[ct][k] = None
+
+    for k in sepp_objs[ct].keys():
+        if lls[ct][k]:
+            lls_norm[ct][k] = (lls[ct][k][0] - ll_min[ct]) / ll_range[ct]
+        else:
+            lls_norm[ct][k] = None
+
+# pcolor plots
+
+for ct in sepp_objs.keys():
+    zz = np.zeros_like(tt)
+    for i, t in enumerate(min_t):
+        for j, d in enumerate(min_d):
+            zz[i, j] = lls_norm[ct][(t, d)] if lls_norm[ct][(t, d)] is not None else np.nan
+    print zz
+    fig = plt.figure(ct)
+    ax = fig.add_subplot(111)
+    hp = ax.imshow(zz, vmin=0, vmax=1, interpolation='none')
+    # ax.set_xticks([.5, 1.5, 2.5, 3.5, 4.5])
+    # ax.set_yticks([.5, 1.5, 2.5, 3.5, 4.5])
+    ax.set_xticks(range(5))
+    ax.set_yticks(range(5))
+    ax.set_xticklabels(['%.2f' % tmp for tmp in [0, 0.25, 0.5, 1.0, 2.0]])
+    ax.set_yticklabels([0, 10, 20, 50, 100])
+    plt.colorbar(hp)
+    ax.set_xlabel(r'$h_{t, \mathrm{min}}$', fontsize=16)
+    ax.set_ylabel(r'$h_{d, \mathrm{min}}$', fontsize=16)
 
 
 ############################
