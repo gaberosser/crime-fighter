@@ -262,3 +262,18 @@ def load_boundary(location='camden'):
                 if not obj:
                     continue
                 return obj.roc.poly
+
+
+def load_simulation_study():
+    PARAMS_FILE = os.path.join(os.path.join(*scripts.__path__), 'parameters', 'simulation_vary_max_triggers.txt')
+    with open(PARAMS_FILE, 'r') as f:
+        c = csv.reader(f, delimiter=' ')
+        sepp_objs = {}
+        for row in c:
+            max_t = float(row[0])
+            max_d = float(row[1])
+            in_file = os.path.join(OUT_DIR, 'simulation', 'simulation_%.2f-%.2f-sepp_obj.pickle') % (max_t, max_d)
+            with open(in_file, 'r') as g:
+                sepp_objs[(max_t, max_d)] = dill.load(g)
+
+    return sepp_objs

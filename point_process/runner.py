@@ -8,22 +8,17 @@ import numpy as np
 from scipy import sparse
 from data.models import DataArray
 from copy import deepcopy
+import logging
 
 
 def initial_simulation(t_total=None):
-    print "Starting simulation..."
     # simulate data
     c = simulate.MohlerSimulation()
     c.seed(42)
     if t_total:
         c.t_total = t_total
-    # c.bg_mu_bar = 1.0
-    # c.number_to_prune = 4000
     c.run()
     data = np.array(c.data)[:, :3]  # (t, x, y, b_is_BG)
-    # sort data by time ascending (may be done already?)
-    data = data[data[:, 0].argsort()]
-    print "Complete"
     return c, data
 
 
@@ -184,23 +179,46 @@ def consistency_of_trigger_at_convergence(nrepeat=20, niter=15, sepp_class=model
 
 if __name__ == '__main__':
 
-    num_iter = 20
+    logger = logging.getLogger('kde.models')
+
+    num_iter = 25
     parallel = True
     t_total = None
-    c, data = initial_simulation(t_total=t_total)
+    # c, data = initial_simulation(t_total=t_total)
+    # max_delta_t = 100
+    # max_delta_d = 0.75
+
+    c = simulate.MySimulation1()
+    c.t_total = 1000
+    c.num_to_prune = 2000  # should leave ~2000 datapoints
+    c.run()
+    data = c.data[:, :3]
+    max_delta_t = 100
+    max_delta_d = 0.75
+    # init_est_params = {
+    #     'ct': 1/15.,
+    #     'cd': 4.,
+    # }
+    init_est_params = {
+        'ct': 10,
+        'cd': .1,
+    }
+
+
     ndata = data.shape[0]
 
     bg_kde_kwargs = {
-        'number_nn': [101, 16],
+        'number_nn': [100, 15],
+        'strict': False,
     }
 
     trigger_kde_kwargs = {
         # 'min_bandwidth': [1., .005, .05],
         'number_nn': 15,
+        'strict': False,
     }
 
-    max_delta_t = 100
-    max_delta_d = 0.75
+
 
     r = models.SeppStochasticNn(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
                                 bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
@@ -220,11 +238,12 @@ if __name__ == '__main__':
 
 
 
-    p = estimation.estimator_bowers(data, r.linkage)
+    # p = estimation.estimator_bowers(data, r.linkage, **init_est_params)
+    p = estimation.estimator_exp_gaussian(data, r.linkage, **init_est_params)
     r.p = p
 
     # set seed for consistency
-    # r.set_seed(42)
+    r.set_seed(42)
 
     try:
         r.train(niter=num_iter)

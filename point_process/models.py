@@ -512,6 +512,8 @@ class SeppStochasticStationaryBg(SeppStochastic):
 
         # compute KDEs
         try:
+            logger.info(str(self.bg_kde_kwargs))
+            logger.info(str(self.trigger_kde_kwargs))
             self.bg_kde = self.bg_kde_class(self.data[bg_idx, 1:], **self.bg_kde_kwargs)
             self.trigger_kde = self.trigger_kde_class(interpoint, **self.trigger_kde_kwargs)
 

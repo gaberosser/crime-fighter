@@ -111,6 +111,29 @@ def estimator_bowers(data, linkage, ct=1, cd=10, matrix_init=sparse.csr_matrix):
     return matrix_init(P)
 
 
+def estimator_exp_gaussian(data, linkage, ct, cd):
+    n = data.shape[0]
+
+    # off-diagonal
+
+    tt = ct * np.exp(-ct * (data[linkage[1], 0] - data[linkage[0], 0]))
+    dd_k = np.sqrt(2 / (np.pi * cd))
+    dd_sq = (data[linkage[1], 1] - data[linkage[0], 1]) ** 2 + (data[linkage[1], 2] - data[linkage[0], 2]) ** 2
+    dd = dd_k * np.exp(-dd_sq / (2 * cd ** 2))
+
+    diag_linkage = (np.arange(n), np.arange(n))
+
+    P_trig = sparse.csr_matrix((tt * dd, linkage), shape=(n, n))
+    P_bg = sparse.csr_matrix((np.ones(n), diag_linkage), shape=(n, n))
+    P = P_trig + P_bg
+    colsums = P.sum(axis=0).flat
+    P_trig[linkage] = P_trig[linkage] / colsums[linkage[1]]
+    P_bg[diag_linkage] = P_bg[diag_linkage] / colsums[diag_linkage[1]]
+
+    P = P_trig + P_bg
+    return P
+
+
 def initial_guess_educated(data, ct=None, cd=None):
 
     ct = ct or 1

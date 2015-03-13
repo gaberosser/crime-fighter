@@ -14,6 +14,10 @@ import logging
 
 
 logger = logging.getLogger(__name__)
+# default: output all logs to console
+ch = logging.StreamHandler()
+logger.setLevel(logging.DEBUG)
+logger.addHandler(ch)
 
 # some utility functions
 
@@ -629,14 +633,14 @@ class VariableBandwidthNnKdeSeparable(FixedBandwidthKde, KdeBaseSeparable):
         for i, n in enumerate(self.nn):
             if n < 1:
                 raise AttributeError("The number of nearest neighbours for variable KDE must be >=1")
-            if n > (ndata - 1):
+            if n > ndata:
                 msg = "Requested number of NNs (%d) is too large for the size of the dataset (%d)" % (n, ndata)
                 if self.strict:
                     raise AttributeError(msg)
                 else:
-                    warnings.warn(msg)
+                    logger.warn(msg)
                     print msg
-                    self.nn[i] = ndata - 1
+                    self.nn[i] = ndata
 
         super(VariableBandwidthNnKdeSeparable, self).__init__(data, *args, **kwargs)
 
