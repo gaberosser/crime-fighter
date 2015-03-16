@@ -14,16 +14,16 @@ num_sample_points = 20
 grid_size = 250  # metres
 
 estimate_kwargs = {
-    # 'ct': 1,
-    # 'cd': 0.02
-    'ct': 1/7.,
-    'cd': 1/2000.
+    'ct': 1,
+    'cd': 0.02
+    # 'ct': 1/7.,
+    # 'cd': 1/2000.
 }
 
 model_kwargs = {
     'parallel': False,
-    'max_delta_t': 60,
-    'max_delta_d': 400,
+    'max_delta_t': 120,
+    'max_delta_d': 1000,
     'bg_kde_kwargs': {'number_nn': [100, 15],
                       'min_bandwidth': None,  # replace this on each iteration
                       'strict': False},

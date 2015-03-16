@@ -16,10 +16,10 @@ MODULE=scripts.vary_min_bandwidths
 #$ -S /bin/bash
 
 # 2. Request wallclock time (format hours:minutes:seconds).
-#$ -l h_rt=1:0:0
+#$ -l h_rt=6:0:0
 
 # 3. Request RAM.
-#$ -l mem=2G
+#$ -l mem=4G
 
 # 4. Request 15 gigabyte of TMPDIR space (default is 10 GB)
 #$ -l tmpfs=10G
@@ -39,6 +39,7 @@ MODULE=scripts.vary_min_bandwidths
 # 8. Parse parameter file to get variables.
 number=$SGE_TASK_ID
 paramfile=/home/ucesga2/Scratch/crime-fighter/scripts/parameters/vary_min_bandwidths.txt
+# paramfile=/home/ucesga2/Scratch/crime-fighter/scripts/parameters/temp_parameters.txt
 
 crime_type=`sed -n ${number}p $paramfile | awk '{print $1}'`
 min_t_bd=`sed -n ${number}p $paramfile | awk '{print $2}'`
