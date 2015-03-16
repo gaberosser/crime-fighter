@@ -42,7 +42,7 @@ max_d=`sed -n ${number}p $paramfile | awk '{print $2}'`
 
 # 9. Run the program (replace echo with your binary and options).
 cd $HOME
-source .bashrc
+# source .bashrc
 cd $HOME/Scratch/crime-fighter
 python -m $MODULE $max_t $max_d
 

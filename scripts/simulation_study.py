@@ -29,7 +29,7 @@ niter = 25  # number of SEPP iterations before convergence is assumed
 def run_me(location_dir, max_t, max_d):
     data_file = os.path.join(IN_DIR, location_dir, 'simulation.pickle')
     out_dir = os.path.join(OUT_DIR, location_dir)
-    log_file = os.path.join(out_dir, 'simulation_%d-%d.log' % (max_t, max_d))
+    log_file = os.path.join(out_dir, 'simulation_%.2f-%.2f.log' % (max_t, max_d))
 
     if not os.path.isdir(out_dir):
         os.makedirs(out_dir)
@@ -71,7 +71,7 @@ def run_me(location_dir, max_t, max_d):
         logger.error(repr(exc))
         res = None
     finally:
-        file_stem = os.path.join(out_dir, 'simulation_%d-%d' % (max_t, max_d))
+        file_stem = os.path.join(out_dir, 'simulation_%.2f-%.2f' % (max_t, max_d))
         logger.info("Saving results (or None).")
         with open(file_stem + '-sepp_obj.pickle', 'w') as f:
             pickle.dump(r, f)
