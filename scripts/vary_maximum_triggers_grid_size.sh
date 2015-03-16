@@ -19,7 +19,7 @@ MODULE=scripts.vary_maximum_triggers_grid_size
 #$ -l h_rt=10:0:0
 
 # 3. Request RAM.
-#$ -l mem=4G
+#$ -l mem=8G
 
 # 4. Request 15 gigabyte of TMPDIR space (default is 10 GB)
 #$ -l tmpfs=10G
