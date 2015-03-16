@@ -288,5 +288,28 @@ class MySimulation1(SeppSimulation):
         return {
             'intensity': 0.2,  # events day^-1
             'time_decay': 0.1,  # day^-1
-            'sigma': [.01, .01]
+            'sigma': [.1, .05]
+        }
+
+
+class MySimulation2(SeppSimulation):
+
+    @property
+    def default_bg_params(self):
+        gen_obj = lambda pos: {
+            'location': pos,
+            'intensity': 1.25,  # events day^-1
+            'sigma': [.25, .25],
+        }
+        xs, ys = np.meshgrid(*[range(-3, 4)] * 2)
+        return [
+            gen_obj([x, y]) for x, y in zip(xs.flat, ys.flat)
+        ]
+
+    @property
+    def default_trigger_params(self):
+        return {
+            'intensity': 0.2,  # events day^-1
+            'time_decay': 0.1,  # day^-1
+            'sigma': [.1, .05]
         }

@@ -1,13 +1,11 @@
 #!/bin/bash -l
 
 # set the location
-LOCATION=camden
-# LOCATION=chicago_south
+# LOCATION=camden
+LOCATION=chicago_south
 
 # set the run type
 MODULE=scripts.vary_maximum_triggers
-# MODULE=scripts.vary_min_bandwidths_trigger_only
-
 
 # Batch script to run an array job on Legion with the upgraded
 # software stack under SGE.
@@ -16,7 +14,7 @@ MODULE=scripts.vary_maximum_triggers
 #$ -S /bin/bash
 
 # 2. Request wallclock time (format hours:minutes:seconds).
-#$ -l h_rt=3:0:0
+#$ -l h_rt=6:0:0
 
 # 3. Request RAM.
 #$ -l mem=4G
@@ -28,7 +26,7 @@ MODULE=scripts.vary_maximum_triggers
 #$ -t 1-256
 
 # 6. Set the name of the job.
-#$ -N vary_min_bandwidths
+#$ -N vary_max_triggers
 
 # 7. Set the working directory to somewhere in your scratch space.  This is
 # a necessary step with the upgraded software stack as compute nodes cannot
@@ -45,8 +43,8 @@ parama=`sed -n ${number}p $paramfile | awk '{print $2}'`
 paramb=`sed -n ${number}p $paramfile | awk '{print $3}'`
 
 # 9. Run the program (replace echo with your binary and options).
-cd $HOME
-source .bashrc
+# cd $HOME
+# source .bashrc
 cd $HOME/Scratch/crime-fighter
 python -m $MODULE $LOCATION $crime_type $parama $paramb
 

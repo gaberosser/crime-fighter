@@ -216,13 +216,6 @@ class SepBase(object):
         new_p = sparse.csr_matrix((bg_component, bg_linkage), shape=(self.ndata, self.ndata))
         new_p[self.linkage] = trigger_component
 
-        # NB use LIL sparse matrix to avoid warnings about expensive structure changes, then convert at end.
-        # l = g.sum(axis=0) + m
-        # new_p = sparse.lil_matrix((self.ndata, self.ndata))
-        # new_p[range(self.ndata), range(self.ndata)] = m / l
-        # new_p[self.linkage] = trigger / l.flat[self.linkage[1]]
-        # new_p = new_p.tocsr()
-
         # compute difference
         q = new_p - self.p
         err_denom = float(self.p.nnz)
@@ -232,7 +225,7 @@ class SepBase(object):
         # update p
         self.p = new_p
 
-    def train(self, data=None, niter=30, verbose=True, tol_p=None):
+    def train(self, data=None, niter=30, verbose=True):
         if data is not None:
             # set data, linkages and p
             self.set_data(data)
@@ -259,18 +252,22 @@ class SepBase(object):
 
             if verbose:
                 num_bg = self.p.diagonal().sum()
-                logger.info("Completed %d / %d iterations in %.3f s.  L2 norm = %e. No. BG: %.2f, no. trig.: %.2f" % (
+                logger.info("Completed %d / %d iterations in %.3f s.  Log likelihood = %.1f. No. BG: %.2f, no. trig.: %.2f" % (
                     i+1,
                     niter,
                     self.run_times[-1],
-                    self.l2_differences[-1],
+                    self.log_likelihoods[-1],
                     num_bg,
                     self.ndata - num_bg))
 
-            if tol_p is not None and self.l2_differences[-1] < tol_p:
-                if verbose:
-                    logger.info("Training terminated in %d iterations as tolerance has been met." % (i+1))
+            # check for all trigger / BG situation and halt if that has happened
+            if self.num_bg[-1] == 0:
+                logger.info("Terminating training; no more BG component")
                 break
+            if self.num_trig[-1] == 0:
+                logger.info("Terminating training; no more trigger component")
+                break
+
         return ps
 
 

@@ -28,7 +28,8 @@ def plot_t_kde(k, max_t=50):
 
 def plot_xy_kde(k, x_range, y_range, npt_1d=50, **kwargs):
     x, y = np.meshgrid(np.linspace(x_range[0], x_range[1], npt_1d), np.linspace(y_range[0], y_range[1], npt_1d))
-    z = k.pdf(x, y, normed=False)
+    loc = DataArray.from_meshgrid(x, y)
+    z = k.pdf(loc, normed=False)
     fig = plt.figure()
     ax = fig.add_subplot(111)
     n_contours = kwargs.pop('n_contours', 40)

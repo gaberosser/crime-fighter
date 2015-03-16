@@ -181,7 +181,7 @@ if __name__ == '__main__':
 
     logger = logging.getLogger('kde.models')
 
-    num_iter = 25
+    num_iter = 75
     parallel = True
     t_total = None
     # c, data = initial_simulation(t_total=t_total)

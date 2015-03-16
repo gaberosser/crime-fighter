@@ -127,8 +127,8 @@ def chicago_south_side(max_delta_t, max_delta_d, crime_type):
         boundaries = pickle.load(f)
         location_poly = boundaries['chicago_south']
 
-    # set min_bandwidths  TODO
-    model_kwargs['trigger_kde_kwargs']['min_bandwidth'] = model_kwargs['bg_kde_kwargs']['min_bandwidth'] = [0., 0, 0]
+    # min_bandwidths not required
+    model_kwargs['trigger_kde_kwargs']['min_bandwidth'] = model_kwargs['bg_kde_kwargs']['min_bandwidth'] = None
 
     run_me(location_dir, location_poly, max_delta_t, max_delta_d, crime_type)
 
