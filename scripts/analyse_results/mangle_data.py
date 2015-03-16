@@ -195,6 +195,45 @@ def load_min_bandwidths_mean_predictive_performance(location='camden', variant='
     return a, hr, pai, missing_data
 
 
+def load_prediction_results(res_path, params_file_path, format_fun, coverage=0.2):
+    """
+    Load results relating to predictive accuracy, etc.
+    :param res_path: path to results folder, RELATIVE TO OUT_DIR
+    :param params_file_path: path to relevant parameters file
+    :param format_fun: the function used to convert from a set of parameters to a filename. The function takes the inputs
+    (crime_type, *args), where args is the remaining parameters on a row.
+    :return:
+    """
+    hr = collections.defaultdict(dict)
+    pai = collections.defaultdict(dict)
+    kinds = ('full_static', 'bg_static', 'trigger')
+    missing_data = []
+    with open(params_file_path, 'r') as f:
+        c = csv.reader(f, delimiter=' ')
+        for row in c:
+            # assume first parameter is always crime type
+            ct = row[0]
+            if ct not in hr:
+                # first time we've seen this crime type
+                hr[ct] = collections.defaultdict(dict)
+                pai[ct] = collections.defaultdict(dict)
+            args = tuple(row[1:])
+            in_file = os.path.join(OUT_DIR, res_path, format_fun(ct, *args))
+            print in_file
+            if not os.path.isfile(in_file):
+                for k in kinds:
+                    hr[ct][k][args] = pai[ct][k][args] = None
+                    missing_data.append((ct,) + tuple(args))
+            else:
+                with open(in_file, 'r') as g:
+                    vres = dill.load(g)
+                    for k in kinds:
+                        cov20 = vres_at_coverage(vres, kind=k, coverage=coverage) if vres is not None else (None, None)
+                        hr[ct][k][args] = cov20[0]
+                        pai[ct][k][args] = cov20[1]
+    return hr, pai, missing_data
+
+
 def load_trigger_background(location='camden', variant='min_bandwidth'):
     # alternative variant is 'min_bandwidth_trigger_only'
     PARAMS_FILE = os.path.join(os.path.join(*scripts.__path__), 'parameters', 'vary_min_bandwidths.txt')

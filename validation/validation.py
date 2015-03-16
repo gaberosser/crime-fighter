@@ -331,29 +331,35 @@ class ValidationBase(object):
 
         count = 0
 
-        while count < n_iter:
+        try:
+            while count < n_iter:
 
-            this_cutoff_t = run_res['cutoff_t'][count]
-            self.set_t_cutoff(this_cutoff_t, b_train=False)  # no need to train
+                this_cutoff_t = run_res['cutoff_t'][count]
+                self.set_t_cutoff(this_cutoff_t, b_train=False)  # no need to train
 
-            if verbose:
-                logger.info("Running repeat validation with cutoff time %s (iteration %d / %d)" % (str(self.cutoff_t),
-                                                                                                   count + 1,
-                                                                                                   n_iter))
+                if verbose:
+                    logger.info("Running repeat validation with cutoff time %s (iteration %d / %d)" % (str(self.cutoff_t),
+                                                                                                       count + 1,
+                                                                                                       n_iter))
 
-            # copy model
-            self.model = run_res['model'][count]
+                # copy model
+                self.model = run_res['model'][count]
 
-            # predict and assess iteration
-            this_res = self._iterate_run(pred_dt_plus, true_dt_plus, true_dt_minus, **pred_kwargs)
-            for k, v in this_res.items():
-                res[k].append(v)
+                # predict and assess iteration
+                this_res = self._iterate_run(pred_dt_plus, true_dt_plus, true_dt_minus, **pred_kwargs)
+                for k, v in this_res.items():
+                    res[k].append(v)
 
-            # add record of cutoff time to help later repeats
-            res['cutoff_t'].append(self.cutoff_t)
+                # add record of cutoff time to help later repeats
+                res['cutoff_t'].append(self.cutoff_t)
 
-            count += 1
+                count += 1
 
+        except KeyboardInterrupt:
+            # this breaks the loop, now return res as it stands
+            pass
+
+        self.post_process(res)
         return res
 
 

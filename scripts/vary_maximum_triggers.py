@@ -25,7 +25,7 @@ model_kwargs = {
                       'min_bandwidth': None,  ## FIXED
                       'strict': False},
     'trigger_kde_kwargs': {'number_nn': 15,
-                           'min_bandwidth': [0.5, 20, 20],  # FIXED
+                           'min_bandwidth': None,  # FIXED
                            'strict': False},
     'estimation_function': lambda x, y: estimation.estimator_bowers(x, y, **estimate_kwargs),
     'seed': 42,  # doesn't matter what this is, just want it fixed
