@@ -1,7 +1,7 @@
 __author__ = 'gabriel'
 
 import numpy as np
-import math
+import tools
 from analysis.spatial import create_spatial_grid, random_points_within_poly
 from data.models import DataArray
 from shapely.geometry import Point, Polygon
@@ -137,7 +137,7 @@ class RocSpatialGrid(object):
     def prediction_rank(self):
         if self.prediction_values is None:
             raise AttributeError("No prediction supplied, run set_prediction")
-        return np.argsort(self.prediction_values)[::-1]
+        return tools.numpy_most_compact_int_dtype(np.argsort(self.prediction_values)[::-1])
 
     @property
     def true_count(self):
@@ -181,7 +181,8 @@ class RocSpatialGrid(object):
         true_counts = np.array([(t.size if t is not None else 0) for t in true_grid_ind])
         # true_counts = self.true_count[self.prediction_rank]
         true_counts_sorted = np.sort(self.true_count)[::-1]
-        pred_values = self.prediction_values[self.prediction_rank]
+        # disabling due to memory consumption
+        # pred_values = self.prediction_values[self.prediction_rank]
         area = self.a[self.prediction_rank]
         total_area = sum(area)
 
@@ -194,7 +195,7 @@ class RocSpatialGrid(object):
 
         res = {
             'prediction_rank': self.prediction_rank,
-            'prediction_values': pred_values,
+            # 'prediction_values': pred_values,
             'cumulative_area': carea,
             'cumulative_crime': cfrac,
             'cumulative_crime_count': n,

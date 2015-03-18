@@ -363,7 +363,6 @@ def prediction_heatmap(sepp, t, poly=None, kind=None, **kwargs):
 
 
 def validation_multiplot(res, max_coverage=0.2, show_legend=True, legend_loc='upper left'):
-    methods = ['full', 'full_static', 'bg', 'bg_static', 'trigger']
     methods = collections.OrderedDict([
         ('full', 'Full'),
         ('full_static', 'Full model, static background'),
@@ -372,29 +371,27 @@ def validation_multiplot(res, max_coverage=0.2, show_legend=True, legend_loc='up
     ])
     styles = ['k-', 'k--', 'r-', 'r--']
 
+    methods_used = []
     x = []
     cc = []
     cc_max = 0.
     for m in methods:
-        x.append(np.mean(res[m]['cumulative_area'], axis=0))
-        # cumulative crime
-        # remove any nan entries, which indicate that NO crimes occurred on that day
-        cc.append(np.nanmean(res[m]['cumulative_crime'], axis=0))
-        cc_max = max(cc_max, cc[-1][x[-1] <= max_coverage].max())
+        if m in res:
+            x.append(np.mean(res[m]['cumulative_area'], axis=0))
+            # cumulative crime
+            # remove any nan entries, which indicate that NO crimes occurred on that day
+            cc.append(np.nanmean(res[m]['cumulative_crime'], axis=0))
+            cc_max = max(cc_max, cc[-1][x[-1] <= max_coverage].max())
+            methods_used.append(m)
 
     plt.figure()
     ax = plt.gca()
-    [ax.plot(x[i], cc[i], styles[i]) for i in range(len(methods))]
+    [ax.plot(x[i], cc[i], styles[i]) for i in range(len(methods_used))]
     ax.set_xlim([0, max_coverage])
     ax.set_ylim([0, np.ceil(10 * cc_max) * 0.1])
 
     if show_legend:
-        plt.legend((
-            'Full',
-            'Full static',
-            'B/G',
-            'Trigger',
-        ), loc=legend_loc)
+        plt.legend([methods[m] for m in methods_used], loc=legend_loc)
 
 
 def fluctuation_pre_convergence(res, conv_region=10):

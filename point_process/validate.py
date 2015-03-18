@@ -112,26 +112,40 @@ class SeppValidation(validation.ValidationBase):
         # super(SeppValidation, self).__init__(data, self.pp_class, spatial_domain=spatial_domain, grid_length=grid_length,
         #                                    cutoff_t=cutoff_t, model_args=model_args, model_kwargs=model_kwargs)
 
-    def predict_all(self, t):
+    def predict_all(self, t, include=None, **kwargs):
         """
         Carry out all prediction methods at time t.  Doing this in one go means computing linkages only once per call.
         :param t: Time at which to make the prediction
+        :param include: List of methods to include. If None, all methods are included
         :return: Dictionary, values correspond to the prediction output array, keys describe the method used
         """
-        target_data = self.prediction_array(t)
-        bg_dynamic = self.model.background_density(target_data, spatial_only=False)
-        bg_static = self.model.background_density(target_data, spatial_only=True)
-        # trigger = self.model.trigger_density_in_place(target_data)
-        ## NB set the new source data here!
-        trigger = self.model.trigger_density_in_place(target_data, source_data=self.training)
 
-        return {
-            'full': bg_dynamic + trigger,
-            'full_static': bg_static + trigger,
-            'bg': bg_dynamic,
-            'bg_static': bg_static,
-            'trigger': trigger,
+        include_dict = {
+            'full': lambda bgd, bgs, tr: bgd + tr,
+            'full_static': lambda bgd, bgs, tr: bgs + tr,
+            'bg': lambda bgd, bgs, tr: bgd,
+            'bg_static': lambda bgd, bgs, tr: bgs,
+            'trigger': lambda bgd, bgs, tr: tr,
         }
+
+        if include is None:
+            include = include_dict.keys()
+        else:
+            assert len(include), "No methods requested for predict/assess cycle."
+
+        target_data = self.prediction_array(t)
+        bg_dynamic = None
+        bg_static = None
+        trigger = None
+        if 'full' in include or 'bg' in include:
+            bg_dynamic = self.model.background_density(target_data, spatial_only=False)
+        if 'full_static' in include or 'bg_static' in include:
+            bg_static = self.model.background_density(target_data, spatial_only=True)
+        if 'full' in include or 'full_static' in include or 'trigger' in include:
+            ## NB set the new source data here!
+            trigger = self.model.trigger_density_in_place(target_data, source_data=self.training)
+
+        return dict([(meth, include_dict[meth](bg_dynamic, bg_static, trigger)) for meth in include])
 
     def _update(self, time_step, incremental=False, **train_kwargs):
         # take a copy of P now if needed
@@ -169,17 +183,12 @@ class SeppValidation(validation.ValidationBase):
 
         # cycle through the various prediction options and append to results
         # NB: bg and bg_static will give the same result as the predictions are simply scaled
-        all_predictions = self.predict_all(self.cutoff_t + pred_dt_plus)
+        # select the methods to use by adding an 'include' variable to kwargs, otherwise all methods are run by default
+        all_predictions = self.predict_all(self.cutoff_t + pred_dt_plus, **kwargs)
         for pred_method, pred_values in all_predictions.items():
             self.roc.set_prediction(pred_values)
             this_res = self.roc.evaluate()
             res[pred_method] = this_res
-            res[pred_method]['prediction_values'] = pred_values
-            # for k, v in this_res.items():
-                # append to name to maintain uniqueness
-
-                # name = k + '_' + pred_method
-                # res[name] = v
 
         # store a copy of the full SEPP model
         # this contains p matrix and KDEs, plus data
@@ -218,12 +227,21 @@ class SeppValidation(validation.ValidationBase):
 
     def post_process(self, res):
         methods = ['full', 'full_static', 'bg', 'bg_static', 'trigger']
+
         # restructure results
         # only need one copy of cumulative_crime_max
         # these are all the same, as they are independent of the prediction
-        ccm = res[methods[0]][0]['cumulative_crime_max']
+        ccm = None
         for m in methods:
+            if m in res:
+                ccm = res[m][0]['cumulative_crime_max']
+                break
+        assert ccm is not None, "Unable to find results for any of the methods."
 
+        for m in methods:
+            if m not in res:
+                # method not included in this run; skip
+                continue
             this_res = {}
             for k in res[m][0].keys():
                 if k == 'cumulative_crime_max':
@@ -367,21 +385,13 @@ if __name__ == "__main__":
         'estimation_function': lambda x, y: estimation.estimator_bowers(x, y, ct=1, cd=10),
         })
 
+    pred_kwargs = {
+        'include': ('full', 'full_static', 'bg', 'trigger')
+    }
+
     vb.set_grid(3, n_sample_per_grid=10)
     vb.set_t_cutoff(400, b_train=False)
-    res = vb.run(time_step=5, n_iter=5, train_kwargs={'niter': 10}, verbose=True)
+    res = vb.run(time_step=5, n_iter=5, train_kwargs={'niter': 10}, verbose=True, pred_kwargs=pred_kwargs)
 
-    variants = ['full', 'full_static', 'bg', 'bg_static', 'trigger']
-    colours = ['k', 'r', 'b', 'y', 'g']
-
-    fig = plt.figure()
-    ax1 = fig.add_subplot(111)
-    fig = plt.figure()
-    ax2 = fig.add_subplot(111)
-
-    for v, col in zip(variants, colours):
-        x = np.mean(np.array(res['cumulative_area_' + v]), axis=0)
-        y = np.array(res['cumulative_crime_' + v])
-        ax1.fill_between(x, np.min(y, axis=0), np.max(y, axis=0), edgecolor='none', facecolor=col, alpha=0.4)
-        ax2.plot(x, np.mean(y, axis=0), col)
-        mp = np.mean(np.array(res['pai_' + v]), axis=0)
+    from point_process import plotting
+    plotting.validation_multiplot(res)

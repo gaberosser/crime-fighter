@@ -8,6 +8,7 @@ from point_process import models as pp_models, estimation, validate
 from . import OUT_DIR, IN_DIR
 
 LOG_DIR = os.path.join(OUT_DIR, 'logs')
+OUT_SUBDIR = 'max_triggers_grid250_bgfrac9e-1'
 
 # global parameters
 num_sample_points = 20
@@ -15,7 +16,8 @@ grid_size = 250  # metres
 
 estimate_kwargs = {
     'ct': 1,
-    'cd': 0.02
+    'cd': 0.02,
+    'frac_bg': 0.9,
 }
 model_kwargs = {
     'parallel': True,
@@ -41,6 +43,8 @@ min_bandwidth_by_crime_type_camden = {
 niter = 200  # number of SEPP iterations before convergence is assumed
 num_validation = 120  # number of predict - assess cycles
 
+pred_include = ('full_static',)  # only use this method for prediction
+
 ## DEBUGGING:
 # niter = 5  # number of SEPP iterations before convergence is assumed
 # num_validation = 5  # number of predict - assess cycles
@@ -57,7 +61,7 @@ end_date = start_date + datetime.timedelta(days=start_day_number + num_validatio
 
 def run_me(location_dir, location_poly, max_delta_t, max_delta_d, crime_type):
     data_file = os.path.join(IN_DIR, location_dir, '%s.pickle' % crime_type)
-    out_dir = os.path.join(OUT_DIR, location_dir, 'max_triggers')
+    out_dir = os.path.join(OUT_DIR, location_dir, OUT_SUBDIR)
     log_file = os.path.join(out_dir, crime_type + '_' + '%d-%d.log' % (max_delta_t, max_delta_d))
 
     if not os.path.isdir(out_dir):
@@ -108,7 +112,11 @@ def run_me(location_dir, location_poly, max_delta_t, max_delta_d, crime_type):
     file_stem = os.path.join(out_dir, crime_type + '_' + '%d-%d' % (max_delta_t, max_delta_d))
     try:
         logger.info("Starting validation run.")
-        res = vb.run(time_step=1, n_iter=this_num_validation, verbose=True, train_kwargs={'niter': niter})
+        res = vb.run(time_step=1,
+                     n_iter=this_num_validation,
+                     verbose=True,
+                     train_kwargs={'niter': niter},
+                     pred_kwargs={'include': pred_include})
     except Exception as exc:
         logger.error(repr(exc))
         res = None
