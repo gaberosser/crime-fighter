@@ -111,20 +111,27 @@ def estimator_bowers(data, linkage, ct=1, cd=10, matrix_init=sparse.csr_matrix):
     return matrix_init(P)
 
 
-def estimator_exp_gaussian(data, linkage, ct, cd):
-    n = data.shape[0]
+def generate_p_from_trig_fixed_proportion_bg(P_trig, linkage, frac_bg):
+    """
+    Given the sparse triggering probabilities in P_trig and the triggering linkage indices, generate a full
+    probability matrix with (approximately) fixed proportion of BG events.
+    :param P_trig:
+    :param linkage:
+    :param frac_bg:
+    :return:
+    """
+    assert 0 <= frac_bg < 1., "Require 0<= frac_bg < 1."
 
-    # off-diagonal
-
-    tt = ct * np.exp(-ct * (data[linkage[1], 0] - data[linkage[0], 0]))
-    dd_k = np.sqrt(2 / (np.pi * cd))
-    dd_sq = (data[linkage[1], 1] - data[linkage[0], 1]) ** 2 + (data[linkage[1], 2] - data[linkage[0], 2]) ** 2
-    dd = dd_k * np.exp(-dd_sq / (2 * cd ** 2))
-
+    n = P_trig.shape[0]
     diag_linkage = (np.arange(n), np.arange(n))
+    sumtrig = np.array(P_trig.sum(axis=0)).flatten()
 
-    P_trig = sparse.csr_matrix((tt * dd, linkage), shape=(n, n))
-    P_bg = sparse.csr_matrix((np.ones(n), diag_linkage), shape=(n, n))
+    # compute BG value to enforce frac_bg
+    bg = frac_bg / (1 - frac_bg) * sumtrig
+    # replace any zero entries to ensure columns sum to 1.
+    bg[bg == 0] = 1.
+
+    P_bg = sparse.csr_matrix((bg, diag_linkage), shape=(n, n))
     P = P_trig + P_bg
     colsums = P.sum(axis=0).flat
     P_trig[linkage] = P_trig[linkage] / colsums[linkage[1]]
@@ -132,6 +139,45 @@ def estimator_exp_gaussian(data, linkage, ct, cd):
 
     P = P_trig + P_bg
     return P
+
+
+def estimator_bowers_fixed_proportion_bg(data, linkage, ct=1, cd=10, frac_bg=0.5):
+
+    n = data.shape[0]
+
+    # triggering
+    tt = 1 / (1 + ct * (data[linkage[1], 0] - data[linkage[0], 0]))
+    dd = 1 / (1 + cd * np.sqrt(
+        (data[linkage[1], 1] - data[linkage[0], 1]) ** 2 +
+        (data[linkage[1], 2] - data[linkage[0], 2]) ** 2
+    ))
+
+    P_trig = sparse.csr_matrix((tt * dd, linkage), shape=(n, n))
+    return generate_p_from_trig_fixed_proportion_bg(P_trig, linkage, frac_bg)
+
+
+def estimator_exp_gaussian(data, linkage, ct, cd, frac_bg=0.5):
+    """
+    Exponentially decaying in time, Gaussian in distance.  This implementation fixes the proportion of BG events by
+    setting the probability of being part of the BG as equal to the sum of the probs of being triggered, multiplied by
+    a constant.
+    :param data:
+    :param linkage:
+    :param ct:
+    :param cd:
+    :param frac_bg: The proportion of events that are BG.
+    :return:
+    """
+    n = data.shape[0]
+
+    # triggering
+    tt = ct * np.exp(-ct * (data[linkage[1], 0] - data[linkage[0], 0]))
+    dd_k = np.sqrt(2 / (np.pi * cd))
+    dd_sq = (data[linkage[1], 1] - data[linkage[0], 1]) ** 2 + (data[linkage[1], 2] - data[linkage[0], 2]) ** 2
+    dd = dd_k * np.exp(-dd_sq / (2 * cd ** 2))
+
+    P_trig = sparse.csr_matrix((tt * dd, linkage), shape=(n, n))
+    return generate_p_from_trig_fixed_proportion_bg(P_trig, linkage, frac_bg)
 
 
 def initial_guess_educated(data, ct=None, cd=None):

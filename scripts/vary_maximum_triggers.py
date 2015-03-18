@@ -18,7 +18,7 @@ estimate_kwargs = {
     'cd': 0.02
 }
 model_kwargs = {
-    'parallel': False,
+    'parallel': True,
     # 'max_delta_t': 60, # set on each iteration
     # 'max_delta_d': 400, # set on each iteration
     'bg_kde_kwargs': {'number_nn': [100, 15],
@@ -27,7 +27,7 @@ model_kwargs = {
     'trigger_kde_kwargs': {'number_nn': 15,
                            'min_bandwidth': None,  # FIXED
                            'strict': False},
-    'estimation_function': lambda x, y: estimation.estimator_bowers(x, y, **estimate_kwargs),
+    'estimation_function': lambda x, y: estimation.estimator_bowers_fixed_proportion_bg(x, y, **estimate_kwargs),
     'seed': 42,  # doesn't matter what this is, just want it fixed
 }
 
@@ -38,7 +38,7 @@ min_bandwidth_by_crime_type_camden = {
     'theft_of_vehicle': [0.25, 10, 10],
 }
 
-niter = 75  # number of SEPP iterations before convergence is assumed
+niter = 200  # number of SEPP iterations before convergence is assumed
 num_validation = 120  # number of predict - assess cycles
 
 ## DEBUGGING:

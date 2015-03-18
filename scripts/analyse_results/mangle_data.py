@@ -234,6 +234,29 @@ def load_prediction_results(res_path, params_file_path, format_fun, coverage=0.2
     return hr, pai, missing_data
 
 
+def load_sepp_objects(res_path, params_file_path, format_fun):
+    # format fun should point to the validation object
+    sepp = collections.defaultdict(dict)
+    missing_data = []
+    with open(params_file_path, 'r') as f:
+        c = csv.reader(f, delimiter=' ')
+        for row in c:
+            # assume first parameter is always crime type
+            ct = row[0]
+            if ct not in sepp:
+                sepp[ct] = {}
+            args = tuple(row[1:])
+            in_file = os.path.join(OUT_DIR, res_path, format_fun(ct, *args))
+            print in_file
+            if not os.path.isfile(in_file):
+                missing_data.append((ct,) + tuple(args))
+            else:
+                with open(in_file, 'r') as g:
+                    vb = dill.load(g)
+                    sepp[ct][args] = vb.model
+    return sepp, missing_data
+
+
 def load_trigger_background(location='camden', variant='min_bandwidth'):
     # alternative variant is 'min_bandwidth_trigger_only'
     PARAMS_FILE = os.path.join(os.path.join(*scripts.__path__), 'parameters', 'vary_min_bandwidths.txt')
