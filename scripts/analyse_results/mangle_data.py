@@ -5,6 +5,8 @@ import dill
 import csv
 import scripts
 import collections
+import re
+import datetime
 from scripts import OUT_DIR
 
 
@@ -195,7 +197,7 @@ def load_min_bandwidths_mean_predictive_performance(location='camden', variant='
     return a, hr, pai, missing_data
 
 
-def load_prediction_results(res_path, params_file_path, format_fun, coverage=0.2):
+def load_prediction_results(res_path, params_file_path, format_fun, coverage=0.2, kind='full_static'):
     """
     Load results relating to predictive accuracy, etc.
     :param res_path: path to results folder, RELATIVE TO OUT_DIR
@@ -206,7 +208,6 @@ def load_prediction_results(res_path, params_file_path, format_fun, coverage=0.2
     """
     hr = collections.defaultdict(dict)
     pai = collections.defaultdict(dict)
-    kinds = ('full_static', 'bg_static', 'trigger')
     missing_data = []
     with open(params_file_path, 'r') as f:
         c = csv.reader(f, delimiter=' ')
@@ -221,16 +222,14 @@ def load_prediction_results(res_path, params_file_path, format_fun, coverage=0.2
             in_file = os.path.join(OUT_DIR, res_path, format_fun(ct, *args))
             print in_file
             if not os.path.isfile(in_file):
-                for k in kinds:
-                    hr[ct][k][args] = pai[ct][k][args] = None
+                    hr[ct][args] = pai[ct][args] = None
                     missing_data.append((ct,) + tuple(args))
             else:
                 with open(in_file, 'r') as g:
                     vres = dill.load(g)
-                    for k in kinds:
-                        cov20 = vres_at_coverage(vres, kind=k, coverage=coverage) if vres is not None else (None, None)
-                        hr[ct][k][args] = cov20[0]
-                        pai[ct][k][args] = cov20[1]
+                    cov20 = vres_at_coverage(vres, kind=kind, coverage=coverage) if vres is not None else (None, None)
+                    hr[ct][args] = cov20[0]
+                    pai[ct][args] = cov20[1]
     return hr, pai, missing_data
 
 
@@ -255,6 +254,36 @@ def load_sepp_objects(res_path, params_file_path, format_fun):
                     vb = dill.load(g)
                     sepp[ct][args] = vb.model
     return sepp, missing_data
+
+
+def load_computation_time(res_path, params_file_path, format_fun):
+    # format fun should point to the log file
+    train_time = collections.defaultdict(dict)
+    pred_time = collections.defaultdict(dict)
+    with open(params_file_path, 'r') as f:
+        c = csv.reader(f, delimiter=' ')
+        for row in c:
+            # assume first parameter is always crime type
+            ct = row[0]
+            args = tuple(row[1:])
+            in_file = os.path.join(OUT_DIR, res_path, format_fun(ct, *args))
+            print in_file
+            if not os.path.isfile(in_file):
+                continue
+            else:
+                with open(in_file, 'r') as g:
+                    log = g.readlines()
+                    # extract training iteration times
+                    iter_log = [t for t in log if 'point_process.models - INFO - Completed' in t]
+                    cputime = [re.search('iterations in (?P<cputime>[\d.]*) s', t) for t in iter_log]
+                    train_time[ct][args] = np.array([float(t.groups()[0]) for t in cputime])
+
+                    # extract prediction iteration times
+                    iter_log = [t for t in log if 'Running validation with cutoff time' in t]
+                    cputime = [datetime.datetime.strptime(t[:23], '%Y-%m-%d %H:%M:%S,%f') for t in iter_log]
+                    pred_time[ct][args] = np.array([(cputime[i] - cputime[i-1]).total_seconds() for i in range(1, len(cputime))])
+
+    return train_time, pred_time
 
 
 def load_trigger_background(location='camden', variant='min_bandwidth'):
