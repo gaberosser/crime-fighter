@@ -189,14 +189,6 @@ class SeppSimulation(object):
         return self.data.shape[0]
 
     @property
-    def number_bg(self):
-        return np.sum(np.isnan(self.data[:, -1]))
-
-    @property
-    def number_trigger(self):
-        return np.sum(~np.isnan(self.data[:, -1]))
-
-    @property
     def linkages(self):
         """
         :return: bg_idx, cause_idx, effect_idx. True linkages in simulation.

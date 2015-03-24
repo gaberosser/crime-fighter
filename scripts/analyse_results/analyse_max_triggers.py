@@ -1,5 +1,5 @@
 __author__ = 'gabriel'
-import mangle_data
+from scripts.analyse_results import mangle_data
 import numpy as np
 from matplotlib import pyplot as plt
 from point_process import plotting
@@ -34,7 +34,7 @@ for bg_prop, res_path in init_bg_frac.items():
     _, pai20[bg_prop], _ = mangle_data.load_prediction_results(res_path, params_file_path, validation_format_fun)
     sepp[bg_prop], missing[bg_prop] = mangle_data.load_sepp_objects(res_path, params_file_path, sepp_format_fun)
 
-# plot for single crime type
+# plots for single crime type
 
 ct = 'burglary'
 
@@ -89,7 +89,11 @@ for i in range(len(max_t)):
 
 ## cpu time
 log_format_fun = lambda ct, *args: '{0}_{1:d}-{2:d}.log'.format(ct, *[int(t) for t in args])
-train_time, pred_time = mangle_data.load_computation_time(init_bg_frac[50], params_file_path, log_format_fun)
+train_time = {}
+pred_time = {}
+
+for bg_prop, res_path in init_bg_frac.items():
+    train_time[bg_prop], pred_time[bg_prop] = mangle_data.load_computation_time(res_path, params_file_path, log_format_fun)
 
 # ct = 'burglary'
 # ct = 'robbery'
@@ -162,12 +166,13 @@ plt.tick_params(axis='both', which='major', labelsize=16)
 # log likelihoods
 
 stationary_idx = -10
+bg_prop = 50
 
 lls = {}
 for ct in crime_types:
     if ct not in lls:
         lls[ct] = {}
-    for k, v in sepp[ct].iteritems():
+    for k, v in sepp[bg_prop][ct].iteritems():
         if v is not None:
             lls[ct][tuple(int(t) for t in k)] = np.mean(v.log_likelihoods[stationary_idx:])
 
@@ -246,7 +251,29 @@ for ct in crime_types:
 
 # proportion trigger
 
+ct = 'burglary'
+vmax = 0.5
+this_bg_prop = 50
 prop_trig = {}
+
+zz = np.zeros_like(tt, dtype=float)
+for i in range(len(max_t)):
+    for j in range(len(max_d)):
+        v = sepp[this_bg_prop][ct].get((str(max_t[i]), str(max_d[j])), None)
+        if v is not None:
+            zz[j, i] = (v.ndata - v.p.diagonal().sum()) / float(v.ndata)
+        else:
+            zz[j, i] = np.nan
+
+fig = plt.figure('%s-prop_trigger' % ct)
+ax = fig.add_subplot(111)
+h = ax.imshow(zz, interpolation='none', origin='lower')
+plt.colorbar(h)
+ax.set_xticks(range(len(max_t)))
+ax.set_yticks(range(len(max_t)))
+ax.set_xticklabels(max_t, fontsize=16)
+ax.set_yticklabels(max_d, fontsize=16)
+
 for ct in crime_types:
     if ct not in prop_trig:
         prop_trig[ct] = {}

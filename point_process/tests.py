@@ -21,18 +21,14 @@ class TestSimulation(unittest.TestCase):
         c = simulate.MohlerSimulation()
 
         # test background
-        c.initialise_background()
-        num_bg = c.number_bg
-        self.assertEqual(c.data.shape[0], num_bg)
+        bg = c.initialise_background()
+        num_bg = len(bg)
         # check that all events are background
-        self.assertTrue(np.all(np.isnan(c.data[:, -1])))
+        self.assertTrue(np.all(np.isnan(bg[:, -1])))
 
         # generate aftershocks
-        shocks = c.generate_aftershocks()
-        self.assertEqual(c.number_aftershocks, len(shocks))
-        self.assertEqual(c.number_aftershocks, sum(~np.isnan(c.data[:, -1])))
-        self.assertTrue(np.all(c.data[~np.isnan(c.data[:, -1]), -1] >= 0))
-        self.assertTrue(np.all(c.data[~np.isnan(c.data[:, -1]), -1] < max(c.data[:, 0])))
+        shocks = c.append_triggers(bg)
+
 
 
 class TestUtils(unittest.TestCase):
@@ -71,7 +67,7 @@ class TestSeppStochasticNn(unittest.TestCase):
 
     def setUp(self):
         self.c = simulate.MohlerSimulation()
-        self.c.number_to_prune = 3500
+        self.c.num_to_prune = 3500
         self.c.seed(42)
         self.c.run()
         self.data = self.c.data[:, :3]
@@ -85,7 +81,7 @@ class TestSeppStochasticNn(unittest.TestCase):
         r = models.SeppStochasticNn(self.data, max_delta_d=0.75, max_delta_t=80)
         r.set_seed(42)
         r.p = estimation.estimator_bowers(self.data, r.linkage, ct=1, cd=10)
-        ps = r.train(niter=15, verbose=False, tol_p=1e-8)
+        ps = r.train(niter=15, verbose=False)
         self.assertEqual(r.ndata, self.data.shape[0])
         self.assertEqual(len(r.num_bg), 15)
         self.assertAlmostEqual(r.l2_differences[0], 0.0011281, places=3)
@@ -96,13 +92,15 @@ class TestSeppStochasticNn(unittest.TestCase):
         self.assertListEqual(r.num_trig, [r.ndata - x for x in r.num_bg])
         self.assertEqual(len(r.linkage[0]), 6927)
 
+        bg_intensity = self.c.bg_params[0]['intensity']
+
         t = np.linspace(0, max(self.data[:, 0]), 10000)
         zt = r.bg_kde.marginal_pdf(t, dim=0, normed=False)
         # mean BG_t
         mt = np.mean(zt)
-        self.assertTrue(np.abs(mt - self.c.bg_mu_bar) / float(self.c.bg_mu_bar) < 0.05)
+        self.assertTrue(np.abs(mt - bg_intensity) / float(bg_intensity) < 0.05)
         # integrated squared error
-        ise = np.sum((zt - self.c.bg_mu_bar) ** 2) * (t[1] - t[0])
+        ise = np.sum((zt - bg_intensity) ** 2) * (t[1] - t[0])
         # this bound is set manually from previous experiments
         self.assertTrue(ise < 250)  # should be as low as possible (no time variation in simulation)
 
@@ -118,19 +116,22 @@ class TestSeppStochasticNn(unittest.TestCase):
         self.assertTrue(np.abs(my) < 0.25)
 
         # stdev BG_x, BG_y
+        bg_sx = self.c.bg_params[0]['sigma'][0]
+        bg_sy = self.c.bg_params[0]['sigma'][1]
+
         stdevx = np.sqrt((np.sum(x**2 * zxy)/(x.size - 1)) - mx**2)
         stdevy = np.sqrt((np.sum(y**2 * zxy)/(y.size - 1)) - my**2)
-        self.assertTrue(np.abs(stdevx - self.c.bg_sigma) / self.c.bg_sigma < 0.4)  # agreement here isn't great
-        self.assertTrue(np.abs(stdevy - self.c.bg_sigma) / self.c.bg_sigma < 0.4)  # agreement here isn't great
+        self.assertTrue(np.abs(stdevx - bg_sx) / bg_sx < 0.4)  # agreement here isn't great
+        self.assertTrue(np.abs(stdevy - bg_sy) / bg_sy < 0.4)  # agreement here isn't great
         # measure of asymmetry
-        self.assertTrue(2 * np.abs(stdevx - stdevy)/(stdevx + stdevy) < 0.01)  # should be 0
+        self.assertTrue(2 * np.abs(stdevx - stdevy)/(stdevx + stdevy) < 0.012)  # should be 0
 
         # trigger t
         t = np.linspace(0, r.max_delta_t, 1000)
         gt = r.trigger_kde.marginal_pdf(t, normed=False) / r.ndata
 
-        w = self.c.off_omega
-        th = self.c.off_theta
+        w = self.c.trigger_params['time_decay']
+        th = self.c.trigger_params['intensity']
         gt_true = th * w * np.exp(-w * t)
         ise = np.sum((gt - gt_true) ** 2) * (t[1] - t[0])
         self.assertTrue(ise < 0.001)
@@ -139,12 +140,12 @@ class TestSeppStochasticNn(unittest.TestCase):
         gx = r.trigger_kde.marginal_pdf(x, dim=1, normed=False) / r.ndata
         gy = r.trigger_kde.marginal_pdf(x, dim=2, normed=False) / r.ndata
 
-        sx = self.c.off_sigma_x
+        sx = self.c.trigger_params['sigma'][0]
         gx_true = th / (np.sqrt(2 * np.pi) * sx) * np.exp(-(x ** 2) / (2 * sx ** 2))
         ise = np.sum((gx - gx_true) ** 2) * (x[1] - x[0])
         self.assertTrue(ise < 0.1)
 
-        sy = self.c.off_sigma_y
+        sy = self.c.trigger_params['sigma'][1]
         gy_true = th / (np.sqrt(2 * np.pi) * sy) * np.exp(-(x ** 2) / (2 * sy ** 2))
         ise = np.sum((gy - gy_true) ** 2) * (x[1] - x[0])
         self.assertTrue(ise < 0.01)

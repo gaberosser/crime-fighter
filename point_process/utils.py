@@ -1,7 +1,9 @@
 __author__ = 'gabriel'
 import numpy as np
 from scipy import sparse
+import logging
 
+logger = logging.getLogger(__name__)
 
 def pairwise_differences_indices(n):
 
@@ -97,3 +99,74 @@ def augmented_matrix(new_p, old_p):
     comb_p = sparse.csc_matrix((comb_data, comb_indices, comb_indptr), shape=(num_new, num_new)).tocsr()
 
     return comb_p
+
+
+def random_sample_from_p(p, linkage_cols, rng=None):
+    """
+    Weighted sampling algorithm by Efraimidis and Spirakis. Weighted random sampling with a reservoir.
+    Information Processing Letters 97 (2006) 181-185
+    """
+    ndata = p.shape[0]
+    rng = rng or np.random.RandomState()
+
+    ## TODO: should be able to reform linkage_cols fairly easily from p if necessary?
+    # if linkage_cols is None:
+    #     linkage_cols = {}
+    #     for i in range(ndata):
+    #         idx = p[:i+1, i].nonzero()[0]
+    #         linkage_cols[i] = idx
+
+    urvs = rng.rand(p.nnz)
+    ks_matrix = p.copy()
+    ks_matrix.data = np.power(urvs, 1. / p.data)
+
+    # import ipdb; ipdb.set_trace()
+
+    # find the largest value in each column
+    causes = [linkage_cols[n][np.argmax(ks_matrix[:, n].data)] for n in range(ndata)]
+    effects = range(ndata)
+
+    bg_idx = [x for x, y in zip(causes, effects) if x == y]
+    if not len(bg_idx):
+        logger.warn("No BG events remaining")
+
+    cause_effect = zip(*[(x, y) for x, y in zip(causes, effects) if x != y])
+    if not len(cause_effect):
+        logger.warn("No trigger events remaining")
+        cause_idx = []
+        effect_idx = []
+    else:
+        cause_idx, effect_idx = cause_effect
+
+    return bg_idx, list(cause_idx), list(effect_idx)
+
+
+def all_bg_log_likelihood(sepp_obj):
+    """
+    Compute the log likelihood associated with a BG only model.
+    :param sepp_obj: An instance that inherits from Sepp
+    :return: Log likelihood
+    """
+    data = sepp_obj.data
+    bg_class = sepp_obj.bg_kde_class
+    bg_kde = bg_class(data, **sepp_obj.bg_kde_kwargs)
+    m = bg_kde.pdf(data, normed=False)
+    return np.log(m).sum()
+
+
+def all_trig_log_likelihood(sepp_obj, parallel=True):
+    """
+    Compute the log likelihood associated with a trigger only model.
+    :param sepp_obj: An instance that inherits from Sepp
+    :param parallel: This computation can be quite slow, so set True if possible.
+    :return: Log likelihood
+    """
+    interpoint_data = sepp_obj.interpoint_data
+    trig_class = sepp_obj.trigger_kde_class
+    ## FIXME: this should be a weighted KDE, or sampling is needed to determine a single parent-offspring relationship
+    trig_kde = trig_class(interpoint_data, **sepp_obj.trigger_kde_kwargs)
+    trigger = trig_kde.pdf(interpoint_data, normed=False) / sepp_obj.ndata
+    g = sparse.csr_matrix((trigger, sepp_obj.linkage), shape=(sepp_obj.ndata, sepp_obj.ndata))
+    # sum_g = np.array(g.sum(axis=0)).flatten()[sepp_obj.linkage[1]]
+    sum_g = np.array(g.sum(axis=0)).flatten()
+    return np.log(sum_g).sum()

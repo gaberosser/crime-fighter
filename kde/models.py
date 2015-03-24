@@ -82,6 +82,47 @@ def set_nn_bandwidths(normed_data, raw_stdevs, num_nn, **kwargs):
 
     return nn_distances, bandwidths
 
+
+def compute_cross_validation_bandwidth(data, fold, hmin=None, hmax=None):
+    from scipy import optimize
+
+    # get raw bandwidths
+    raw_bd = np.std(data, axis=0, ddof=1)
+
+    # define a range for the bandwidth
+    hmin = hmin or 0.05  # x standard deviation
+    hmax = hmax or 1.5  # x standard deviation
+
+    # shuffle data indices
+    ndata = len(data)
+    idx = np.random.permutation(ndata)
+
+    # select xvfold validation sets
+    validation_sets = [idx[i::fold] for i in range(fold)]
+    def training_idx_gen():
+        # yields (testing idx, training idx) tuples
+        for i in range(fold):
+            yield validation_sets[i], np.concatenate(validation_sets[:i] + validation_sets[(i+1):])
+
+    # CV score for minimisation
+    def cv_score(h):
+        ll = 0.0 # log likelihood
+        for test_idx, train_idx in training_idx_gen():
+            testing_data = data.getrows(test_idx)
+            training_data = data.getrows(train_idx)
+            new_kde = FixedBandwidthKde(training_data, bandwidths=raw_bd * h, parallel=False)
+            res = new_kde.pdf(testing_data)
+            ll += np.sum(np.log(res))
+        return -ll
+
+    res = optimize.minimize_scalar(cv_score, bounds=[hmin, hmax],
+                                   method='bounded', options={'disp': True})
+    if res.success:
+        return raw_bd * res.x
+    else:
+        raise ValueError("Unable to find max likelihood bandwidth")
+
+
 # A few helper functions required for parallel processing
 
 
@@ -574,41 +615,8 @@ class FixedBandwidthXValidationKde(FixedBandwidthKde):
         self.compute_xv_bandwidth()
 
     def compute_xv_bandwidth(self, hmin=None, hmax=None):
-        from itertools import combinations
-        from scipy import optimize
-        from copy import copy
-
-        # define a range for the bandwidth
-        hmin = hmin or 0.1 # 1/10 x standard deviation
-        hmax = hmax or 5 # 5 x standard deviation
-
-        # shuffle data indices
-        idx = np.random.permutation(self.ndata)
-
-        # select xvfold validation sets
-        validation_sets = [idx[i::self.xvfold] for i in range(self.xvfold)]
-        def training_idx_gen():
-            # yields (testing idx, training idx) tuples
-            for i in range(self.xvfold):
-                yield validation_sets[i], np.concatenate(validation_sets[:i] + validation_sets[(i+1):])
-
-        # CV score for minimisation
-        def cv_score(h):
-            ll = 0.0 # log likelihood
-            for test_idx, train_idx in training_idx_gen():
-                testing_data = self.data[test_idx, :]
-                training_data = self.data[train_idx, :]
-                new_kde = FixedBandwidthKde(training_data, bandwidths=self.raw_std_devs * h, parallel=False)
-                res = new_kde.pdf(*testing_data.transpose())
-                ll += np.sum(np.log(res))
-            return -ll / float(self.xvfold)
-
-        res = optimize.minimize_scalar(cv_score, bounds=[hmin, hmax],
-                                       method='bounded', options={'disp': True})
-        if res.success:
-            self.bandwidths = np.tile(self.raw_std_devs * res.x, (self.ndata, 1))
-        else:
-            raise ValueError("Unable to find max likelihood bandwidth")
+        xv_bd = compute_cross_validation_bandwidth(self.data, self.xvfold, hmin=hmin, hmax=hmax)
+        self.bandwidths = np.tile(xv_bd, (self.ndata, 1))
 
 
 class VariableBandwidthNnKdeSeparable(FixedBandwidthKde, KdeBaseSeparable):

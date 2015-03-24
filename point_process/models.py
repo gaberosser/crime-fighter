@@ -1,6 +1,6 @@
 __author__ = 'gabriel'
 
-from utils import linkages
+from utils import linkages, random_sample_from_p
 from kde import models as pp_kde
 import numpy as np
 from time import time
@@ -298,7 +298,6 @@ class Sepp(SepBase):
     def set_linkages(self):
         # set self.linkage, self.linkage_col, self.interpoint_data
         self.linkage = linkages(self.data, self.max_delta_t, self.max_delta_d)
-        # self.interpoint_data = self.data[self.linkage[1]] - self.data[self.linkage[0]]
         self.interpoint_data = self.data.getrows(self.linkage[1]) - self.data.getrows(self.linkage[0])
         self.linkage_cols = dict(
             [(i, np.concatenate((self.linkage[0][self.linkage[1] == i], [i,]))) for i in range(self.ndata)]
@@ -426,31 +425,9 @@ class SeppStochastic(Sepp):
         self.trigger_kde_kwargs['parallel'] = self.parallel
 
     def sample_data(self):
-        """
-        Weighted sampling algorithm by Efraimidis and Spirakis. Weighted random sampling with a reservoir.
-        Information Processing Letters 97 (2006) 181-185
-        """
-        urvs = self.rng.rand(self.p.nnz)
-        ks_matrix = self.p.copy()
-        ks_matrix.data = np.power(urvs, 1. / self.p.data)
 
-        # find the largest value in each column
-        causes = [self.linkage_cols[n][np.argmax(ks_matrix[:, n].data)] for n in range(self.ndata)]
-        effects = range(self.ndata)
+        return random_sample_from_p(self.p, self.linkage_cols, rng=self.rng)
 
-        bg_idx = [x for x, y in zip(causes, effects) if x == y]
-        if not len(bg_idx):
-            warnings.warn("No BG events remaining")
-
-        cause_effect = zip(*[(x, y) for x, y in zip(causes, effects) if x != y])
-        if not len(cause_effect):
-            warnings.warn("No trigger events remaining")
-            cause_idx = []
-            effect_idx = []
-        else:
-            cause_idx, effect_idx = cause_effect
-
-        return bg_idx, list(cause_idx), list(effect_idx)
 
     def set_kdes(self):
         bg_idx, cause_idx, effect_idx = self.sample_data()
@@ -509,8 +486,6 @@ class SeppStochasticStationaryBg(SeppStochastic):
 
         # compute KDEs
         try:
-            logger.info(str(self.bg_kde_kwargs))
-            logger.info(str(self.trigger_kde_kwargs))
             self.bg_kde = self.bg_kde_class(self.data[bg_idx, 1:], **self.bg_kde_kwargs)
             self.trigger_kde = self.trigger_kde_class(interpoint, **self.trigger_kde_kwargs)
 

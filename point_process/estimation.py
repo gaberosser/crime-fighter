@@ -129,7 +129,7 @@ def generate_p_from_trig_fixed_proportion_bg(P_trig, linkage, frac_bg):
     # compute BG value to enforce frac_bg
     bg = frac_bg / (1 - frac_bg) * sumtrig
     # replace any zero entries to ensure columns sum to 1.
-    bg[bg == 0] = 1.
+    bg[sumtrig == 0] = 1.
 
     P_bg = sparse.csr_matrix((bg, diag_linkage), shape=(n, n))
     P = P_trig + P_bg
