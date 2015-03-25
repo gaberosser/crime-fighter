@@ -425,7 +425,6 @@ class SeppStochastic(Sepp):
         self.trigger_kde_kwargs['parallel'] = self.parallel
 
     def sample_data(self):
-
         return random_sample_from_p(self.p, self.linkage_cols, rng=self.rng)
 
 

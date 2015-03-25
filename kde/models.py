@@ -214,10 +214,8 @@ class KdeBase(object):
     data_class = DataArray
 
     def __init__(self, data, parallel=True, *args, **kwargs):
-        if isinstance(data, self.data_class):
-            self.data = data
-        else:
-            self.data = self.data_class(data)
+
+        self.set_data(data)
 
         if self.data.ndata == 0:
             raise AttributeError("Supplied data array is empty")
@@ -234,6 +232,12 @@ class KdeBase(object):
         self.bandwidths = None
         self.set_bandwidths(*args, **kwargs)
         self.set_kernels()
+
+    def set_data(self, data):
+        if isinstance(data, self.data_class):
+            self.data = data
+        else:
+            self.data = self.data_class(data)
 
     @property
     def ndim(self):
@@ -331,16 +335,16 @@ class KdeBase(object):
             z /= float(self.norm_constant)
         return z
 
-    def check_inputs(self, x, ndim=None, cls=None):
+    def check_inputs(self, data, ndim=None, cls=None):
         ndim = ndim or self.ndim
         cls = cls or self.data_class
-        if not isinstance(x, cls):
-            x = cls(x)
+        if not isinstance(data, cls):
+            data = cls(data)
 
-        if x.nd != ndim:
+        if data.nd != ndim:
             raise AttributeError("Target data does not have the correct number of dimensions")
 
-        return x
+        return data
 
     def pdf(self, target, **kwargs):
         target = self.check_inputs(target, ndim=self.ndim)
@@ -459,6 +463,34 @@ class FixedBandwidthKde(KdeBase):
         return self._t_dependent_variance(t)[2]
 
 
+class FixedBandwidthRadialKde(FixedBandwidthKde):
+
+    data_class = CartesianSpaceTimeData
+
+    def set_data(self, data):
+        if not isinstance(data, self.data_class):
+            data = self.data_class(data)
+        if data.nd != 3:
+            raise NotImplementedError("Currently, only t, x, y data are supported (though extensions are fairly trivial).")
+        self.data = data.time.adddim(np.sqrt(data.toarray(1) ** 2 + data.toarray(2) ** 2))
+
+    def check_inputs(self, data, ndim=3, cls=None):
+        # Prepare target data for lookup by reducing spatial dimensions to single distance vector
+        cls = cls or self.data_class
+        if not isinstance(data, cls):
+            data = cls(data)
+
+        if data.nd != ndim:
+            raise AttributeError("Target data does not have the correct number of dimensions")
+
+        if ndim == 3:
+            # reduce spatial dimensions
+            data = data.time.adddim(np.sqrt(data.toarray(1) ** 2 + data.toarray(2) ** 2))
+        else:
+            pass
+        return data
+
+
 class FixedBandwidthKdeSeparable(FixedBandwidthKde, KdeBaseSeparable):
     """
     Combination of fixed bandwidth and separable KDE in time / space.
@@ -519,8 +551,6 @@ class VariableBandwidthNnKde(VariableBandwidthKde):
                 raise AttributeError(msg)
             else:
                 logger.warn(msg)
-                warnings.warn(msg)
-                print msg
                 self.nn = ndata
 
         super(VariableBandwidthNnKde, self).__init__(data, *args, **kwargs)

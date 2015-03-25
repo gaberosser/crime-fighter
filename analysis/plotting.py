@@ -21,7 +21,7 @@ def centre_axes(ax=None):
 
 
 def geos_poly_to_shapely(poly):
-    return shapely_geometry.Polygon(poly.coords[0], poly.coords[1:])
+    return shapely_geometry.Polygon(shell=poly.coords[0], holes=poly.coords[1:])
 
 
 def geodjango_to_shapely(shapes, c=ccrs.OSGB()):
@@ -29,37 +29,74 @@ def geodjango_to_shapely(shapes, c=ccrs.OSGB()):
         inputs: x is a sequence of geodjango geometry objects """
 
     converters = {
-        'line': lambda t: shapely_geometry.LineString(t.coords),
-        'polygon': lambda t: geos_poly_to_shapely(t),
-        'multipolygon': lambda t: shapely_geometry.MultiPolygon([geos_poly_to_shapely(x) for x in t])
+        geos.Point: lambda t: shapely_geometry.Point(*t.coords),
+        geos.LineString: lambda t: shapely_geometry.LineString(t.coords),
+        geos.Polygon: lambda t: geos_poly_to_shapely(t),
+        geos.MultiPolygon: lambda t: shapely_geometry.MultiPolygon([geos_poly_to_shapely(x) for x in t])
     }
 
     if issubclass(shapes.__class__, geos.GEOSGeometry):
         # single GEOS geometry supplied
-        shapes = [shapes]
+        return converters[shapes.__class__](shapes)
 
-    polys = []
-    for t in shapes:
-        if isinstance(t, geos.Polygon):
-            polys.append(geos_poly_to_shapely(t))
-        elif isinstance(t, geos.MultiPolygon):
-            polys.append(shapely_geometry.MultiPolygon([shapely_geometry.Polygon(x[0]) for x in t.coords]))
-
-
-    return polys
+    return [converters[t.__class__](t) for t in shapes]
 
 
 def polygonpatch_from_polygon(poly, **kwargs):
     return PolygonPatch(json.loads(poly.geojson), **kwargs)
 
 
-def plot_shapely_geos(obj_arr, ax=None, **kwargs):
-    ax = ax or plt.gca()
+def shapely_plot(func):
 
-    for t in obj_arr:
-        if isinstance(t, shapely_geometry.LineString):
-            x, y = t.xy
-            ax.plot(x, y, **kwargs)
+    def decorator(obj, ax=None, **kwargs):
+        ax = ax or plt.gca()
+        return func(obj, ax, **kwargs)
+
+    return decorator
+
+
+@shapely_plot
+def plot_shapely_point(obj, ax, **kwargs):
+    if 'marker' not in kwargs:
+        kwargs['marker'] = 'o'
+    return ax.plot(obj.x, obj.y, **kwargs)
+
+
+@shapely_plot
+def plot_shapely_line(obj, ax, **kwargs):
+    return ax.plot(*obj.xy, **kwargs)
+
+
+@shapely_plot
+def plot_shapely_polygon(obj, ax, **kwargs):
+    if not ('fc' in kwargs or 'facecolor' in kwargs):
+        kwargs['fc'] = 'none'
+    polypatch = PolygonPatch(obj, **kwargs)
+    ax.add_patch(polypatch)
+    return polypatch
+
+
+@shapely_plot
+def plot_shapely_multipolygon(obj, ax, **kwargs):
+    return [plot_shapely_polygon(t, ax, **kwargs) for t in obj]
+
+
+def plot_shapely_geos(shapes, ax=None, **kwargs):
+
+    plotters = {
+        shapely_geometry.Point: plot_shapely_point,
+        shapely_geometry.LineString: plot_shapely_line,
+        shapely_geometry.LinearRing: plot_shapely_line,
+        shapely_geometry.Polygon: plot_shapely_polygon,
+        shapely_geometry.MultiPolygon: plot_shapely_multipolygon,
+    }
+
+    if issubclass(shapes.__class__, shapely_geometry.base.BaseGeometry):
+        # single GEOS geometry supplied
+        return plotters[shapes.__class__](shapes)
+
+    ## TODO: may wish to combine plotting of points for efficiency?
+    return [plotters[t.__class__](t, ax, **kwargs) for t in shapes]
 
 
 def plot_geodjango_shapes(shapes, ax=None, set_axes=True, **kwargs):

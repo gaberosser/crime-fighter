@@ -188,9 +188,10 @@ if __name__ == '__main__':
     # max_delta_t = 100
     # max_delta_d = 0.75
 
-    c = simulate.MySimulation1()
-    c.t_total = 1000
-    c.num_to_prune = 2000  # should leave ~2000 datapoints
+    # c = simulate.MySimulation1()
+    # c.t_total = 1000
+    # c.num_to_prune = 2000  # should leave ~2000 datapoints
+    c = simulate.MohlerSimulation()
     c.run()
     data = c.data[:, :3]
     max_delta_t = 100

@@ -7,7 +7,8 @@ from matplotlib import ticker
 import numpy as np
 import datetime
 import os
-from analysis.plotting import plot_surface_function_on_polygon
+from point_process import utils
+from analysis.plotting import plot_surface_function_on_polygon, plot_shapely_geos
 from data.models import CartesianSpaceTimeData, DataArray
 from django.contrib.gis import geos
 import collections
@@ -585,3 +586,28 @@ def delta_effect(res, nrow=8, ncol=7):
 
     plt.draw()
     plt.tight_layout(h_pad=0.0, w_pad=0.1)
+
+
+def lineage_map(p, linkage_cols, data, boundary=None):
+    bg, cause, effect = utils.random_sample_from_p(p, linkage_cols)
+    bg_data = data.getrows(bg).space
+    cause_data = data.getrows(cause).space
+    effect_data = data.getrows(effect).space
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    if boundary:
+        plot_shapely_geos(boundary, ax=ax)
+    ax.scatter(bg_data.getdim(0), bg_data.getdim(1), c='k', marker='o', s=50, alpha=0.3)
+    plt.plot(effect_data.getdim(0), effect_data.getdim(1), 'rd', lw=2.5)
+    for i in range(len(cause)):
+        x = cause_data[i, 0]
+        y = cause_data[i, 1]
+        dx = effect_data[i, 0] - x
+        dy = effect_data[i, 1] - y
+        plt.plot([x, x + dx], [y, y + dy], 'r-', lw=2.5)
+        # try:
+        #     ax.arrow(x, y, dx, dy, ec='r', fc='none', head_width=15, width=2, length_includes_head=True)
+        # except Exception:
+        #     pass
+    ax.set_aspect('equal')
