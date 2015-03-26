@@ -5,7 +5,7 @@ from kde import models as pp_kde
 import numpy as np
 from time import time
 import warnings
-from scipy import sparse
+from scipy import sparse, special
 import math
 from data import models as data_models
 import copy
@@ -451,8 +451,6 @@ class SeppStochastic(Sepp):
         except AttributeError as exc:
             logger.error("Unable to set_kdes. Num BG: %d, num trigger %d" % (self.num_bg[-1], self.num_trig[-1]))
             raise exc
-        # except Exception as exc:
-        #     import ipdb; ipdb.set_trace()
 
     @property
     def weighted_bg_kde(self):
@@ -550,11 +548,39 @@ class SeppStochasticNnIsotropicTrigger(SeppStochasticNn):
     def trigger_density(self, delta_data):
         """
         Return the (unnormalised) trigger density
-        Integral over all data dimensions should return num_trig / num_events
+        Integral over time and *space* (not distance) should return num_trig / num_events
         """
-        distances = np.sqrt(np.sum(delta_data[:, 1:] ** 2, axis=1))
+
+        distances = np.sqrt(np.sum(delta_data.data[:, 1:] ** 2, axis=1))
         isotropic_data = data_models.DataArray(delta_data[:, 0]).adddim(distances)
         return 2 * np.pi * self.trigger_kde.pdf(isotropic_data, normed=False) / self.ndata / distances
+
+    def trigger_density_in_place(self, target_data, source_data=None):
+        """
+        Return the sum of trigger densities at the points in target_data.
+        Optionally supply new source data to be used, otherwise self.data is used.
+        """
+        if source_data is not None and len(source_data):
+            pass
+        else:
+            source_data = self.data
+
+        link_source, link_target = linkages(source_data, self.max_delta_t, self.max_delta_d, data_target=target_data)
+        trigger = sparse.csr_matrix((source_data.ndata, target_data.ndata))
+
+        if link_source.size:
+            delta_data = target_data.getrows(link_target) - source_data.getrows(link_source)
+            trigger[link_source, link_target] = self.trigger_density(delta_data)
+
+        trigger = np.array(trigger.sum(axis=0))
+        # reshape if target_data has a shape
+        if target_data.original_shape:
+            ## FIXME: double check this reshape order
+            trigger = trigger.reshape(target_data.original_shape)
+        # else flatten
+        else:
+            trigger = trigger.flatten()
+        return trigger
 
 
 class SeppStochasticNnReflected(SeppStochasticNn):
@@ -593,6 +619,10 @@ class SeppDeterministicNn(Sepp):
 
 class SeppDeterministicNnReflected(SeppDeterministicNn):
     trigger_kde_class = pp_kde.WeightedVariableBandwidthNnKdeReflective
+
+
+# class SeppStochasticNnRadial(SeppStochasticNn):
+
 
 
 def fluctuation_pre_convergence(sepp_obj, niter=15):

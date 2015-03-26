@@ -1,5 +1,6 @@
 __author__ = 'gabriel'
 import numpy as np
+from scipy.special import erf
 import operator
 from contextlib import closing
 from functools import partial
@@ -463,34 +464,6 @@ class FixedBandwidthKde(KdeBase):
         return self._t_dependent_variance(t)[2]
 
 
-class FixedBandwidthRadialKde(FixedBandwidthKde):
-
-    data_class = CartesianSpaceTimeData
-
-    def set_data(self, data):
-        if not isinstance(data, self.data_class):
-            data = self.data_class(data)
-        if data.nd != 3:
-            raise NotImplementedError("Currently, only t, x, y data are supported (though extensions are fairly trivial).")
-        self.data = data.time.adddim(np.sqrt(data.toarray(1) ** 2 + data.toarray(2) ** 2))
-
-    def check_inputs(self, data, ndim=3, cls=None):
-        # Prepare target data for lookup by reducing spatial dimensions to single distance vector
-        cls = cls or self.data_class
-        if not isinstance(data, cls):
-            data = cls(data)
-
-        if data.nd != ndim:
-            raise AttributeError("Target data does not have the correct number of dimensions")
-
-        if ndim == 3:
-            # reduce spatial dimensions
-            data = data.time.adddim(np.sqrt(data.toarray(1) ** 2 + data.toarray(2) ** 2))
-        else:
-            pass
-        return data
-
-
 class FixedBandwidthKdeSeparable(FixedBandwidthKde, KdeBaseSeparable):
     """
     Combination of fixed bandwidth and separable KDE in time / space.
@@ -727,3 +700,42 @@ class SpaceTimeVariableBandwidthNnTimeOneSided(VariableBandwidthNnKde):
 
     data_class = SpaceTimeDataArray
     kernel_class = kernels.SpaceTimeNormalOneSided
+
+
+class FixedBandwidthRadialKde(FixedBandwidthKde):
+
+    data_class = SpaceTimeDataArray
+
+    def prepare_data(self, data):
+        data = self.data_class(data) if not isinstance(data, self.data_class) else data
+        n_space_dim = data.nd
+        if data.nd == 1:
+            raise AttributeError("Radial-temporal KDE requires at least 2D data (time, space)")
+        elif data.nd == 2:
+            pass
+        elif data.nd == 3:
+            data = data.time.adddim(np.sqrt(data.toarray(1) ** 2 + data.toarray(2) ** 2))
+        elif data.nd > 3:
+            raise NotImplementedError("Currently only supports time + 2D space")
+            # data = data.time.adddim(np.sqrt(np.sum(data.data[:, 1:] ** 2, axis=1)))
+        return data, n_space_dim
+
+    def __init__(self, data, *args, **kwargs):
+
+        # modify data to radial form
+        data, self.n_space_dim = self.prepare_data(data)
+        super(FixedBandwidthRadialKde, self).__init__(data, *args, **kwargs)
+
+    def check_inputs(self, data, ndim=None, cls=None):
+        # Prepare target data for lookup by reducing spatial dimensions to single distance vector
+        ndim = ndim or self.n_space_dim
+        if cls is not None:
+            ## TODO: this indicates either marginal or partial PDF call
+            raise NotImplementedError()
+        else:
+            # pdf call: all dims required
+            data, n_space_dim = self.prepare_data(data)
+            if n_space_dim != self.n_space_dim or data.nd != ndim:
+                raise AttributeError("Target data does not have the correct number of dimensions")
+
+        return data

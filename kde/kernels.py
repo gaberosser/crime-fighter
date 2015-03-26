@@ -6,6 +6,8 @@ from scipy import special
 from data.models import DataArray, Data, exp
 
 PI = np.pi
+root2 = np.sqrt(2)
+rootpi = np.sqrt(PI)
 
 # helper functions
 
@@ -113,6 +115,64 @@ class MultivariateNormal(BaseKernel):
         dims = range(self.ndim)
         dims.remove(dim)
         return self.pdf(x, dims=dims)
+
+
+class RadialTemporal(MultivariateNormal):
+
+    def __init__(self, mean, vars, ndim):
+        if len(mean) != 2 or len(vars) != 2:
+            raise AttributeError("Length of means and vars array must be 2")
+        if ndim != 3:
+            ## TODO: add further support if required
+            raise NotImplementedError("Only support 3D at present (time + 2D space)")
+        self.n_space_dim = ndim - 1
+        super(RadialTemporal, self).__init__(mean, vars)
+        # set up norming here
+        self.int_constants = self.full_integration_values()
+
+    def full_integration_values(self):
+        # time component
+        i_tot_t = root2 * rootpi * np.sqrt(self.vars[0])
+
+        # radial component
+        ## TODO: this is only valid for 2D space
+        m = self.mean[1]
+        s = np.sqrt(self.vars[1])
+        i_tot_r = m / s * rootpi / root2 * (1 + special.erf(m / s / root2)) + np.exp(-m ** 2 / 2 / s ** 2)
+
+        return np.array([i_tot_t, i_tot_r])
+
+    def pdf(self, x, dims=None):
+        """ Input is an ndarray of dims N x ndim.
+            This may be a data class or just a plain array.
+            If dims is specified, it is an array of the dims to include in the calculation """
+
+        if dims:
+            ndim = len(dims)
+        else:
+            dims = range(self.ndim)
+            ndim = self.ndim
+
+        x = self.prep_input(x, ndim)
+
+        if ndim == 1:
+            a = 1 / self.int_constants[dims[0]]
+            b = exp(-(x - self.mean[dims[0]]) ** 2 / (2 * self.vars[dims[0]]))
+        elif ndim == 2:
+            a = 1 / self.int_constants[dims[0]] / self.int_constants[dims[1]]
+            b = exp(
+                - (x.getdim(0) - self.mean[dims[0]])**2 / (2 * self.vars[dims[0]])
+                - (x.getdim(1) - self.mean[dims[1]])**2 / (2 * self.vars[dims[1]])
+            )
+        else:
+            raise NotImplementedError("Only support 3D at present (time + 2D space)")
+
+        if 1 in dims:
+            # include radial component
+            ## TODO: only valid for 2D space
+            a *= x.getdim(dims.index(1))
+
+        return (b * a).toarray(0)
 
 
 class SpaceNormalTimeExponential(BaseKernel):
