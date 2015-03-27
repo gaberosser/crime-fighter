@@ -1,6 +1,5 @@
 __author__ = 'gabriel'
 import numpy as np
-from scipy.special import erf
 import operator
 from contextlib import closing
 from functools import partial
@@ -706,18 +705,25 @@ class FixedBandwidthRadialKde(FixedBandwidthKde):
 
     data_class = SpaceTimeDataArray
 
+        @staticmethod
+        def reduce_spatial_data(data):
+            # data must be of type DataArray or derived classes
+            if data.nd == 1:
+                return data
+            return (data.getdim(range(data.nd)) ** 2).sumdim() ** 0.5
+
     def prepare_data(self, data):
         data = self.data_class(data) if not isinstance(data, self.data_class) else data
-        n_space_dim = data.nd
+        n_space_dim = data.nd - 1
         if data.nd == 1:
             raise AttributeError("Radial-temporal KDE requires at least 2D data (time, space)")
         elif data.nd == 2:
             pass
         elif data.nd == 3:
-            data = data.time.adddim(np.sqrt(data.toarray(1) ** 2 + data.toarray(2) ** 2))
+            data = data.time.adddim(self.reduce_spatial_data(data.getdim([1, 2])))
         elif data.nd > 3:
             raise NotImplementedError("Currently only supports time + 2D space")
-            # data = data.time.adddim(np.sqrt(np.sum(data.data[:, 1:] ** 2, axis=1)))
+            # data = data.time.adddim(self.reduce_spatial_data(data.getdim(range(1, data.nd))))
         return data, n_space_dim
 
     def __init__(self, data, *args, **kwargs):
@@ -726,16 +732,61 @@ class FixedBandwidthRadialKde(FixedBandwidthKde):
         data, self.n_space_dim = self.prepare_data(data)
         super(FixedBandwidthRadialKde, self).__init__(data, *args, **kwargs)
 
-    def check_inputs(self, data, ndim=None, cls=None):
-        # Prepare target data for lookup by reducing spatial dimensions to single distance vector
-        ndim = ndim or self.n_space_dim
-        if cls is not None:
-            ## TODO: this indicates either marginal or partial PDF call
-            raise NotImplementedError()
-        else:
-            # pdf call: all dims required
-            data, n_space_dim = self.prepare_data(data)
-            if n_space_dim != self.n_space_dim or data.nd != ndim:
-                raise AttributeError("Target data does not have the correct number of dimensions")
+    def pdf(self, target, **kwargs):
+        """
+        Compute the pdf at the values specified in target.  NB target is cartesian.  To call with (t, r) coordinates,
+        see the radial_pdf method.
+        :param target: This is the EXPANDED set of coordinates, i.e. (t, x, y).  It is first reduced to the radial
+        representation by collapsing along spatial dimensions.
+        :param kwargs: Passed on to the kernels.
+        :return: values of the pdf at the specified coordinates.
+        """
+        target, n_space_dim = self.prepare_data(target)
+        if n_space_dim != self.n_space_dim:
+            raise AttributeError("Target data does not have the correct number of dimensions")
+        return self._additive_operation('pdf', target, **kwargs)
 
-        return data
+    def radial_pdf(self, target, **kwargs):
+        target = self.check_inputs(target)  # by default looks for ndim == 2
+        return self._additive_operation('pdf', target, **kwargs)
+
+    def marginal_pdf(self, target, **kwargs):
+        """
+        Compute the marginal pdf in the dim specified in kwargs (dim=0 default).
+        NB the 1D data in x are the REDUCED coordinates, i.e. if the radial dimension is specified then the supplied
+        coordinates are radial.
+        :param target: 1D REDUCED coordinates, i.e. t value array for dim=0, r value array for dim=1.
+        :param kwargs: Passed on to the kernels.  May specify dim.
+        """
+        target = self.check_inputs(target, ndim=1, cls=DataArray)
+        return self._additive_operation('marginal_pdf', target, **kwargs)
+
+    def marginal_cdf(self, x, **kwargs):
+        """ Return the marginal cdf in the dim specified in kwargs (dim=0 default) """
+        raise NotImplementedError()
+        # x = self.check_inputs(x, ndim=1, cls=DataArray)
+        # return self._additive_operation('marginal_cdf', x, **kwargs)
+
+    def partial_marginal_pdf(self, target, **kwargs):
+        """
+        Slightly different meaning for radial KDE. The dim being kept static MUST be time (i.e. dim=0).  The
+        target data should then give the EXPANDED coordinates, which are first reduced before being used to compute the
+        pdf in the radial dimension
+        :param x: Spatial data
+        :param kwargs: Passed on to the kernels.
+        """
+        # return the marginal pdf in all dims but the one specified in kwargs (dim=0 by default)
+        dim = kwargs.get('dim')
+        if dim and dim != 0:
+            raise NotImplementedError("Unsupported operation: partial_marginal_pdf with dim != 0")
+        target = self.check_inputs(target, ndim=self.n_space_dim, cls=DataArray)
+        target = self.reduce_spatial_data(target)
+        return self._additive_operation('partial_marginal_pdf', target, **kwargs)
+
+
+class VariableBandwidthRadialKde(FixedBandwidthRadialKde, VariableBandwidthKde):
+    pass
+
+
+class VariableBandwidthNnRadialKde(FixedBandwidthRadialKde, VariableBandwidthNnKde):
+    pass

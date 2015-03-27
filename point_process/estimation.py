@@ -144,13 +144,15 @@ def generate_p_from_trig_fixed_proportion_bg(P_trig, linkage, frac_bg):
 def estimator_bowers_fixed_proportion_bg(data, linkage, ct=1, cd=10, frac_bg=0.5):
 
     n = data.shape[0]
+    # add small eps to both components to avoid elements 'dropping out' of P
+    eps = 1e-128
 
     # triggering
-    tt = 1 / (1 + ct * (data[linkage[1], 0] - data[linkage[0], 0]))
+    tt = 1 / (1 + ct * (data[linkage[1], 0] - data[linkage[0], 0])) + eps
     dd = 1 / (1 + cd * np.sqrt(
         (data[linkage[1], 1] - data[linkage[0], 1]) ** 2 +
         (data[linkage[1], 2] - data[linkage[0], 2]) ** 2
-    ))
+    )) + eps
 
     P_trig = sparse.csr_matrix((tt * dd, linkage), shape=(n, n))
     return generate_p_from_trig_fixed_proportion_bg(P_trig, linkage, frac_bg)
@@ -164,17 +166,19 @@ def estimator_exp_gaussian(data, linkage, ct, cd, frac_bg=0.5):
     :param data:
     :param linkage:
     :param ct:
-    :param cd:
+    :param cd: Standard deviation of Gaussian distance dependence.
     :param frac_bg: The proportion of events that are BG.
     :return:
     """
     n = data.shape[0]
+    # add small eps to both components to avoid elements 'dropping out' of P
+    eps = 1e-128
 
     # triggering
-    tt = ct * np.exp(-ct * (data[linkage[1], 0] - data[linkage[0], 0]))
+    tt = ct * np.exp(-ct * (data[linkage[1], 0] - data[linkage[0], 0])) + eps
     dd_k = np.sqrt(2 / (np.pi * cd))
     dd_sq = (data[linkage[1], 1] - data[linkage[0], 1]) ** 2 + (data[linkage[1], 2] - data[linkage[0], 2]) ** 2
-    dd = dd_k * np.exp(-dd_sq / (2 * cd ** 2))
+    dd = dd_k * np.exp(-dd_sq / (2 * cd ** 2)) + eps
 
     P_trig = sparse.csr_matrix((tt * dd, linkage), shape=(n, n))
     return generate_p_from_trig_fixed_proportion_bg(P_trig, linkage, frac_bg)

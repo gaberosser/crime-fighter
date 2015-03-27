@@ -233,7 +233,7 @@ def multiplots(ppobj, simobj=None, maxes=None):
         }
 
     if maxes:
-        t_max,x_max, y_max = maxes
+        t_max, x_max, y_max = maxes
     else:
         t_max = x_max = y_max = None
 

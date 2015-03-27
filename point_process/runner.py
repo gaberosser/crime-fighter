@@ -1,8 +1,6 @@
 __author__ = 'gabriel'
 
-import simulate
-import plotting
-from point_process import models, estimation
+from point_process import models, estimation, simulate, plotting
 from matplotlib import pyplot as plt
 import numpy as np
 from scipy import sparse
@@ -181,7 +179,7 @@ if __name__ == '__main__':
 
     logger = logging.getLogger('kde.models')
 
-    num_iter = 75
+    num_iter = 15
     parallel = True
     t_total = None
     # c, data = initial_simulation(t_total=t_total)
@@ -192,6 +190,7 @@ if __name__ == '__main__':
     # c.t_total = 1000
     # c.num_to_prune = 2000  # should leave ~2000 datapoints
     c = simulate.MohlerSimulation()
+    c.trigger_params['sigma'] = [0.1, 0.1]
     c.run()
     data = c.data[:, :3]
     max_delta_t = 100
@@ -202,9 +201,9 @@ if __name__ == '__main__':
     # }
     init_est_params = {
         'ct': 10,
-        'cd': .1,
+        'cd': .05,
+        'frac_bg': 0.95,
     }
-
 
     ndata = data.shape[0]
 
@@ -218,11 +217,13 @@ if __name__ == '__main__':
         'number_nn': 15,
         'strict': False,
     }
+    # trigger_kde_kwargs = {
+    #     'bandwidths': [4., 0.05]
+    # }
 
 
-
-    r = models.SeppStochasticNn(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
-                                bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
+    # r = models.SeppStochasticNn(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
+    #                             bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
     # r = models.SeppStochasticStationaryBg(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t)
     # r = models.SeppStochasticNnStExp(data=data, max_delta_d=0.75, max_delta_t=80,
     #                             bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
@@ -236,7 +237,8 @@ if __name__ == '__main__':
     #                                bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
     # r = models.SeppDeterministicNnReflected(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
     #                                bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
-
+    r = models.SeppStochasticNnIsotropicTrigger(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
+                                                bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
 
 
     # p = estimation.estimator_bowers(data, r.linkage, **init_est_params)
@@ -247,7 +249,7 @@ if __name__ == '__main__':
     r.set_seed(42)
 
     try:
-        r.train(niter=num_iter)
+        ps = r.train(niter=num_iter)
     except KeyboardInterrupt:
         num_iter = len(r.num_bg)
 

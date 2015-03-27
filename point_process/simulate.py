@@ -189,6 +189,18 @@ class SeppSimulation(object):
         return self.data.shape[0]
 
     @property
+    def number_bg(self):
+        if self.data is None:
+            raise AttributeError("Data have not been set.  Call run().")
+        return np.isnan(self.data[:, -1]).sum()
+
+    @property
+    def number_trigger(self):
+        if self.data is None:
+            raise AttributeError("Data have not been set.  Call run().")
+        return sum(~np.isnan(self.data[:, -1]))
+
+    @property
     def linkages(self):
         """
         :return: bg_idx, cause_idx, effect_idx. True linkages in simulation.

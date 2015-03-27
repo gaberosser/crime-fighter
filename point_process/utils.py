@@ -120,13 +120,13 @@ def random_sample_from_p(p, linkage_cols, rng=None):
     ks_matrix = p.copy()
     ks_matrix.data = np.power(urvs, 1. / p.data)
 
-    # import ipdb; ipdb.set_trace()
 
     # find the largest value in each column
     causes = [linkage_cols[n][np.argmax(ks_matrix[:, n].data)] for n in range(ndata)]
     effects = range(ndata)
 
     bg_idx = [x for x, y in zip(causes, effects) if x == y]
+
     if not len(bg_idx):
         logger.warn("No BG events remaining")
 
