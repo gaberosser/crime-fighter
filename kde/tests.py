@@ -32,6 +32,39 @@ class TestHelperFunctions(unittest.TestCase):
         self.assertTrue(np.all(np.abs(kc - kc_expct) < 1e-14))
 
 
+class TestKernelTemporalRadial(unittest.TestCase):
+
+    kernel_class = kernels.RadialTemporal
+    location = [1.5, .1]
+    scale = [0.25, 0.5]
+    tol_places = 5
+    tol_eps = 1e-12
+
+    @property
+    def ndim(self):
+        return len(self.location)
+
+    def setUp(self):
+        print "setUp"
+        self.kernel = self.kernel_class(self.location, self.scale)
+
+    def test_norming(self):
+        # spatial
+        q = dblquad(lambda x, y: self.kernel.pdf(np.sqrt(x ** 2 + y ** 2), dims=[1]), -10, 10,
+                    lambda *args: -10, lambda *args: 10)
+        # if self.ndim == 1:
+        #     quadfun = quad
+        # elif self.ndim == 2:
+        #     quadfun = dblquad
+        # elif self.ndim == 3:
+        #     quadfun = tplquad
+        # else:
+        #     raise NotImplementedError()
+        #
+        # q = quadfun(partial(quad_pdf_fun, func=self.kernel.pdf), *self.limits(self.ndim))
+        self.assertAlmostEqual(q[0], 1.0, places=self.tol_places)
+
+
 class TestKernelMultivariateNormal(unittest.TestCase):
 
     kernel_class = kernels.MultivariateNormal

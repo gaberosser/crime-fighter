@@ -47,6 +47,7 @@ class MultivariateNormal(BaseKernel):
     def __init__(self, mean, vars):
         self.mean = np.array(mean, dtype=float)
         self.vars = np.array(vars, dtype=float)
+        self.int_constants = self.normalisation_constants()
 
     @property
     def ndim(self):
@@ -63,6 +64,9 @@ class MultivariateNormal(BaseKernel):
 
         return x
 
+    def normalisation_constants(self):
+        return root2 * rootpi * np.sqrt(self.vars)
+
     def pdf(self, x, dims=None):
         """ Input is an ndarray of dims N x ndim.
             This may be a data class or just a plain array.
@@ -76,29 +80,34 @@ class MultivariateNormal(BaseKernel):
 
         x = self.prep_input(x, ndim)
 
-        a = np.power(2*PI, -ndim * 0.5)
+        # a = np.power(2*PI, -ndim * 0.5)
 
         if ndim == 1:
-            b = 1. / np.sqrt(self.vars[dims[0]])
+            # b = 1. / np.sqrt(self.vars[dims[0]])
+            b = self.int_constants[dims[0]]
             c = exp(-(x - self.mean[dims[0]])**2 / (2 * self.vars[dims[0]]))
         elif ndim == 2:
-            b = 1. / np.sqrt(self.vars[dims[0]] * self.vars[dims[1]])
+            # b = 1. / np.sqrt(self.vars[dims[0]] * self.vars[dims[1]])
+            b = self.int_constants[dims[0]] * self.int_constants[dims[1]]
             c = exp(
                 - (x.getdim(0) - self.mean[dims[0]])**2 / (2 * self.vars[dims[0]])
                 - (x.getdim(1) - self.mean[dims[1]])**2 / (2 * self.vars[dims[1]])
             )
         elif ndim == 3:
-            b = 1. / np.sqrt(self.vars[dims[0]] * self.vars[dims[1]] * self.vars[dims[2]])
+            # b = 1. / np.sqrt(self.vars[dims[0]] * self.vars[dims[1]] * self.vars[dims[2]])
+            b = self.int_constants[dims[0]] * self.int_constants[dims[1]] * self.int_constants[dims[2]]
             c = exp(
                 - (x.getdim(0) - self.mean[dims[0]])**2 / (2 * self.vars[dims[0]])
                 - (x.getdim(1) - self.mean[dims[1]])**2 / (2 * self.vars[dims[1]])
                 - (x.getdim(2) - self.mean[dims[2]])**2 / (2 * self.vars[dims[2]])
             )
         else:
-            b = np.prod(np.power(self.vars[dims], -0.5))
+            # b = np.prod(np.power(self.vars[dims], -0.5))
+            b = np.prod(self.int_constants[dims])
             c = exp(-((x - self.mean[dims])**2 / (2 * self.vars[dims])).sumdim())
 
-        return (c * b * a).toarray(0)
+        # return (c * b * a).toarray(0)
+        return (c / b).toarray(0)
 
     def marginal_pdf(self, x, dim=0):
         """ Return value is 1D marginal pdf with specified dim """
@@ -119,26 +128,33 @@ class MultivariateNormal(BaseKernel):
 
 class RadialTemporal(MultivariateNormal):
 
-    def __init__(self, mean, vars, ndim):
+    def __init__(self, mean, vars):
+        """
+        Kernel with temporal and radial spatial components (t, r), Gaussian in both.
+        The main difference between this and MultivariateNormal is in the NORMALISATION: the expressions for
+        the integral of a kernel about (r, theta) are complicated.
+        NB: this is only valid for 2D space.  The integration constants will differ for the spherical system.
+        :param mean:
+        :param vars:
+        :return:
+        """
         if len(mean) != 2 or len(vars) != 2:
             raise AttributeError("Length of means and vars array must be 2")
-        if ndim != 3:
-            ## TODO: add further support if required
-            raise NotImplementedError("Only support 3D at present (time + 2D space)")
-        self.n_space_dim = ndim - 1
         super(RadialTemporal, self).__init__(mean, vars)
         # set up norming here
-        self.int_constants = self.full_integration_values()
+        self.int_constants = self.normalisation_constants()
 
-    def full_integration_values(self):
+    def normalisation_constants(self):
         # time component
         i_tot_t = root2 * rootpi * np.sqrt(self.vars[0])
 
         # radial component
-        ## TODO: this is only valid for 2D space
+        # NB this is only valid for 2D space
         m = self.mean[1]
         s = np.sqrt(self.vars[1])
-        i_tot_r = m / s * rootpi / root2 * (1 + special.erf(m / s / root2)) + np.exp(-m ** 2 / 2 / s ** 2)
+        # i_tot_r = m / s * rootpi / root2 * (1 + special.erf(m / s / root2)) + np.exp(-m ** 2 / 2 / s ** 2)
+        i_tot_r = 2 * PI * s ** 2 * np.exp(-m ** 2 / 2 / s ** 2)
+        i_tot_r += m * s * root2 * rootpi * PI * (1 + special.erf(m / s / root2))
 
         return np.array([i_tot_t, i_tot_r])
 
@@ -165,14 +181,19 @@ class RadialTemporal(MultivariateNormal):
                 - (x.getdim(1) - self.mean[dims[1]])**2 / (2 * self.vars[dims[1]])
             )
         else:
-            raise NotImplementedError("Only support 3D at present (time + 2D space)")
+            raise NotImplementedError("Only support 3D (time + 2D space)")
 
-        if 1 in dims:
-            # include radial component
-            ## TODO: only valid for 2D space
-            a *= x.getdim(dims.index(1))
+        # Not needed: this is only required when performing the integration? It generates zeros at the origin
+        # if 1 in dims:
+        #     # include radial component
+        #     a *= x.getdim(dims.index(1))
 
         return (b * a).toarray(0)
+
+    def marginal_cdf(self, x, dim=0):
+        """ Return value is 1D marginal cdf with specified dim """
+        x = self.prep_input(x, 1)
+        return normcdf(x.toarray(0), self.mean[dim], self.vars[dim])
 
 
 class SpaceNormalTimeExponential(BaseKernel):

@@ -704,13 +704,14 @@ class SpaceTimeVariableBandwidthNnTimeOneSided(VariableBandwidthNnKde):
 class FixedBandwidthRadialKde(FixedBandwidthKde):
 
     data_class = SpaceTimeDataArray
+    kernel_class = kernels.RadialTemporal
 
-        @staticmethod
-        def reduce_spatial_data(data):
-            # data must be of type DataArray or derived classes
-            if data.nd == 1:
-                return data
-            return (data.getdim(range(data.nd)) ** 2).sumdim() ** 0.5
+    @staticmethod
+    def reduce_spatial_data(data):
+        # data must be of type DataArray or derived classes
+        if data.nd == 1:
+            return data
+        return (data.getdim(range(data.nd)) ** 2).sumdim() ** 0.5
 
     def prepare_data(self, data):
         data = self.data_class(data) if not isinstance(data, self.data_class) else data
