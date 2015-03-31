@@ -3,6 +3,7 @@ from validation import roc
 __author__ = 'gabriel'
 import matplotlib as mpl
 from matplotlib import pyplot as plt
+from matplotlib import cm
 from matplotlib import ticker
 import numpy as np
 import datetime
@@ -12,6 +13,13 @@ from analysis.plotting import plot_surface_function_on_polygon, plot_shapely_geo
 from data.models import CartesianSpaceTimeData, DataArray
 from django.contrib.gis import geos
 import collections
+
+
+fig_kwargs = {
+    'figsize': (8, 6),
+    'dpi': 100,
+    'facecolor': 'w',
+}
 
 
 def plot_t_kde(k, max_t=50):
@@ -73,7 +81,7 @@ def plot_txy_kde(k, max_x, max_y, npt_1d=50, tpt=None, **kwargs):
     return fig
 
 
-def _plot_marginals(k, dim, norm=1.0, data_min=None, data_max=None, **kwargs):
+def plot_marginals(k, dim, norm=1.0, data_min=None, data_max=None, **kwargs):
     style = kwargs.pop('style', 'k-')
     npt = kwargs.pop('npt', 500)  # number of points
     symm = kwargs.pop('symm', True)  # toggles whether x axes are symmetric
@@ -104,7 +112,7 @@ def _plot_marginals(k, dim, norm=1.0, data_min=None, data_max=None, **kwargs):
 
 
 def plot_txy_t_marginals(k, norm=1.0, t_max=None, **kwargs):
-    fig, ax = _plot_marginals(k, 0, norm=norm, data_min=0., data_max=t_max, symm=False, **kwargs)
+    fig, ax = plot_marginals(k, 0, norm=norm, data_min=0., data_max=t_max, symm=False, **kwargs)
     ax.set_xlabel('Time (days)')
     ax.set_ylabel('Density')
     return fig
@@ -112,7 +120,7 @@ def plot_txy_t_marginals(k, norm=1.0, t_max=None, **kwargs):
 
 def plot_txy_x_marginals(k, norm=1.0, x_max=None, **kwargs):
     x_min = -x_max if x_max else None
-    fig, ax = _plot_marginals(k, 1, norm=norm, data_min=x_min, data_max=x_max, **kwargs)
+    fig, ax = plot_marginals(k, 1, norm=norm, data_min=x_min, data_max=x_max, **kwargs)
     ax.set_xlabel('X (metres)')
     ax.set_ylabel('Density')
     return fig
@@ -120,7 +128,7 @@ def plot_txy_x_marginals(k, norm=1.0, x_max=None, **kwargs):
 
 def plot_txy_y_marginals(k, norm=1.0, y_max=None, **kwargs):
     y_min = -y_max if y_max else None
-    fig, ax = _plot_marginals(k, 2, norm=norm, data_min=y_min, data_max=y_max, **kwargs)
+    fig, ax = plot_marginals(k, 2, norm=norm, data_min=y_min, data_max=y_max, **kwargs)
     ax.set_xlabel('Y (metres)')
     ax.set_ylabel('Density')
     return fig
@@ -219,6 +227,95 @@ def data_scatter_movie(data, outdir=None, **kwargs):
         t += dt
 
 
+def num_bg_trigger_plot(ppobj, simobj=None):
+    """
+    Plot the evolution of the number of BG and triggered events by iteration number
+    :param ppobj:
+    :param simobj:
+    :return:
+    """
+    niter = len(ppobj.num_bg)
+    iterx = range(1, niter + 1)
+
+    fig = plt.figure(**fig_kwargs)
+    ax = fig.add_subplot(111)
+    ax.plot(iterx, ppobj.num_bg, 'k-', label='BG inferred')
+    ax.plot(iterx, ppobj.num_trig, 'r-', label='Trig. inferred')
+    ymax = max(max(ppobj.num_bg), max(ppobj.num_trig))
+
+    if simobj:
+        ax.plot(iterx, simobj.number_bg * np.ones(niter), 'k--', label='BG true')
+        ax.plot(iterx, simobj.number_trigger * np.ones(niter), 'r--', label='Trig. true')
+        ymax = max(ymax, simobj.number_bg, simobj.number_trigger)
+
+    ax.set_ylim([0, 1.05 * ymax])
+    ax.set_xlabel('Number iterations')
+    ax.set_ylabel('Number events')
+    ax.legend(loc='right')
+
+
+def radial_spatial_plots(ppobj, simobj=None, xmax=None, ymax=None):
+    npt = 500
+    ci = 0.99
+    fig_kwargs = {
+        'figsize': (10, 5),
+        'dpi': 100,
+        'facecolor': 'w',
+    }
+
+
+    xmax = xmax or ppobj.trigger_kde.marginal_icdf(ci, dim=1)
+    ymax = ymax or xmax
+
+    xy = DataArray.from_meshgrid(*np.meshgrid(np.linspace(-xmax, xmax, npt), np.linspace(-ymax, ymax, npt)))
+    zxy1 = ppobj.trigger_kde.partial_marginal_pdf(xy, normed=False) / ppobj.ndata
+    # zxy1 = ppobj.trigger_kde.partial_marginal_pdf(xy, normed=True)
+    vmax = zxy1.max()
+
+    if simobj:
+        sx = simobj.trigger_params['sigma'][0]
+        sy = simobj.trigger_params['sigma'][1]
+        th = simobj.trigger_params['intensity']
+        # zxy2 = th / (np.sqrt(2 * np.pi) * sx * sy) * np.exp(
+        #     -(xy.toarray(0) ** 2) / (2 * sx**2) - xy.toarray(1) ** 2 / (2 * sy ** 2)
+        # )
+        zxy2 = 1 / (2 * np.pi * sx * sy) * np.exp(
+            -(xy.toarray(0) ** 2) / (2 * sx**2) - xy.toarray(1) ** 2 / (2 * sy ** 2)
+        )
+        vmax = max(zxy2.max(), vmax)
+
+    vmax *= 1.02
+
+    fig = plt.figure(**fig_kwargs)
+    if simobj:
+        ax1 = fig.add_subplot(121)
+        ax2 = fig.add_subplot(122)
+    else:
+        ax1 = fig.add_subplot(111)
+
+    cont1 = ax1.contourf(xy.toarray(0), xy.toarray(1), zxy1, 50, cmap=cm.coolwarm, vmin=0, vmax=vmax)
+    ax1.set_xlim([-xmax, xmax])
+    ax1.set_ylim([-ymax, ymax])
+    ax1.set_xlabel('X (metres)')
+    ax1.set_ylabel('Density')
+
+    # cax1 = plt.colorbar(cont, ax=ax1)
+
+    if simobj:
+        ax2 = fig.add_subplot(122)
+        cont2 = ax2.contourf(xy.toarray(0), xy.toarray(1), zxy2, 50, cmap=cm.coolwarm, vmin=0, vmax=vmax)
+        ax2.yaxis.set_ticklabels([])
+        ax2.set_xlabel('X (metres)')
+        ax2.set_xlim([-xmax, xmax])
+        ax2.set_ylim([-ymax, ymax])
+        fig.colorbar(cont2, ax=[ax1, ax2])
+    else:
+        fig.colorbar(cont1, ax=ax1)
+
+
+
+
+
 def multiplots(ppobj, simobj=None, maxes=None):
     """
     Convenience function.  Provided with an object of type PP model, produce various useful plots.  Optionally provide
@@ -226,11 +323,7 @@ def multiplots(ppobj, simobj=None, maxes=None):
     """
     npt = 500
     ci = 0.99
-    fig_kwargs = {
-        'figsize': (8, 6),
-        'dpi': 100,
-        'facecolor': 'w',
-        }
+
 
     if maxes:
         t_max, x_max, y_max = maxes
@@ -238,6 +331,7 @@ def multiplots(ppobj, simobj=None, maxes=None):
         t_max = x_max = y_max = None
 
     niter = len(ppobj.num_bg)
+    ndim = ppobj.trigger_kde.ndim
     iterx = range(1, niter + 1)
 
     fig = plt.figure()
@@ -271,34 +365,36 @@ def multiplots(ppobj, simobj=None, maxes=None):
         ax.legend(ax.get_lines(), ('Inferred', 'True'), 'upper right')
     ax.set_xlim([0, t_max])
 
-    x_max = x_max or ppobj.trigger_kde.marginal_icdf(ci, dim=1)
-    fig = plot_txy_x_marginals(ppobj.trigger_kde, norm=ppobj.ndata, x_max=x_max, npt=npt)
-    ax = fig.gca()
-    if simobj:
-        x = np.linspace(-x_max, x_max, npt)
-        sx = simobj.trigger_params['sigma'][0]
-        zx = th / (np.sqrt(2 * np.pi) * sx) * np.exp(-(x**2) / (2 * sx**2))
-        plt.plot(x, zx, 'k--')
-        ax.set_ylim([0, 1.05 * th / (np.sqrt(2 * np.pi) * sx)])
-        ax.legend(ax.get_lines(), ('Inferred', 'True'), 'upper right')
-    ax.set_xlim([-x_max, x_max])
+    if ndim >= 2:
+        x_max = x_max or ppobj.trigger_kde.marginal_icdf(ci, dim=1)
+        fig = plot_txy_x_marginals(ppobj.trigger_kde, norm=ppobj.ndata, x_max=x_max, npt=npt)
+        ax = fig.gca()
+        if simobj:
+            x = np.linspace(-x_max, x_max, npt)
+            sx = simobj.trigger_params['sigma'][0]
+            zx = th / (np.sqrt(2 * np.pi) * sx) * np.exp(-(x**2) / (2 * sx**2))
+            plt.plot(x, zx, 'k--')
+            ax.set_ylim([0, 1.05 * th / (np.sqrt(2 * np.pi) * sx)])
+            ax.legend(ax.get_lines(), ('Inferred', 'True'), 'upper right')
+        ax.set_xlim([-x_max, x_max])
 
-    y_max = y_max or ppobj.trigger_kde.marginal_icdf(ci, dim=2)
-    fig = plot_txy_y_marginals(ppobj.trigger_kde, norm=ppobj.ndata, y_max=y_max, npt=npt)
-    ax = fig.gca()
-    line = ax.get_lines()[0]
-    zmax_infer = max(line.get_ydata())
-    if simobj:
-        y = np.linspace(-y_max, y_max, npt)
-        sy = simobj.trigger_params['sigma'][1]
-        zy = th/(np.sqrt(2 * np.pi) * sy) * np.exp(-(y**2) / (2 * sy**2))
-        plt.plot(y, zy, 'k--')
-        zmax_theor = th/(np.sqrt(2 * np.pi) * sy)
-        ax.set_ylim([0, 1.05 * max(zmax_infer, zmax_theor)])
-    else:
-        ax.set_ylim([0, 1.05 * zmax_infer])
-    ax.set_xlim([-y_max, y_max])
-    ax.legend(ax.get_lines(), ('Inferred', 'True'), 'upper right')
+    if ndim >= 3:
+        y_max = y_max or ppobj.trigger_kde.marginal_icdf(ci, dim=2)
+        fig = plot_txy_y_marginals(ppobj.trigger_kde, norm=ppobj.ndata, y_max=y_max, npt=npt)
+        ax = fig.gca()
+        line = ax.get_lines()[0]
+        zmax_infer = max(line.get_ydata())
+        if simobj:
+            y = np.linspace(-y_max, y_max, npt)
+            sy = simobj.trigger_params['sigma'][1]
+            zy = th/(np.sqrt(2 * np.pi) * sy) * np.exp(-(y**2) / (2 * sy**2))
+            plt.plot(y, zy, 'k--')
+            zmax_theor = th/(np.sqrt(2 * np.pi) * sy)
+            ax.set_ylim([0, 1.05 * max(zmax_infer, zmax_theor)])
+        else:
+            ax.set_ylim([0, 1.05 * zmax_infer])
+        ax.set_xlim([-y_max, y_max])
+        ax.legend(ax.get_lines(), ('Inferred', 'True'), 'upper right')
 
 
 def plot_trigger_marginals(trigger_kde, percentile=0.01):
@@ -553,7 +649,7 @@ def delta_effect(res, nrow=8, ncol=7):
 
     fig, axs = plt.subplots(nrow, ncol, sharex=True, sharey=True)
     for (a, r) in zip(axs.flat, res_arr.flat):
-        _plot_marginals(r['model'].trigger_kde, 0, data_min=0, data_max=45, ax=a, symm=False)
+        plot_marginals(r['model'].trigger_kde, 0, data_min=0, data_max=45, ax=a, symm=False)
 
     # iterate over axes with yticks
     for a, d in zip(axs[:, 0], dd[:, 0]):
@@ -572,7 +668,7 @@ def delta_effect(res, nrow=8, ncol=7):
 
     fig, axs = plt.subplots(nrow, ncol, sharex=True, sharey=True)
     for (a, r) in zip(axs.flat, res_arr.flat):
-        _plot_marginals(r['model'].trigger_kde, 1, data_max=200, ax=a)
+        plot_marginals(r['model'].trigger_kde, 1, data_max=200, ax=a)
 
     # iterate over axes with yticks
     for a, d in zip(axs[:, 0], dd[:, 0]):

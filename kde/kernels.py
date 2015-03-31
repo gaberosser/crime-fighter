@@ -83,18 +83,15 @@ class MultivariateNormal(BaseKernel):
         # a = np.power(2*PI, -ndim * 0.5)
 
         if ndim == 1:
-            # b = 1. / np.sqrt(self.vars[dims[0]])
             b = self.int_constants[dims[0]]
             c = exp(-(x - self.mean[dims[0]])**2 / (2 * self.vars[dims[0]]))
         elif ndim == 2:
-            # b = 1. / np.sqrt(self.vars[dims[0]] * self.vars[dims[1]])
             b = self.int_constants[dims[0]] * self.int_constants[dims[1]]
             c = exp(
                 - (x.getdim(0) - self.mean[dims[0]])**2 / (2 * self.vars[dims[0]])
                 - (x.getdim(1) - self.mean[dims[1]])**2 / (2 * self.vars[dims[1]])
             )
         elif ndim == 3:
-            # b = 1. / np.sqrt(self.vars[dims[0]] * self.vars[dims[1]] * self.vars[dims[2]])
             b = self.int_constants[dims[0]] * self.int_constants[dims[1]] * self.int_constants[dims[2]]
             c = exp(
                 - (x.getdim(0) - self.mean[dims[0]])**2 / (2 * self.vars[dims[0]])
@@ -102,7 +99,6 @@ class MultivariateNormal(BaseKernel):
                 - (x.getdim(2) - self.mean[dims[2]])**2 / (2 * self.vars[dims[2]])
             )
         else:
-            # b = np.prod(np.power(self.vars[dims], -0.5))
             b = np.prod(self.int_constants[dims])
             c = exp(-((x - self.mean[dims])**2 / (2 * self.vars[dims])).sumdim())
 
@@ -152,7 +148,6 @@ class RadialTemporal(MultivariateNormal):
         # NB this is only valid for 2D space
         m = self.mean[1]
         s = np.sqrt(self.vars[1])
-        # i_tot_r = m / s * rootpi / root2 * (1 + special.erf(m / s / root2)) + np.exp(-m ** 2 / 2 / s ** 2)
         i_tot_r = 2 * PI * s ** 2 * np.exp(-m ** 2 / 2 / s ** 2)
         i_tot_r += m * s * root2 * rootpi * PI * (1 + special.erf(m / s / root2))
 
@@ -183,17 +178,26 @@ class RadialTemporal(MultivariateNormal):
         else:
             raise NotImplementedError("Only support 3D (time + 2D space)")
 
-        # Not needed: this is only required when performing the integration? It generates zeros at the origin
-        # if 1 in dims:
-        #     # include radial component
-        #     a *= x.getdim(dims.index(1))
-
         return (b * a).toarray(0)
 
     def marginal_cdf(self, x, dim=0):
         """ Return value is 1D marginal cdf with specified dim """
         x = self.prep_input(x, 1)
-        return normcdf(x.toarray(0), self.mean[dim], self.vars[dim])
+        data = x.toarray(0)
+        m = self.mean[dim]
+        v = self.vars[dim]
+        if dim == 0:
+            return normcdf(data, m, v)
+        elif dim == 1:
+            s = np.sqrt(v)
+            cdf = 2 * PI * s ** 2 * (np.exp(-m ** 2 / 2 / s ** 2) - np.exp(-(data - m) ** 2 / 2 / s ** 2))
+            cdf += m * s * root2 * rootpi * PI * (special.erf((data - m) / s / root2) + special.erf(m / s / root2))
+            # solution only valid for r >= 0, plus very small floating point error at r == 0
+            if data.size > 1:
+                cdf[data <= 0] = 0.
+            else:
+                cdf = 0. if data <= 0 else cdf
+            return cdf / self.int_constants[1]
 
 
 class SpaceNormalTimeExponential(BaseKernel):

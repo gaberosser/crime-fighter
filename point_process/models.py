@@ -286,6 +286,7 @@ class Sepp(SepBase):
     def data_space(self):
         return self.data.space
 
+    @property
     def ndim(self):
         return self.data.nd
 
@@ -521,68 +522,6 @@ class SeppStochasticNn(SeppStochastic):
 class SeppStochasticNnIsotropicTrigger(SeppStochasticNn):
 
     trigger_kde_class = pp_kde.VariableBandwidthNnRadialKde
-
-    """
-    Currently BROKEN... Idea is to reduce the (x, y) representation of triggers down to an isotropic representation,
-    which may be more realistic if there is no reason to believe that the triggering is anisotropic.
-    But the normalisation here is tricky, need to incorporate the Jacobian?
-    """
-
-    # def set_kdes(self):
-    #     bg_idx, cause_idx, effect_idx = self.sample_data()
-    #     interpoint = data_models.SpaceTimeDataArray(self.data[effect_idx] - self.data[cause_idx])
-    #     # replace full interpoint data with time, distance representation
-    #     distances = np.sqrt(np.sum(interpoint[:, 1:] ** 2, axis=1))
-    #     interpoint = interpoint.time.adddim(distances)
-    #
-    #     self.num_bg.append(len(bg_idx))
-    #     self.num_trig.append(len(cause_idx))
-    #
-    #     # compute KDEs
-    #     try:
-    #         self.bg_kde = self.bg_kde_class(self.data[bg_idx], **self.bg_kde_kwargs)
-    #         self.trigger_kde = self.trigger_kde_class(interpoint, **self.trigger_kde_kwargs)
-    #
-    #     except AttributeError as exc:
-    #         logger.error("Unable to set_kdes.  Num BG: %d, num trigger %d" % (self.num_bg[-1], self.num_trig[-1]))
-    #         raise exc
-    #
-    # def trigger_density(self, delta_data):
-    #     """
-    #     Return the (unnormalised) trigger density
-    #     Integral over time and *space* (not distance) should return num_trig / num_events
-    #     """
-    #
-    #     distances = np.sqrt(np.sum(delta_data.data[:, 1:] ** 2, axis=1))
-    #     isotropic_data = data_models.DataArray(delta_data[:, 0]).adddim(distances)
-    #     return 2 * np.pi * self.trigger_kde.pdf(isotropic_data, normed=False) / self.ndata / distances
-    #
-    # def trigger_density_in_place(self, target_data, source_data=None):
-    #     """
-    #     Return the sum of trigger densities at the points in target_data.
-    #     Optionally supply new source data to be used, otherwise self.data is used.
-    #     """
-    #     if source_data is not None and len(source_data):
-    #         pass
-    #     else:
-    #         source_data = self.data
-    #
-    #     link_source, link_target = linkages(source_data, self.max_delta_t, self.max_delta_d, data_target=target_data)
-    #     trigger = sparse.csr_matrix((source_data.ndata, target_data.ndata))
-    #
-    #     if link_source.size:
-    #         delta_data = target_data.getrows(link_target) - source_data.getrows(link_source)
-    #         trigger[link_source, link_target] = self.trigger_density(delta_data)
-    #
-    #     trigger = np.array(trigger.sum(axis=0))
-    #     # reshape if target_data has a shape
-    #     if target_data.original_shape:
-    #         ## FIXME: double check this reshape order
-    #         trigger = trigger.reshape(target_data.original_shape)
-    #     # else flatten
-    #     else:
-    #         trigger = trigger.flatten()
-    #     return trigger
 
 
 class SeppStochasticNnReflected(SeppStochasticNn):

@@ -34,35 +34,51 @@ class TestHelperFunctions(unittest.TestCase):
 
 class TestKernelTemporalRadial(unittest.TestCase):
 
-    kernel_class = kernels.RadialTemporal
-    location = [1.5, .1]
-    scale = [0.25, 0.5]
-    tol_places = 5
-    tol_eps = 1e-12
+    def test_radial_norming(self):
+        locations = [
+            (0., 0.),
+            (0., 1.),
+            (0., 1.),
+            (0., 2.),
+        ]
+        scales = [
+            (1., 1.),
+            (1., 0.1),
+            (1., 1.),
+            (1., 0.5)
+        ]
 
-    @property
-    def ndim(self):
-        return len(self.location)
+        for l, s in zip(locations, scales):
+            k = kernels.RadialTemporal(l, s)
 
-    def setUp(self):
-        print "setUp"
-        self.kernel = self.kernel_class(self.location, self.scale)
+            # radial norming
+            q = dblquad(lambda x, y: k.pdf(np.sqrt(x ** 2 + y ** 2), dims=[1]), -10, 10,
+                        lambda *args: -10, lambda *args: 10)
+            self.assertAlmostEqual(q[0], 1.0, places=5)
 
-    def test_norming(self):
-        # spatial
-        q = dblquad(lambda x, y: self.kernel.pdf(np.sqrt(x ** 2 + y ** 2), dims=[1]), -10, 10,
-                    lambda *args: -10, lambda *args: 10)
-        # if self.ndim == 1:
-        #     quadfun = quad
-        # elif self.ndim == 2:
-        #     quadfun = dblquad
-        # elif self.ndim == 3:
-        #     quadfun = tplquad
-        # else:
-        #     raise NotImplementedError()
-        #
-        # q = quadfun(partial(quad_pdf_fun, func=self.kernel.pdf), *self.limits(self.ndim))
-        self.assertAlmostEqual(q[0], 1.0, places=self.tol_places)
+    def test_marginal_pdf(self):
+
+
+    def test_cdf(self):
+        locations = [
+            (0., 0.),
+            (0., 1.),
+            (0., 1.),
+            (0., 2.),
+        ]
+        scales = [
+            (1., 1.),
+            (1., 0.1),
+            (1., 1.),
+            (1., 0.5)
+        ]
+
+        for l, s in zip(locations, scales):
+            k = kernels.RadialTemporal(l, s)
+            self.assertAlmostEqual(k.marginal_cdf(-1., dim=1), 0., places=12)
+            self.assertAlmostEqual(k.marginal_cdf(0., dim=1), 0., places=12)
+            self.assertAlmostEqual(k.marginal_cdf(1000., dim=0), 1., places=12)
+            self.assertAlmostEqual(k.marginal_cdf(1000., dim=1), 1., places=12)
 
 
 class TestKernelMultivariateNormal(unittest.TestCase):

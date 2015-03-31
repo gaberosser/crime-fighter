@@ -764,9 +764,8 @@ class FixedBandwidthRadialKde(FixedBandwidthKde):
 
     def marginal_cdf(self, x, **kwargs):
         """ Return the marginal cdf in the dim specified in kwargs (dim=0 default) """
-        raise NotImplementedError()
-        # x = self.check_inputs(x, ndim=1, cls=DataArray)
-        # return self._additive_operation('marginal_cdf', x, **kwargs)
+        x = self.check_inputs(x, ndim=1, cls=DataArray)
+        return self._additive_operation('marginal_cdf', x, **kwargs)
 
     def partial_marginal_pdf(self, target, **kwargs):
         """
