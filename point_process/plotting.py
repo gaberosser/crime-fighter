@@ -253,8 +253,12 @@ def num_bg_trigger_plot(ppobj, simobj=None):
     ax.set_ylabel('Number events')
     ax.legend(loc='right')
 
+#
+# def cartesian_spatial_triggering_plots(ppobj, simobj=None, xmax=None, ymax=None):
+#
 
-def radial_spatial_plots(ppobj, simobj=None, xmax=None, ymax=None):
+
+def radial_spatial_triggering_plots(ppobj, simobj=None, xmax=None, ymax=None):
     npt = 500
     ci = 0.99
     fig_kwargs = {
@@ -297,7 +301,8 @@ def radial_spatial_plots(ppobj, simobj=None, xmax=None, ymax=None):
     ax1.set_xlim([-xmax, xmax])
     ax1.set_ylim([-ymax, ymax])
     ax1.set_xlabel('X (metres)')
-    ax1.set_ylabel('Density')
+    ax1.set_ylabel('Y (metres)')
+    ax1.set_aspect('equal')
 
     # cax1 = plt.colorbar(cont, ax=ax1)
 
@@ -311,9 +316,6 @@ def radial_spatial_plots(ppobj, simobj=None, xmax=None, ymax=None):
         fig.colorbar(cont2, ax=[ax1, ax2])
     else:
         fig.colorbar(cont1, ax=ax1)
-
-
-
 
 
 def multiplots(ppobj, simobj=None, maxes=None):

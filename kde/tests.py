@@ -56,9 +56,6 @@ class TestKernelTemporalRadial(unittest.TestCase):
                         lambda *args: -10, lambda *args: 10)
             self.assertAlmostEqual(q[0], 1.0, places=5)
 
-    def test_marginal_pdf(self):
-
-
     def test_cdf(self):
         locations = [
             (0., 0.),

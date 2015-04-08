@@ -8,16 +8,16 @@ from point_process import models as pp_models, estimation, validate
 from . import OUT_DIR, IN_DIR
 
 LOG_DIR = os.path.join(OUT_DIR, 'logs')
-OUT_SUBDIR = 'max_triggers_grid250_bgfrac9e-1'
+OUT_SUBDIR = 'max_triggers_grid100_ani_bgfrac5e-1'
 
 # global parameters
 num_sample_points = 20
-grid_size = 250  # metres
+grid_size = 100  # metres
 
 estimate_kwargs = {
     'ct': 1,
     'cd': 0.02,
-    'frac_bg': 0.9,
+    'frac_bg': 0.5,
 }
 model_kwargs = {
     'parallel': True,
@@ -102,13 +102,14 @@ def run_me(location_dir, location_poly, max_delta_t, max_delta_d, crime_type):
     vb = validate.SeppValidationFixedModelIntegration(
         data=data,
         pp_class=pp_models.SeppStochasticNn,
+        # pp_class=pp_models.SeppStochasticNnIsotropicTrigger,
         spatial_domain=location_poly,
         cutoff_t=start_day_number,
         model_kwargs=model_kwargs,
     )
 
     logger.info("Setting validation grid")
-    vb.set_grid(250, num_sample_points)
+    vb.set_grid(grid_size, num_sample_points)
     file_stem = os.path.join(out_dir, crime_type + '_' + '%d-%d' % (max_delta_t, max_delta_d))
     try:
         logger.info("Starting validation run.")

@@ -36,7 +36,7 @@ def pairwise_differences_indices(n):
     return idx_i, idx_j
 
 
-def linkages(data_source, max_t, max_d, data_target=None, chunksize=2**18):
+def linkages(data_source, max_t, max_d, data_target=None, chunksize=2**18, remove_coincident_pairs=False):
     """
     Compute the indices of datapoints that are within the following tolerances:
     interpoint distance less than max_d
@@ -70,6 +70,8 @@ def linkages(data_source, max_t, max_d, data_target=None, chunksize=2**18):
         dt = (data_target.time.getrows(j) - data_source.time.getrows(i)).toarray(0)
         dd = (data_target.space.getrows(j).distance(data_source.space.getrows(i))).toarray(0)
         mask = (dt <= max_t) & (dt > 0.) & (dd <= max_d)
+        if remove_coincident_pairs:
+            mask = mask & (dd != 0)
         link_i.extend(i[mask])
         link_j.extend(j[mask])
 

@@ -28,6 +28,7 @@ class SepBase(object):
                  bg_kde_kwargs=None,
                  trigger_kde_kwargs=None,
                  parallel=True,
+                 remove_coincident_points=True,
                  **kwargs):
 
         self.p = p
@@ -39,6 +40,7 @@ class SepBase(object):
         self.max_delta_d = None
         self.set_max_delta_t(max_delta_t)
         self.set_max_delta_d(max_delta_d)
+        self.remove_coincident_points = remove_coincident_points
 
         self.interpoint_data = None
         self.linkage = None
@@ -82,6 +84,7 @@ class SepBase(object):
         self.num_bg = []
         self.num_trig = []
         self.l2_differences = []
+        self.log_likelihoods = []
         self.run_times = []
         self.bg_kde = None
         self.trigger_kde = None
@@ -298,7 +301,8 @@ class Sepp(SepBase):
 
     def set_linkages(self):
         # set self.linkage, self.linkage_col, self.interpoint_data
-        self.linkage = linkages(self.data, self.max_delta_t, self.max_delta_d)
+        self.linkage = linkages(self.data, self.max_delta_t, self.max_delta_d,
+                                remove_coincident_pairs=self.remove_coincident_points)
         self.interpoint_data = self.data.getrows(self.linkage[1]) - self.data.getrows(self.linkage[0])
         self.linkage_cols = dict(
             [(i, np.concatenate((self.linkage[0][self.linkage[1] == i], [i,]))) for i in range(self.ndata)]

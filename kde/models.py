@@ -719,18 +719,18 @@ class FixedBandwidthRadialKde(FixedBandwidthKde):
         if data.nd == 1:
             raise AttributeError("Radial-temporal KDE requires at least 2D data (time, space)")
         elif data.nd == 2:
-            pass
+            reduced_data = data.copy()
         elif data.nd == 3:
-            data = data.time.adddim(self.reduce_spatial_data(data.getdim([1, 2])))
-        elif data.nd > 3:
+            reduced_data = data.time.adddim(self.reduce_spatial_data(data.getdim([1, 2])))
+        else:
             raise NotImplementedError("Currently only supports time + 2D space")
             # data = data.time.adddim(self.reduce_spatial_data(data.getdim(range(1, data.nd))))
-        return data, n_space_dim
+        return data, reduced_data, n_space_dim
 
     def __init__(self, data, *args, **kwargs):
 
         # modify data to radial form
-        data, self.n_space_dim = self.prepare_data(data)
+        self.expanded_data, data, self.n_space_dim = self.prepare_data(data)
         super(FixedBandwidthRadialKde, self).__init__(data, *args, **kwargs)
 
     def pdf(self, target, **kwargs):
@@ -742,7 +742,7 @@ class FixedBandwidthRadialKde(FixedBandwidthKde):
         :param kwargs: Passed on to the kernels.
         :return: values of the pdf at the specified coordinates.
         """
-        target, n_space_dim = self.prepare_data(target)
+        _, target, n_space_dim = self.prepare_data(target)
         if n_space_dim != self.n_space_dim:
             raise AttributeError("Target data does not have the correct number of dimensions")
         return self._additive_operation('pdf', target, **kwargs)
