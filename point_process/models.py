@@ -184,6 +184,32 @@ class SepBase(object):
         # set bg_kde and trigger_kde
         raise NotImplementedError
 
+    def compute_p_l(self):
+        """
+        Compute the probability matrix P and conditional intensity l
+        """
+        # evaluate BG at data points
+        m = self.background_density(self.data)
+
+        # evaluate trigger KDE at all interpoint distances
+        trigger = self.trigger_density(self.interpoint_data)
+        g = sparse.csr_matrix((trigger, self.linkage), shape=(self.ndata, self.ndata))
+
+        # recompute P, making sure to maintain stored zeros
+        # NB: summing sparse matrices automatically collapses any zero entries in the result, so don't do it
+        l = g.sum(axis=0) + m
+        trigger_component = trigger / np.array(l.flat[self.linkage[1]]).squeeze()
+        bg_component = np.array(m / l).squeeze()
+
+        # create equivalent to linkage_idx for the diagonal BG entries
+        bg_linkage = (range(self.ndata), range(self.ndata))
+
+        # set new P matrix
+        new_p = sparse.csr_matrix((bg_component, bg_linkage), shape=(self.ndata, self.ndata))
+        new_p[self.linkage] = trigger_component
+
+        return new_p, l
+
     def _iterate(self):
         colsum = self.p.sum(0)
         if np.any((colsum < (1 - 1e-12)) | (colsum > (1 + 1e-12))):
@@ -195,29 +221,10 @@ class SepBase(object):
         self.set_kdes()
         logger.info("self.set_kdes() in %f s" % (time() - tic))
 
-        # strip spatially overlapping points from p
-        # self.delete_overlaps()
-
-        # evaluate BG at data points
+        # compute new p and conditional intensities
         tic = time()
-        m = self.background_density(self.data)
-        logger.info("self.background_density() in %f s" % (time() - tic))
-
-        # evaluate trigger KDE at all interpoint distances
-        tic = time()
-        trigger = self.trigger_density(self.interpoint_data)
-        logger.info("self.trigger_density() in %f s" % (time() - tic))
-        g = sparse.csr_matrix((trigger, self.linkage), shape=(self.ndata, self.ndata))
-
-        # recompute P, making sure to maintain stored zeros
-        # NB: summing sparse matrices automatically collapses any zero entries in the result, so don't do it
-        l = g.sum(axis=0) + m
-        trigger_component = trigger / np.array(l.flat[self.linkage[1]]).squeeze()
-        bg_component = np.array(m / l).squeeze()
-        # create equivalent to linkage_idx for the diagonal BG entries
-        bg_linkage = (range(self.ndata), range(self.ndata))
-        new_p = sparse.csr_matrix((bg_component, bg_linkage), shape=(self.ndata, self.ndata))
-        new_p[self.linkage] = trigger_component
+        new_p, l = self.compute_p_l()
+        logger.info("self.compute_p_l() in %f s" % (time() - tic))
 
         # compute difference
         q = new_p - self.p
@@ -566,7 +573,124 @@ class SeppDeterministicNnReflected(SeppDeterministicNn):
     trigger_kde_class = pp_kde.WeightedVariableBandwidthNnKdeReflective
 
 
-# class SeppStochasticNnRadial(SeppStochasticNn):
+class LocalSeppDeterministicNn(SeppDeterministicNn):
+
+    trigger_kde_class = pp_kde.WeightedFixedBandwidthScottKde
+
+    def __init_extra__(self, **kwargs):
+        self.trigger_kde_kwargs['parallel'] = False
+
+    def set_kdes(self):
+        # BG KDE: as in parent
+        p_bg = self.p.diagonal()
+        self.bg_kde = self.bg_kde_class(self.data, weights=p_bg, **self.bg_kde_kwargs)
+        self.num_bg.append(sum(p_bg))
+
+        # one KDE defined for each data point, based on the weightings at those points
+        self.trigger_kde = []
+        trig_weights_total = 0.
+        for i in range(self.ndata):
+            # get relevant connections
+            cause_idx = np.where(self.linkage[0] == i)[0]
+            effect_idx = np.where(self.linkage[1] == i)[0]
+            idx = np.concatenate((cause_idx, effect_idx))
+            if not len(cause_idx):
+                # this point cannot trigger any other and must therefore be classified as 100% background
+                self.trigger_kde.append(None)
+                continue
+
+            # extract interpoint data and weights
+            this_interpoint = self.interpoint_data.getrows(idx)
+            this_weights_cause = np.array(self.p[(self.linkage[0][cause_idx], self.linkage[1][cause_idx])].flat)
+            this_weights = np.array(self.p[(self.linkage[0][idx], self.linkage[1][idx])].flat)
+
+            # renormalise weights based on the total CAUSE density
+            # the addition of 'effect' data merely serves to boost the effective number of sources in the KDE, but it
+            # shouldn't increase the overall contribution to triggering
+            # we need to maintain the total triggering outflow from this datum
+            total_cause = this_weights_cause.sum()
+            if total_cause == 0.:
+                self.trigger_kde.append(None)
+            else:
+                trig_weights_total += total_cause
+                this_weights = this_weights / this_weights.sum() * total_cause
+                try:
+                    self.trigger_kde.append(
+                        self.trigger_kde_class(this_interpoint, weights=this_weights, **self.trigger_kde_kwargs)
+                    )
+                except (AttributeError, ValueError) as exc:
+                    # only reason to end up here is a 'zero std' error
+                    # for now, just ignore this datum.
+                    ## FIXME: this is a hack and loses triggering density.
+                    # a better fix involves extending the local neighbourhood to second gen. connections
+                    print "Unable to generate local KDE for datum %d" % i
+                    print repr(exc)
+                    self.trigger_kde.append(None)
+
+        self.num_trig.append(trig_weights_total)
+
+
+    def trigger_density(self, delta_data, source_idx=None):
+        """
+        :param source_idx: Iterable. For each element of delta_data, source_idx gives the index or indices of the relevant
+        source dat(um/a).  The default behaviour assumes that delta_data = self.interpoint_data, so the indices
+        are derived directly from linkages.
+        """
+        import collections
+        if source_idx is None:
+            # default values for indices come from self.linkages
+            source_idx = self.linkage[0]
+            res = np.zeros_like(source_idx, dtype=float)
+        else:
+            res = np.zeros(len(source_idx), dtype=float)
+
+        # bundle source indices to ensure at most one call per local trigger KDE
+        ## TODO: consider adding this to __init_extra__ or similar to avoid having to recompute every time?
+        source_groupings = collections.defaultdict(list)
+        for (i, t) in enumerate(source_idx):
+            if hasattr(t, '__iter__'):
+                x = t
+            else:
+                x = [t]
+            for tt in x:
+                source_groupings[tt].append(i)
+
+        for t in source_groupings:
+            this_delta_data = delta_data.getrows(source_groupings[t])
+            if self.trigger_kde[t] is not None:
+                this_res = self.trigger_kde[t].pdf(this_delta_data, normed=False)
+            else:
+                this_res = np.zeros(len(source_groupings[t]))
+            res[source_groupings[t]] += this_res
+
+        return res
+        #  return res / self.ndata
+
+    def trigger_density_in_place(self, target_data, source_data=None):
+        raise NotImplementedError
+
+    def compute_p_l(self):
+        # evaluate BG at data points
+        m = self.background_density(self.data)
+
+        # evaluate trigger KDE at all interpoint distances
+        trigger = self.trigger_density(self.interpoint_data)
+        g = sparse.csr_matrix((trigger, self.linkage), shape=(self.ndata, self.ndata))
+
+        # recompute P, making sure to maintain stored zeros
+        # NB: summing sparse matrices automatically collapses any zero entries in the result, so don't do it
+        l = g.sum(axis=0) + m
+        trigger_component = trigger / np.array(l.flat[self.linkage[1]]).squeeze()
+        bg_component = np.array(m / l).squeeze()
+
+        # create equivalent to linkage_idx for the diagonal BG entries
+        bg_linkage = (range(self.ndata), range(self.ndata))
+
+        # set new P matrix
+        new_p = sparse.csr_matrix((bg_component, bg_linkage), shape=(self.ndata, self.ndata))
+        new_p[self.linkage] = trigger_component
+
+        return new_p, l
 
 
 

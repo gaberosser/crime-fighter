@@ -473,7 +473,7 @@ class FixedBandwidthKdeScott(FixedBandwidthKde):
 
     def set_bandwidths(self, *args, **kwargs):
 
-        if np.any(self.raw_std_devs == 0):
+        if np.any(self.raw_std_devs == 0) or np.any(np.isnan(self.raw_std_devs)):
             raise ValueError("Zero values for standard deviation")
         bandwidths = self.raw_std_devs * self.ndata ** (-1. / float(self.ndim + 4))
         self.bandwidths = np.tile(bandwidths, (self.ndata, 1))
@@ -582,6 +582,10 @@ class WeightedFixedBandwidthKde(FixedBandwidthKde):
 
     def _iterative_operation(self, funcstr, *args, **kwargs):
         raise NotImplementedError()
+
+
+class WeightedFixedBandwidthScottKde(WeightedFixedBandwidthKde, FixedBandwidthKdeScott):
+    pass
 
 
 class WeightedVariableBandwidthKde(WeightedFixedBandwidthKde):

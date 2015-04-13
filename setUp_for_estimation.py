@@ -53,8 +53,14 @@ with open(os.path.join(settings.IN_DIR, 'chicago_south', 'burglary.pickle'), 'r'
 
 training = res[res[:, 0] <= cutoff_day_number]
 
-sepp_isotropic = pp_models.SeppStochasticNnIsotropicTrigger(data=training, **model_kwargs)
-ps_isotropic = sepp_isotropic.train(niter=niter)
+# sepp_isotropic = pp_models.SeppStochasticNnIsotropicTrigger(data=training, **model_kwargs)
+# ps_isotropic = sepp_isotropic.train(niter=niter)
+
+sepp_local = pp_models.LocalSeppDeterministicNn(data=training, **model_kwargs)
+ps_local = sepp_local.train(niter=niter)
+
+# sepp_det = pp_models.SeppDeterministicNn(data=training, **model_kwargs)
+# ps_det = sepp_det.train(niter=niter)
 
 # sepp_xy = pp_models.SeppStochasticNn(data=training, **model_kwargs)
 # ps_xy = sepp_xy.train(niter=niter)
