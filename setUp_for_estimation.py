@@ -22,13 +22,14 @@ estimate_kwargs = {
 model_kwargs = {
     'parallel': True,
     'max_delta_t': 120, # set on each iteration
-    'max_delta_d': 500, # set on each iteration
+    'max_delta_d': 1000, # set on each iteration
     'bg_kde_kwargs': {'number_nn': [100, 15],
                       'min_bandwidth': None,
                       'strict': False},
     'trigger_kde_kwargs': {'number_nn': 15,
                            'min_bandwidth': None,
-                           'strict': False},
+                           'strict': False,
+                           'tol': 1e-6},
     'estimation_function': lambda x, y: estimation.estimator_bowers_fixed_proportion_bg(x, y, **estimate_kwargs),
     'seed': 42,  # doesn't matter what this is, just want it fixed
 }
