@@ -13,15 +13,22 @@ cutoff_day_number = 277
 end_date = start_date + datetime.timedelta(days=cutoff_day_number + 480)
 niter = 75
 
+# estimate_kwargs = {
+#     'ct': 1,
+#     'cd': 0.02,
+#     'frac_bg': 0.5,
+# }
+
 estimate_kwargs = {
-    'ct': 1,
-    'cd': 0.02,
+    'ct': 1 / 10.,
+    'cd': 100,
     'frac_bg': 0.5,
 }
 
 model_kwargs = {
     'parallel': True,
-    'max_delta_t': 120, # set on each iteration
+    # 'max_delta_t': 120, # set on each iteration
+    'max_delta_t': 1200, # set on each iteration
     'max_delta_d': 1000, # set on each iteration
     'bg_kde_kwargs': {'number_nn': [100, 15],
                       'min_bandwidth': None,
@@ -30,7 +37,8 @@ model_kwargs = {
                            'min_bandwidth': None,
                            'strict': False,
                            'tol': 1e-6},
-    'estimation_function': lambda x, y: estimation.estimator_bowers_fixed_proportion_bg(x, y, **estimate_kwargs),
+    # 'estimation_function': lambda x, y: estimation.estimator_bowers_fixed_proportion_bg(x, y, **estimate_kwargs),
+    'estimation_function': lambda x, y: estimation.estimator_exp_gaussian(x, y, **estimate_kwargs),
     'seed': 42,  # doesn't matter what this is, just want it fixed
 }
 
@@ -60,25 +68,26 @@ training = res[res[:, 0] <= cutoff_day_number]
 # sepp_isotropic = pp_models.SeppStochasticNnIsotropicTrigger(data=training, **model_kwargs)
 # ps_isotropic = sepp_isotropic.train(niter=niter)
 
-# sepp_local = pp_models.LocalSeppDeterministicNn(data=training, **model_kwargs)
-# ps_local = sepp_local.train(niter=niter)
+sepp_local = pp_models.LocalSeppDeterministicNn(data=training, **model_kwargs)
+ps_local = sepp_local.train(niter=niter)
 
 # sepp_det = pp_models.SeppDeterministicNn(data=training, **model_kwargs)
 # ps_det = sepp_det.train(niter=niter)
 
-sepp_xy = pp_models.SeppStochasticNn(data=training, **model_kwargs)
-ps_xy = sepp_xy.train(niter=niter)
+# sepp_xy = pp_models.SeppStochasticNn(data=training, **model_kwargs)
+# ps_xy = sepp_xy.train(niter=niter)
 
 ## standardise the data
-s = np.std(training, axis=0, ddof=1)
+# s = np.std(training, axis=0, ddof=1)
+
 ## to preserve scaling, use same std on both X and Y
-s[1] = s[2] = s[1:].mean()
-training_s = training / s
-training_s = training_s - training_s.mean(axis=0)
+# s[1] = s[2] = s[1:].mean()
+# training_s = training / s
+# training_s = training_s - training_s.mean(axis=0)
 
-model_kwargs_s = model_kwargs.copy()
-model_kwargs_s['max_delta_d'] = model_kwargs['max_delta_d'] / s[1]
-model_kwargs_s['max_delta_t'] = model_kwargs['max_delta_t'] / s[0]
+# model_kwargs_s = model_kwargs.copy()
+# model_kwargs_s['max_delta_d'] = model_kwargs['max_delta_d'] / s[1]
+# model_kwargs_s['max_delta_t'] = model_kwargs['max_delta_t'] / s[0]
 
-sepp_xy_s = pp_models.SeppStochasticNn(data=training_s, **model_kwargs_s)
-ps_xy_s = sepp_xy_s.train(niter=niter)
+# sepp_xy_s = pp_models.SeppStochasticNn(data=training_s, **model_kwargs_s)
+# ps_xy_s = sepp_xy_s.train(niter=niter)

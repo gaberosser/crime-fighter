@@ -573,7 +573,9 @@ class WeightedFixedBandwidthKde(FixedBandwidthKde):
             if to_keep.size == 0:
                 # All datapoints have been removed. Raise error.
                 raise ValueError("All points have weight below supplied tolerance.")
+            self.ndata_pre_censoring = self.weights.size
             data = self.data.getrows(to_keep)
+            self.weights = self.weights[to_keep]
         super(WeightedFixedBandwidthKde, self).__init__(data, *args, **kwargs)
 
     @property
