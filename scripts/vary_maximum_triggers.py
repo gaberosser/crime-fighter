@@ -8,11 +8,11 @@ from point_process import models as pp_models, estimation, validate
 from . import OUT_DIR, IN_DIR
 
 LOG_DIR = os.path.join(OUT_DIR, 'logs')
-OUT_SUBDIR = 'max_triggers_grid100_ani_bgfrac5e-1'
+OUT_SUBDIR = 'max_triggers_grid250_ani_bgfrac5e-1'
 
 # global parameters
 num_sample_points = 20
-grid_size = 100  # metres
+grid_size = 250  # metres
 
 estimate_kwargs = {
     'ct': 1,
@@ -142,6 +142,19 @@ def chicago_south_side(max_delta_t, max_delta_d, crime_type):
     run_me(location_dir, location_poly, max_delta_t, max_delta_d, crime_type)
 
 
+def chicago(max_delta_t, max_delta_d, crime_type):
+    location_dir = 'chicago'
+    poly_file = os.path.join(IN_DIR, 'boundaries.pickle')
+    with open(poly_file, 'r') as f:
+        boundaries = pickle.load(f)
+        location_poly = boundaries['chicago']
+
+    # min_bandwidths not required
+    model_kwargs['trigger_kde_kwargs']['min_bandwidth'] = model_kwargs['bg_kde_kwargs']['min_bandwidth'] = None
+
+    run_me(location_dir, location_poly, max_delta_t, max_delta_d, crime_type)
+
+
 def camden(max_delta_t, max_delta_d, crime_type):
     location_dir = 'camden'
     poly_file = os.path.join(IN_DIR, 'boundaries.pickle')
@@ -165,3 +178,5 @@ if __name__ == '__main__':
         camden(t, d, crime_type)
     elif sys.argv[1] == 'chicago_south':
         chicago_south_side(t, d, crime_type)
+    elif sys.argv[1] == 'chicago':
+        chicago(t, d, crime_type)

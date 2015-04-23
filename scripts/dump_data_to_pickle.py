@@ -57,7 +57,7 @@ for k, n in crime_types.items():
     with open(os.path.join(this_path, '%s_jiggle.pickle' % k), 'w') as f:
         pickle.dump(jdata, f)
 
-## CHICAGO
+## CHICAGO SOUTH
 
 end_date = start_date + datetime.timedelta(days=277 + 480)
 
@@ -76,6 +76,30 @@ for k, n in crime_types.items():
                                                start_date=start_date,
                                                end_date=end_date,
                                                domain=boundaries['chicago_south'])
+
+    with open(os.path.join(this_path, '%s.pickle' % k), 'w') as f:
+        pickle.dump(data, f)
+
+
+## CHICAGO
+
+end_date = start_date + datetime.timedelta(days=277 + 480)
+
+crime_types = {
+    'burglary': 'burglary',
+    'robbery': 'robbery',
+    'theft_of_vehicle': 'motor vehicle theft',
+    'violence': 'assault',
+}
+
+for k, n in crime_types.items():
+    this_path = os.path.join(DATA_DIR, 'chicago')
+    if not os.path.isdir(this_path):
+        os.makedirs(this_path)
+    data, t0, cid = chicago.get_crimes_by_type(crime_type=n,
+                                               start_date=start_date,
+                                               end_date=end_date,
+                                               domain=boundaries['chicago'])
 
     with open(os.path.join(this_path, '%s.pickle' % k), 'w') as f:
         pickle.dump(data, f)

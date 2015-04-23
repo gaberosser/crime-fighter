@@ -179,7 +179,7 @@ if __name__ == '__main__':
 
     logger = logging.getLogger('kde.models')
 
-    num_iter = 15
+    num_iter = 100
     parallel = True
     t_total = None
     # c, data = initial_simulation(t_total=t_total)
@@ -202,7 +202,7 @@ if __name__ == '__main__':
     init_est_params = {
         'ct': 10,
         'cd': .05,
-        'frac_bg': 0.95,
+        'frac_bg': 0.5,
     }
 
     ndata = data.shape[0]

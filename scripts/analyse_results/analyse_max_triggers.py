@@ -172,7 +172,8 @@ lls = {}
 for ct in crime_types:
     if ct not in lls:
         lls[ct] = {}
-    for k, v in sepp[bg_prop][ct].iteritems():
+    # for k, v in sepp[bg_prop][ct].iteritems():
+    for k, v in sepp[ct].iteritems():
         if v is not None:
             lls[ct][tuple(int(t) for t in k)] = np.mean(v.log_likelihoods[stationary_idx:])
 
@@ -259,7 +260,8 @@ prop_trig = {}
 zz = np.zeros_like(tt, dtype=float)
 for i in range(len(max_t)):
     for j in range(len(max_d)):
-        v = sepp[this_bg_prop][ct].get((str(max_t[i]), str(max_d[j])), None)
+        # v = sepp[this_bg_prop][ct].get((str(max_t[i]), str(max_d[j])), None)
+        v = sepp[ct].get((str(max_t[i]), str(max_d[j])), None)
         if v is not None:
             zz[j, i] = (v.ndata - v.p.diagonal().sum()) / float(v.ndata)
         else:

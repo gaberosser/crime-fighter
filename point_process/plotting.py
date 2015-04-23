@@ -258,7 +258,7 @@ def num_bg_trigger_plot(ppobj, simobj=None):
 #
 
 
-def radial_spatial_triggering_plots(ppobj, simobj=None, xmax=None, ymax=None):
+def radial_spatial_triggering_plots(ppobj, simobj=None, xmax=None, ymax=None, cbar=True):
     npt = 500
     ci = 0.99
     fig_kwargs = {
@@ -293,7 +293,6 @@ def radial_spatial_triggering_plots(ppobj, simobj=None, xmax=None, ymax=None):
     fig = plt.figure(**fig_kwargs)
     if simobj:
         ax1 = fig.add_subplot(121)
-        ax2 = fig.add_subplot(122)
     else:
         ax1 = fig.add_subplot(111)
 
@@ -306,6 +305,7 @@ def radial_spatial_triggering_plots(ppobj, simobj=None, xmax=None, ymax=None):
 
     # cax1 = plt.colorbar(cont, ax=ax1)
 
+    hbar = None
     if simobj:
         ax2 = fig.add_subplot(122)
         cont2 = ax2.contourf(xy.toarray(0), xy.toarray(1), zxy2, 50, cmap=cm.coolwarm, vmin=0, vmax=vmax)
@@ -313,10 +313,14 @@ def radial_spatial_triggering_plots(ppobj, simobj=None, xmax=None, ymax=None):
         ax2.set_xlabel('X (metres)')
         ax2.set_xlim([-xmax, xmax])
         ax2.set_ylim([-ymax, ymax])
-        fig.colorbar(cont2, ax=[ax1, ax2])
+        if cbar:
+            hbar = fig.colorbar(cont2, ax=[ax1, ax2])
     else:
-        fig.colorbar(cont1, ax=ax1)
+        if cbar:
+            hbar = fig.colorbar(cont1, ax=ax1)
 
+    if cbar:
+        return hbar
 
 def multiplots(ppobj, simobj=None, maxes=None):
     """
