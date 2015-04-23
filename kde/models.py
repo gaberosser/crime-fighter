@@ -552,8 +552,28 @@ class VariableBandwidthNnKde(VariableBandwidthKde):
 
 
 class WeightedFixedBandwidthKde(FixedBandwidthKde):
-    def __init__(self, data, weights, *args, **kwargs):
+    def __init__(self, data, weights, tol=None, *args, **kwargs):
+        """
+        Weighted KDE with fixed bandwidths supplied at instantiation.
+        :param data:
+        :param weights:
+        :param tol: Optional tolerance value. If supplied, any components that contribute a PROPORTION of the total
+        weights below tol are discarded.
+        :param args:
+        :param kwargs:
+        :return:
+        """
         self.weights = np.array(weights)
+        self.tol = tol
+        # filter data if tol is specified
+        if self.tol:
+            sum_weights = sum(self.weights)
+            self.set_data(data)  # this will be repeated later, but required to cast data to correct form
+            to_keep = np.where((weights / sum_weights) >= self.tol)[0]
+            if to_keep.size == 0:
+                # All datapoints have been removed. Raise error.
+                raise ValueError("All points have weight below supplied tolerance.")
+            data = self.data.getrows(to_keep)
         super(WeightedFixedBandwidthKde, self).__init__(data, *args, **kwargs)
 
     @property
