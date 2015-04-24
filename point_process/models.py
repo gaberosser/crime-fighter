@@ -591,32 +591,40 @@ class LocalSeppDeterministicNn(SeppDeterministicNn):
         trig_weights_total = 0.
         for i in range(self.ndata):
             # get relevant connections
-            cause_idx = np.where(self.linkage[0] == i)[0]
-            effect_idx = np.where(self.linkage[1] == i)[0]
-            idx = np.concatenate((cause_idx, effect_idx))
-            if not len(cause_idx):
-                # this point cannot trigger any other and must therefore be classified as 100% background
+            # cause_idx = np.where(self.linkage[0] == i)[0]  # this datum is the PARENT
+            effect_idx = np.where(self.linkage[1] == i)[0]  # this datum is the CHILD
+            # idx = np.concatenate((cause_idx, effect_idx))
+            idx = effect_idx
+            if len(effect_idx) < 2:
+                # either only one point, in which case we can't compute a bandwidth, or no points, in which case
+                # this point cannot be triggered by any other and must therefore be classified as 100% background
                 self.trigger_kde.append(None)
                 continue
 
             # extract interpoint data and weights
             this_interpoint = self.interpoint_data.getrows(idx)
-            this_weights_cause = np.array(self.p[(self.linkage[0][cause_idx], self.linkage[1][cause_idx])].flat)
-            this_weights = np.array(self.p[(self.linkage[0][idx], self.linkage[1][idx])].flat)
+            # this_weights_cause = np.array(self.p[(self.linkage[0][cause_idx], self.linkage[1][cause_idx])].flat)
+            # this_weights_effect = np.array(self.p[(self.linkage[0][effect_idx], self.linkage[1][effect_idx])].flat)
+            ## should be the same as:
+            this_weights_effect = np.array(self.p[(self.linkage[0][effect_idx], np.ones_like(effect_idx) * i)].flat)
 
-            # renormalise weights based on the total CAUSE density
-            # the addition of 'effect' data merely serves to boost the effective number of sources in the KDE, but it
-            # shouldn't increase the overall contribution to triggering
-            # we need to maintain the total triggering outflow from this datum
-            total_cause = this_weights_cause.sum()
-            if total_cause == 0.:
+            # this_weights_all = np.array(self.p[(self.linkage[0][idx], self.linkage[1][idx])].flat)
+            this_weights_all = this_weights_effect
+
+            # renormalise weights based on the total EFFECT density
+            # the addition of 'cause' data merely serves to boost the effective number of sources in the KDE, but it
+            # shouldn't increase the overall contribution to triggering TO this point
+            # we need to maintain the total triggering influx to this datum
+
+            total_effect = this_weights_effect.sum()
+            if total_effect == 0.:  # this point must arise from the background
                 self.trigger_kde.append(None)
             else:
-                trig_weights_total += total_cause
-                this_weights = this_weights / this_weights.sum() * total_cause
+                trig_weights_total += total_effect
+                # this_weights_all = this_weights_all / this_weights_all.sum() * total_effect
                 try:
                     self.trigger_kde.append(
-                        self.trigger_kde_class(this_interpoint, weights=this_weights, **self.trigger_kde_kwargs)
+                        self.trigger_kde_class(this_interpoint, weights=this_weights_all, **self.trigger_kde_kwargs)
                     )
                 except (AttributeError, ValueError) as exc:
                     # only reason to end up here is a 'zero std' error

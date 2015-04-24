@@ -221,7 +221,6 @@ class KdeBase(object):
             raise AttributeError("Supplied data array is empty")
 
         self.parallel = parallel
-
         try:
             self.ncpu = kwargs.pop('ncpu', mp.cpu_count())
         except NotImplementedError:
@@ -286,6 +285,21 @@ class KdeBase(object):
             this_data = self.data[i:j]
             this_bandwidths = self.bandwidths[i:j]
             self.kernel_clusters.append(KernelCluster(this_data, this_bandwidths, ktype=self.kernel_class))
+
+    def set_parallel(self, b_parallel):
+        """
+        Toggle parallel implementation.  Requires that data and bandwidths have already been set.
+        :param b_parallel: Boolean
+        """
+        if bool(b_parallel) is self.parallel:
+            # nothing to do
+            return
+        self.parallel = False
+        if bool(b_parallel):
+            # switch on parallel code
+            self.parallel = True
+        # reset kernels
+        self.set_kernels()
 
     def _iterative_operation(self, funcstr, target, *args, **kwargs):
         """
@@ -606,8 +620,18 @@ class WeightedFixedBandwidthKde(FixedBandwidthKde):
         raise NotImplementedError()
 
 
-class WeightedFixedBandwidthScottKde(WeightedFixedBandwidthKde, FixedBandwidthKdeScott):
-    pass
+class WeightedFixedBandwidthScottKde(WeightedFixedBandwidthKde):
+
+    def set_bandwidths(self, *args, **kwargs):
+
+        if np.any(self.raw_std_devs == 0) or np.any(np.isnan(self.raw_std_devs)):
+            raise ValueError("Zero values for standard deviation")
+        # compute effective sample size using Kish's approximation
+        # http://stackoverflow.com/questions/27623919/weighted-gaussian-kernel-density-estimation-in-python
+        # http://surveyanalysis.org/wiki/Design_Effects_and_Effective_Sample_Size#Kish.27s_approximate_formula_for_computing_effective_sample_size
+        n_eff = self.weights.sum() ** 2 / sum(self.weights ** 2)
+        bandwidths = self.raw_std_devs * n_eff ** (-1. / float(self.ndim + 4))
+        self.bandwidths = np.tile(bandwidths, (self.ndata, 1))
 
 
 class WeightedVariableBandwidthKde(WeightedFixedBandwidthKde):

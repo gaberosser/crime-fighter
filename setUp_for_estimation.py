@@ -36,7 +36,7 @@ model_kwargs = {
     'trigger_kde_kwargs': {'number_nn': 15,
                            'min_bandwidth': None,
                            'strict': False,
-                           'tol': 1e-6},
+                           'tol': None},
     # 'estimation_function': lambda x, y: estimation.estimator_bowers_fixed_proportion_bg(x, y, **estimate_kwargs),
     'estimation_function': lambda x, y: estimation.estimator_exp_gaussian(x, y, **estimate_kwargs),
     'seed': 42,  # doesn't matter what this is, just want it fixed
