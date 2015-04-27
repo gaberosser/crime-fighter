@@ -9,6 +9,7 @@ from scipy import sparse, special
 import math
 from data import models as data_models
 import copy
+import collections
 import logging
 
 
@@ -576,9 +577,19 @@ class SeppDeterministicNnReflected(SeppDeterministicNn):
 class LocalSeppDeterministicNn(SeppDeterministicNn):
 
     trigger_kde_class = pp_kde.WeightedFixedBandwidthScottKde
+    bg_kde_class = pp_kde.WeightedFixedBandwidthScottKdeSeparable
 
     def __init_extra__(self, **kwargs):
+        # disable parallel KDE as all of them will have 'small' amounts of data
         self.trigger_kde_kwargs['parallel'] = False
+        if not self.trigger_kde_kwargs.get('tol', None):
+            # set default small tolerance to avoid numerical errors
+            self.trigger_kde_kwargs['tol'] = 1e-16
+
+        # bundle source indices to ensure at most one call per local trigger KDE
+        self.source_groupings = collections.defaultdict(list)
+        for (i, t) in enumerate(self.linkage[0]):
+            self.source_groupings[t].append(i)
 
     def set_kdes(self):
         # BG KDE: as in parent
@@ -594,7 +605,7 @@ class LocalSeppDeterministicNn(SeppDeterministicNn):
             # cause_idx = np.where(self.linkage[0] == i)[0]  # this datum is the PARENT
             effect_idx = np.where(self.linkage[1] == i)[0]  # this datum is the CHILD
             # idx = np.concatenate((cause_idx, effect_idx))
-            idx = effect_idx
+
             if len(effect_idx) < 2:
                 # either only one point, in which case we can't compute a bandwidth, or no points, in which case
                 # this point cannot be triggered by any other and must therefore be classified as 100% background
@@ -602,7 +613,7 @@ class LocalSeppDeterministicNn(SeppDeterministicNn):
                 continue
 
             # extract interpoint data and weights
-            this_interpoint = self.interpoint_data.getrows(idx)
+            this_interpoint = self.interpoint_data.getrows(effect_idx)
             # this_weights_cause = np.array(self.p[(self.linkage[0][cause_idx], self.linkage[1][cause_idx])].flat)
             # this_weights_effect = np.array(self.p[(self.linkage[0][effect_idx], self.linkage[1][effect_idx])].flat)
             ## should be the same as:
@@ -617,7 +628,7 @@ class LocalSeppDeterministicNn(SeppDeterministicNn):
             # we need to maintain the total triggering influx to this datum
 
             total_effect = this_weights_effect.sum()
-            if total_effect == 0.:  # this point must arise from the background
+            if total_effect < (self.ndata * 1e-12):  # this point must arise from the background
                 self.trigger_kde.append(None)
             else:
                 trig_weights_total += total_effect
@@ -644,24 +655,20 @@ class LocalSeppDeterministicNn(SeppDeterministicNn):
         source dat(um/a).  The default behaviour assumes that delta_data = self.interpoint_data, so the indices
         are derived directly from linkages.
         """
-        import collections
-        if source_idx is None:
-            # default values for indices come from self.linkages
-            source_idx = self.linkage[0]
-            res = np.zeros_like(source_idx, dtype=float)
-        else:
-            res = np.zeros(len(source_idx), dtype=float)
+        res = np.zeros(delta_data.ndata, dtype=float)
+        # import ipdb; ipdb.set_trace()
 
-        # bundle source indices to ensure at most one call per local trigger KDE
-        ## TODO: consider adding this to __init_extra__ or similar to avoid having to recompute every time?
-        source_groupings = collections.defaultdict(list)
-        for (i, t) in enumerate(source_idx):
-            if hasattr(t, '__iter__'):
-                x = t
-            else:
-                x = [t]
-            for tt in x:
-                source_groupings[tt].append(i)
+        if source_idx is None:
+            source_groupings = self.source_groupings
+        else:
+            source_groupings = collections.defaultdict(list)
+            for (i, t) in enumerate(source_idx):
+                if hasattr(t, '__iter__'):
+                    x = t
+                else:
+                    x = [t]
+                for tt in x:
+                    source_groupings[tt].append(i)
 
         for t in source_groupings:
             this_delta_data = delta_data.getrows(source_groupings[t])
@@ -697,6 +704,8 @@ class LocalSeppDeterministicNn(SeppDeterministicNn):
         # set new P matrix
         new_p = sparse.csr_matrix((bg_component, bg_linkage), shape=(self.ndata, self.ndata))
         new_p[self.linkage] = trigger_component
+
+        # import ipdb; ipdb.set_trace()
 
         return new_p, l
 

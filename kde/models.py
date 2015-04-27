@@ -395,6 +395,7 @@ class KdeBase(object):
 class KdeBaseSeparable(KdeBase):
     """
     KDE that is separable in time and space.  Requires the use of SpaceTimeData class to tease apart separable dims
+    TODO: add test - permute time/space of input data and check that the PDF remains unchanged
     """
     data_class = SpaceTimeDataArray
 
@@ -632,6 +633,10 @@ class WeightedFixedBandwidthScottKde(WeightedFixedBandwidthKde):
         n_eff = self.weights.sum() ** 2 / sum(self.weights ** 2)
         bandwidths = self.raw_std_devs * n_eff ** (-1. / float(self.ndim + 4))
         self.bandwidths = np.tile(bandwidths, (self.ndata, 1))
+
+
+class WeightedFixedBandwidthScottKdeSeparable(WeightedFixedBandwidthScottKde, KdeBaseSeparable):
+    pass
 
 
 class WeightedVariableBandwidthKde(WeightedFixedBandwidthKde):

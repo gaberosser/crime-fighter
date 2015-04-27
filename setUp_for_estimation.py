@@ -21,7 +21,7 @@ niter = 75
 
 estimate_kwargs = {
     'ct': 1 / 10.,
-    'cd': 100,
+    'cd': 400,
     'frac_bg': 0.5,
 }
 
@@ -29,6 +29,7 @@ model_kwargs = {
     'parallel': True,
     # 'max_delta_t': 120, # set on each iteration
     'max_delta_t': 1200, # set on each iteration
+    # 'max_delta_d': 500, # set on each iteration
     'max_delta_d': 1000, # set on each iteration
     'bg_kde_kwargs': {'number_nn': [100, 15],
                       'min_bandwidth': None,
@@ -36,7 +37,7 @@ model_kwargs = {
     'trigger_kde_kwargs': {'number_nn': 15,
                            'min_bandwidth': None,
                            'strict': False,
-                           'tol': None},
+                           'tol': 1e-8},
     # 'estimation_function': lambda x, y: estimation.estimator_bowers_fixed_proportion_bg(x, y, **estimate_kwargs),
     'estimation_function': lambda x, y: estimation.estimator_exp_gaussian(x, y, **estimate_kwargs),
     'seed': 42,  # doesn't matter what this is, just want it fixed
@@ -56,6 +57,7 @@ chic_n = models.ChicagoDivision.objects.get(name='North').mpoly
 
 ## Load from file
 with open(os.path.join(scripts.IN_DIR, 'chicago_south', 'burglary.pickle'), 'r') as f:
+# with open(os.path.join(scripts.IN_DIR, 'chicago', 'burglary.pickle'), 'r') as f:
     res = dill.load(f)
 
 ## CAMDEN
