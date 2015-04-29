@@ -36,7 +36,8 @@ def pairwise_differences_indices(n):
     return idx_i, idx_j
 
 
-def linkages(data_source, max_t, max_d, data_target=None, chunksize=2**18, remove_coincident_pairs=False):
+def linkages(data_source, max_t, max_d, data_target=None, chunksize=2**18, remove_coincident_pairs=False,
+             spatial_only=False):
     """
     Compute the indices of datapoints that are within the following tolerances:
     interpoint distance less than max_d
@@ -48,6 +49,8 @@ def linkages(data_source, max_t, max_d, data_target=None, chunksize=2**18, remov
     :param data_target: optional EuclideanSpaceTimeData array.  If supplied, the linkage indices are between
     data_source and data_target, otherwise the two are set equal
     :param chunksize: The size of an iteration chunk.
+    :param remove_coincident_pairs: If True, linkages are forbidden between pairs of data where the spatial location is
+    identical. Required when snapping is present to avoid point mass formation.
     :return: tuple (idx_array_source, idx_array_target),
     """
     ndata_source = data_source.ndata
@@ -69,7 +72,10 @@ def linkages(data_source, max_t, max_d, data_target=None, chunksize=2**18, remov
         j = idx_j.flat[k:(k + chunksize)]
         dt = (data_target.time.getrows(j) - data_source.time.getrows(i)).toarray(0)
         dd = (data_target.space.getrows(j).distance(data_source.space.getrows(i))).toarray(0)
-        mask = (dt <= max_t) & (dt > 0.) & (dd <= max_d)
+        if spatial_only:
+            mask = (dd <= max_d)
+        else:
+            mask = (dt <= max_t) & (dt > 0.) & (dd <= max_d)
         if remove_coincident_pairs:
             mask = mask & (dd != 0)
         link_i.extend(i[mask])

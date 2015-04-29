@@ -338,6 +338,7 @@ class Sepp(SepBase):
 
         if spatial_only:
             ## FIXME: check norming here
+            ## Alternative: density(normed = False) / float(T) ??
             # estimate mean intensity per unit time
             T = np.ptp(self.data_time)
             k = num_bg / float(T)
@@ -370,7 +371,8 @@ class Sepp(SepBase):
         else:
             source_data = self.data
 
-        link_source, link_target = linkages(source_data, self.max_delta_t, self.max_delta_d, data_target=target_data)
+        link_source, link_target = linkages(source_data, self.max_delta_t, self.max_delta_d, data_target=target_data,
+                                            spatial_only=spatial_only)
         trigger = sparse.csr_matrix((source_data.ndata, target_data.ndata))
 
         if link_source.size:
@@ -378,9 +380,14 @@ class Sepp(SepBase):
             trigger[link_source, link_target] = self.trigger_density(delta_data, spatial_only=spatial_only)
 
         trigger = np.array(trigger.sum(axis=0))
+
+        # norm if spatial_only (same as background_density case)
+        if spatial_only:
+            T = np.ptp(self.data_time)
+            trigger /= T
+
         # reshape if target_data has a shape
         if target_data.original_shape:
-            ## FIXME: double check this reshape order
             trigger = trigger.reshape(target_data.original_shape)
         # else flatten
         else:
@@ -585,9 +592,9 @@ class LocalSeppDeterministicNn(SeppDeterministicNn):
     def __init_extra__(self, **kwargs):
         # disable parallel KDE as all of them will have 'small' amounts of data
         self.trigger_kde_kwargs['parallel'] = False
-        if not self.trigger_kde_kwargs.get('tol', None):
+        if not self.trigger_kde_kwargs.get('min_tol', None):
             # set default small tolerance to avoid numerical errors
-            self.trigger_kde_kwargs['tol'] = 1e-16
+            self.trigger_kde_kwargs['min_tol'] = 1e-16
 
         # bundle source indices to ensure at most one call per local trigger KDE
         self.source_groupings = collections.defaultdict(list)
@@ -605,50 +612,66 @@ class LocalSeppDeterministicNn(SeppDeterministicNn):
         trig_weights_total = 0.
         for i in range(self.ndata):
             # get relevant connections
-            # cause_idx = np.where(self.linkage[0] == i)[0]  # this datum is the PARENT
+            cause_idx = np.where(self.linkage[0] == i)[0]  # this datum is the PARENT
             effect_idx = np.where(self.linkage[1] == i)[0]  # this datum is the CHILD
-            # idx = np.concatenate((cause_idx, effect_idx))
 
-            if len(effect_idx) < 2:
+            # idx = cause_idx
+            idx = np.concatenate((cause_idx, effect_idx))
+
+            if len(idx) < 2 or len(effect_idx) == 0:
                 # either only one point, in which case we can't compute a bandwidth, or no points, in which case
                 # this point cannot be triggered by any other and must therefore be classified as 100% background
                 self.trigger_kde.append(None)
                 continue
 
             # extract interpoint data and weights
-            this_interpoint = self.interpoint_data.getrows(effect_idx)
-            # this_weights_cause = np.array(self.p[(self.linkage[0][cause_idx], self.linkage[1][cause_idx])].flat)
+            cause_interpoint = self.interpoint_data.getrows(cause_idx)
+
+            effect_interpoint = self.interpoint_data.getrows(effect_idx)
+            effect_interpoint.space *= -1
+
+            this_interpoint = cause_interpoint.append(effect_interpoint)
+
+            # this_weights_cause = np.array(self.p[(np.ones_like(cause_idx) * i, self.linkage[1][cause_idx])].flat)
             # this_weights_effect = np.array(self.p[(self.linkage[0][effect_idx], self.linkage[1][effect_idx])].flat)
             ## should be the same as:
-            this_weights_effect = np.array(self.p[(self.linkage[0][effect_idx], np.ones_like(effect_idx) * i)].flat)
+            this_weights = []
+            if len(cause_idx):
+                this_weights_cause = list(self.p[(np.ones_like(cause_idx) * i, self.linkage[1][cause_idx])].flat)
+                this_weights.extend(this_weights_cause)
 
-            # this_weights_all = np.array(self.p[(self.linkage[0][idx], self.linkage[1][idx])].flat)
-            this_weights_all = this_weights_effect
+            this_weights_effect = list(self.p[(self.linkage[0][effect_idx], np.ones_like(effect_idx) * i)].flat)
+            this_weights.extend(this_weights_effect)
+
+            this_weights = np.array(this_weights)
+
+            # this_weights = this_weights_cause
 
             # renormalise weights based on the total EFFECT density
             # the addition of 'cause' data merely serves to boost the effective number of sources in the KDE, but it
             # shouldn't increase the overall contribution to triggering TO this point
             # we need to maintain the total triggering influx to this datum
 
-            total_effect = this_weights_effect.sum()
+            total_effect = sum(this_weights_effect)
+            this_weights = this_weights / this_weights.sum() * total_effect
+
             if total_effect < (self.ndata * 1e-12):  # this point must arise from the background
                 self.trigger_kde.append(None)
             else:
                 trig_weights_total += total_effect
-                # this_weights_all = this_weights_all / this_weights_all.sum() * total_effect
                 try:
                     self.trigger_kde.append(
-                        self.trigger_kde_class(this_interpoint, weights=this_weights_all, **self.trigger_kde_kwargs)
+                        self.trigger_kde_class(this_interpoint, weights=this_weights, **self.trigger_kde_kwargs)
                     )
+
                 except (AttributeError, ValueError) as exc:
                     # only reason to end up here is a 'zero std' error
                     # for now, just ignore this datum.
                     ## FIXME: this is a hack and loses triggering density.
                     # a better fix involves extending the local neighbourhood to second gen. connections
-                    print "Unable to generate local KDE for datum %d" % i
-                    print repr(exc)
                     self.trigger_kde.append(None)
 
+        logger.info("Unable to define KDE for %d / %d data" % (sum([t is None for t in self.trigger_kde]), self.ndata))
         self.num_trig.append(trig_weights_total)
 
 

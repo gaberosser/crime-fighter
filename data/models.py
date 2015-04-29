@@ -187,7 +187,7 @@ class DataArray(Data):
                 warn("Adding data with no original shape - it will be coerced into the existing shape")
             if obj.original_shape != self.original_shape and self.original_shape is not None:
                 raise AttributeError("Attempting to add data with incompatible original shape.  Set strict=False to bypass this check.")
-        new_obj = DataArray(np.hstack((self.data, obj)))
+        new_obj = self.__class__(np.hstack((self.data, obj)))
         new_obj.original_shape = self.original_shape
         return new_obj
 
@@ -222,6 +222,13 @@ class DataArray(Data):
             return self.data[:, dim].reshape(self.original_shape)
         else:
             return self.data[:, dim].squeeze()
+
+    def append(self, obj):
+        obj = self.__class__(obj)
+        if obj.nd != self.nd:
+            raise AttributeError("Incompatible dimensions")
+        new_data = np.vstack((self.data, obj.data))
+        return self.__class__(new_data)
 
 
 class SpaceTimeDataArray(DataArray):

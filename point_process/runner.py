@@ -192,7 +192,8 @@ if __name__ == '__main__':
 
     c = simulate.LocalTriggeringSplitByQuartiles()
     c.t_total = 1500
-    c.num_to_prune = 2000
+    c.num_to_prune = 2500
+    c.seed(42)
 
 
     # c = simulate.HomogPoissonBackgroundSimulation()
@@ -214,15 +215,20 @@ if __name__ == '__main__':
 
     c.run()
     data = c.data[:, :3]
-    max_delta_t = 100
-    max_delta_d = 1.
+    max_delta_t = 200
+    max_delta_d = 3.
     # init_est_params = {
     #     'ct': 1/15.,
     #     'cd': 4.,
     # }
+    # init_est_params = {
+    #     'ct': 10,
+    #     'cd': .05,
+    #     'frac_bg': 0.5,
+    # }
     init_est_params = {
-        'ct': 10,
-        'cd': .05,
+        'ct': 1 / 500.,
+        'cd': 0.25,
         'frac_bg': 0.5,
     }
 
@@ -237,14 +243,15 @@ if __name__ == '__main__':
         # 'min_bandwidth': [1., .005, .05],
         'number_nn': 15,
         'strict': False,
+        'min_tol': 1e-4
     }
     # trigger_kde_kwargs = {
     #     'bandwidths': [4., 0.05]
     # }
 
 
-    r = models.SeppStochasticNn(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
-                                bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
+    # r = models.SeppStochasticNn(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
+    #                             bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
     # r = models.SeppStochasticStationaryBg(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t)
     # r = models.SeppStochasticNnStExp(data=data, max_delta_d=0.75, max_delta_t=80,
     #                             bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
@@ -261,6 +268,9 @@ if __name__ == '__main__':
     # r = models.SeppStochasticNnIsotropicTrigger(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
     #                                             bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs,
     #                                             seed=42)
+    r = models.LocalSeppDeterministicNn(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
+                                        bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs,
+                                        seed=42)
 
 
     # p = estimation.estimator_bowers(data, r.linkage, **init_est_params)
@@ -268,7 +278,7 @@ if __name__ == '__main__':
     r.p = p
 
     # set seed for consistency
-    r.set_seed(42)
+    # r.set_seed(42)
 
     try:
         ps = r.train(niter=num_iter)
