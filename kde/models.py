@@ -317,11 +317,15 @@ class KdeBase(object):
                     mp.Pool(processes=self.ncpu, initializer=shared_process_init,
                             initargs=(flat_data_ctypes_p, target.shape))
             ) as pool:
-                z = pool.map(partial(runner_shared, fstr=funcstr), self.kernel_clusters)
+                # z = pool.map(partial(runner_shared, fstr=funcstr), self.kernel_clusters)
+                z = pool.map_async(partial(runner_shared, fstr=funcstr), self.kernel_clusters)
+                z = z.get(1e100)
 
         else:
             with closing(mp.Pool(processes=self.ncpu)) as pool:
-                z = pool.map(partial(runner, fstr=funcstr, fd=target), self.kernel_clusters)
+                # z = pool.map(partial(runner, fstr=funcstr, fd=target), self.kernel_clusters)
+                z = pool.map_async(partial(runner, fstr=funcstr, fd=target), self.kernel_clusters)
+                z = z.get(1e100)
 
         return reduce(operator.add, z)
 
@@ -340,10 +344,14 @@ class KdeBase(object):
                     mp.Pool(processes=self.ncpu, initializer=shared_process_init,
                             initargs=(flat_data_ctypes_p, target.shape))
             ) as pool:
-                z = sum(pool.map(partial(runner_additive_shared, fstr=funcstr, **kwargs), self.kernel_clusters))
+                # z = sum(pool.map(partial(runner_additive_shared, fstr=funcstr, **kwargs), self.kernel_clusters))
+                z = pool.map_async(partial(runner_additive_shared, fstr=funcstr, **kwargs), self.kernel_clusters)
+                z = sum(z.get(1e100))
         else:
             with closing(mp.Pool(processes=self.ncpu)) as pool:
-                z = sum(pool.map(partial(runner_additive, fstr=funcstr, fd=target, **kwargs), self.kernel_clusters))
+                # z = sum(pool.map(partial(runner_additive, fstr=funcstr, fd=target, **kwargs), self.kernel_clusters))
+                z = pool.map_async(partial(runner_additive, fstr=funcstr, fd=target, **kwargs), self.kernel_clusters)
+                z = sum(z.get(1e100))
 
         if normed:
             z /= float(self.norm_constant)

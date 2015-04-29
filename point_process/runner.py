@@ -179,22 +179,43 @@ if __name__ == '__main__':
 
     logger = logging.getLogger('kde.models')
 
-    num_iter = 100
+    # num_iter = 100
+    num_iter = 30
     parallel = True
     t_total = None
-    # c, data = initial_simulation(t_total=t_total)
-    # max_delta_t = 100
-    # max_delta_d = 0.75
 
     # c = simulate.MySimulation1()
     # c.t_total = 1000
     # c.num_to_prune = 2000  # should leave ~2000 datapoints
-    c = simulate.MohlerSimulation()
-    c.trigger_params['sigma'] = [0.1, 0.1]
+
+    # c = simulate.MohlerSimulation()
+
+    c = simulate.LocalTriggeringSplitByQuartiles()
+    c.t_total = 1500
+    c.num_to_prune = 2000
+
+
+    # c = simulate.HomogPoissonBackgroundSimulation()
+    # c.bg_params['xmin'] = -2
+    # c.bg_params['xmax'] = 2
+    # c.bg_params['ymin'] = -20
+    # c.bg_params['ymax'] = 20
+
+    # c = simulate.PatchyGaussianSumBackground()
+    # c.bg_params[0]['location'] = [-5, -5]
+    # c.bg_params[1]['location'] = [-5, 5]
+    # c.bg_params[2]['location'] = [5, -5]
+    # c.bg_params[3]['location'] = [5, 5]
+    # c.bg_params[0]['sigma'] = [.5, .5]
+    # c.bg_params[1]['sigma'] = [.5, .5]
+    # c.bg_params[2]['sigma'] = [.5, .5]
+    # c.bg_params[3]['sigma'] = [.5, .5]
+    # c.t_total = 1500
+
     c.run()
     data = c.data[:, :3]
     max_delta_t = 100
-    max_delta_d = 0.75
+    max_delta_d = 1.
     # init_est_params = {
     #     'ct': 1/15.,
     #     'cd': 4.,
@@ -222,8 +243,8 @@ if __name__ == '__main__':
     # }
 
 
-    # r = models.SeppStochasticNn(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
-    #                             bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
+    r = models.SeppStochasticNn(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
+                                bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
     # r = models.SeppStochasticStationaryBg(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t)
     # r = models.SeppStochasticNnStExp(data=data, max_delta_d=0.75, max_delta_t=80,
     #                             bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
@@ -237,8 +258,9 @@ if __name__ == '__main__':
     #                                bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
     # r = models.SeppDeterministicNnReflected(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
     #                                bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
-    r = models.SeppStochasticNnIsotropicTrigger(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
-                                                bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
+    # r = models.SeppStochasticNnIsotropicTrigger(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
+    #                                             bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs,
+    #                                             seed=42)
 
 
     # p = estimation.estimator_bowers(data, r.linkage, **init_est_params)

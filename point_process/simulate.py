@@ -274,17 +274,57 @@ class MohlerSimulation(SeppSimulation):
         self.num_to_prune = 2000
 
 
-class MySimulation1(SeppSimulation):
+
+class HomogPoissonBackgroundSimulation(MohlerSimulation):
 
     @property
     def default_bg_params(self):
-        gen_obj = lambda pos: {
-            'location': pos,
-            'intensity': 1.25,  # events day^-1
-            'sigma': [.25, .25],
+        return {
+            'intensity': 5,
+            'xmin': -10,
+            'xmax': 10,
+            'ymin': -10,
+            'ymax': 10,
         }
+
+    def initialise_background(self):
+        """ Simulate background events as a bounded homogeneous Poisson process """
+        bg = self.bg_params
+        number_bg = self.prng.poisson(bg['intensity'] * self.t_total)
+        # background event times uniform on interval
+        this_times = self.prng.rand(number_bg) * self.t_total
+        # background locations distributed according to bg_params
+        x_locs = self.prng.rand(number_bg) * (bg['xmax'] - bg['xmin']) + bg['xmin']
+        y_locs = self.prng.rand(number_bg) * (bg['ymax'] - bg['ymin']) + bg['ymin']
+        data = np.array([[i, t, x, y, np.nan] for (i, t), x, y in zip(enumerate(this_times), x_locs, y_locs)])
+        return data
+
+
+class PatchyGaussianSumBackground(SeppSimulation):
+
+    @property
+    def default_bg_params(self):
         return [
-            gen_obj([-1., -1.]), gen_obj([-1., 1.]), gen_obj([1., -1.]), gen_obj([1., 1.])
+            {
+                'location': [-10, -10],
+                'intensity': 1.,
+                'sigma': [5., 5.],
+            },
+            {
+                'location': [-10, 10],
+                'intensity': 1.,
+                'sigma': [5., 5.],
+            },
+            {
+                'location': [10, -10],
+                'intensity': 1.,
+                'sigma': [5., 5.],
+            },
+            {
+                'location': [10, 10],
+                'intensity': 1.,
+                'sigma': [5., 5.],
+            }
         ]
 
     @property
@@ -292,28 +332,66 @@ class MySimulation1(SeppSimulation):
         return {
             'intensity': 0.2,  # events day^-1
             'time_decay': 0.1,  # day^-1
-            'sigma': [.1, .05]
+            'sigma': [.01, .1]
         }
 
 
-class MySimulation2(SeppSimulation):
-
-    @property
-    def default_bg_params(self):
-        gen_obj = lambda pos: {
-            'location': pos,
-            'intensity': 1.25,  # events day^-1
-            'sigma': [.25, .25],
-        }
-        xs, ys = np.meshgrid(*[range(-3, 4)] * 2)
-        return [
-            gen_obj([x, y]) for x, y in zip(xs.flat, ys.flat)
-        ]
+class LocalTriggeringSplitByQuartiles(SeppSimulation):
 
     @property
     def default_trigger_params(self):
-        return {
-            'intensity': 0.2,  # events day^-1
+        q1 = {
+            'intensity': 0.2,
             'time_decay': 0.1,  # day^-1
-            'sigma': [.1, .05]
+            'sigma': [0.01, 0.1]
         }
+        q2 = {
+            'intensity': 0.2,
+            'time_decay': 0.1,  # day^-1
+            'sigma': [0.1, 0.01]
+        }
+        q3 = {
+            'intensity': 0.2,
+            'time_decay': 0.1,  # day^-1
+            'sigma': [0.01, 0.01]
+        }
+        q4 = {
+            'intensity': 0.2,
+            'time_decay': 0.1,  # day^-1
+            'sigma': [0.1, 0.1]
+        }
+        def triggering(x, y):
+            if x > 0 and y > 0:
+                return q1
+            elif x > 0 and y <= 0:
+                return q2
+            elif x <= 0 and y <= 0:
+                return q3
+            elif x <= 0 and y > 0:
+                return q4
+        return triggering
+
+    def trigger_cov(self, trigger_params):
+        trigger_var = np.array(trigger_params['sigma']) ** 2
+        return np.diag(trigger_var)
+
+    def non_stationary_poisson_inverse(self, u, x, y):
+        # inverse function for simulating non-stationary poisson process
+        trigger_params = self.trigger_params(x, y)
+        return -1.0 / float(trigger_params['time_decay']) * math.log((trigger_params['intensity'] - u) /
+                                                                          trigger_params['intensity'])
+
+    def _point_aftershocks(self, t, x, y, idx):
+        """ Generate sequence of triggered events for the given (t, x, y) datum.
+            Events are appended to a list. NB They are not given an index - this should be done in the main
+             calling routine """
+
+        new_t = nonstationary_poisson(lambda u: self.non_stationary_poisson_inverse(u, x, y), self.t_total - t, prng=self.prng)
+        # get triggering specific to this parent event
+        trigger_params = self.trigger_params(x, y)
+        triggered = []
+
+        loc = self.prng.multivariate_normal(np.array([x, y]), self.trigger_cov(trigger_params), size=len(new_t))
+        for tn, xn in zip(new_t, loc):
+            triggered.append([t + tn, xn[0], xn[1], idx])
+        return np.array(triggered)

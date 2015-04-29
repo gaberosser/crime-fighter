@@ -313,6 +313,7 @@ def radial_spatial_triggering_plots(ppobj, simobj=None, xmax=None, ymax=None, cb
         ax2.set_xlabel('X (metres)')
         ax2.set_xlim([-xmax, xmax])
         ax2.set_ylim([-ymax, ymax])
+        ax2.set_aspect('equal')
         if cbar:
             hbar = fig.colorbar(cont2, ax=[ax1, ax2])
     else:

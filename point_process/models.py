@@ -345,7 +345,7 @@ class Sepp(SepBase):
         else:
             return self.bg_kde.pdf(target_data, normed=False)
 
-    def trigger_density(self, delta_data):
+    def trigger_density(self, delta_data, spatial_only=False):
         """
         Return the (unnormalised) trigger density
         Integral over all data dimensions should return num_trig / num_events... This kernel is then summed over all
@@ -355,9 +355,12 @@ class Sepp(SepBase):
         if self.trigger_kde is None:
             return np.zeros(delta_data.ndata)
 
-        return self.trigger_kde.pdf(delta_data, normed=False) / self.ndata
+        if spatial_only:
+            return self.trigger_kde.partial_marginal_pdf(delta_data.space, normed=False) / self.ndata
+        else:
+            return self.trigger_kde.pdf(delta_data, normed=False) / self.ndata
 
-    def trigger_density_in_place(self, target_data, source_data=None):
+    def trigger_density_in_place(self, target_data, source_data=None, spatial_only=False):
         """
         Return the sum of trigger densities at the points in target_data.
         Optionally supply new source data to be used, otherwise self.data is used.
@@ -372,7 +375,7 @@ class Sepp(SepBase):
 
         if link_source.size:
             delta_data = target_data.getrows(link_target) - source_data.getrows(link_source)
-            trigger[link_source, link_target] = self.trigger_density(delta_data)
+            trigger[link_source, link_target] = self.trigger_density(delta_data, spatial_only=spatial_only)
 
         trigger = np.array(trigger.sum(axis=0))
         # reshape if target_data has a shape
