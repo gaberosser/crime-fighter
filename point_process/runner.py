@@ -221,16 +221,16 @@ if __name__ == '__main__':
     #     'ct': 1/15.,
     #     'cd': 4.,
     # }
-    # init_est_params = {
-    #     'ct': 10,
-    #     'cd': .05,
-    #     'frac_bg': 0.5,
-    # }
     init_est_params = {
-        'ct': 1 / 500.,
-        'cd': 0.25,
+        'ct': 1 / 300.,
+        'cd': .5,
         'frac_bg': 0.5,
     }
+    # init_est_params = {
+    #     'ct': 1 / 500.,
+    #     'cd': 0.25,
+    #     'frac_bg': 0.5,
+    # }
 
     ndata = data.shape[0]
 
@@ -243,7 +243,8 @@ if __name__ == '__main__':
         # 'min_bandwidth': [1., .005, .05],
         'number_nn': 15,
         'strict': False,
-        'min_tol': 1e-4
+        'min_tol': 1e-4,
+        'n_neighbours': 5,
     }
     # trigger_kde_kwargs = {
     #     'bandwidths': [4., 0.05]
@@ -268,9 +269,10 @@ if __name__ == '__main__':
     # r = models.SeppStochasticNnIsotropicTrigger(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
     #                                             bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs,
     #                                             seed=42)
-    r = models.LocalSeppDeterministicNn(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
-                                        bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs,
-                                        seed=42)
+    # r = models.LocalSeppDeterministicNn(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
+    #                                     bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
+    r = models.LocalSeppDeterministic2(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
+                                       bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
 
 
     # p = estimation.estimator_bowers(data, r.linkage, **init_est_params)

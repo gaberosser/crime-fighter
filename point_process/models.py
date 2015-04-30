@@ -1,5 +1,6 @@
 __author__ = 'gabriel'
 
+from sklearn.neighbors import NearestNeighbors
 from utils import linkages, random_sample_from_p
 from kde import models as pp_kde
 import numpy as np
@@ -734,6 +735,80 @@ class LocalSeppDeterministicNn(SeppDeterministicNn):
         # import ipdb; ipdb.set_trace()
 
         return new_p, l
+
+
+class LocalSeppDeterministic2(LocalSeppDeterministicNn):
+    """
+    Once more, with feeling.
+    """
+    def __init_extra__(self, **kwargs):
+        # disable parallel KDE as all of them will have 'small' amounts of data
+        self.trigger_kde_kwargs['parallel'] = False
+        if not self.trigger_kde_kwargs.get('min_tol', None):
+            # set default small tolerance to avoid numerical errors
+            self.trigger_kde_kwargs['min_tol'] = 1e-8
+
+        self.n_neighbours = kwargs.get('n_neighbours', 15)  # number of neighbours defining a neighbourhood
+
+        # compute neighbourhoods for each point - based on the SPATIAL NEIGHBOURHOOD only
+        self.source_groupings = collections.defaultdict(list)
+        self.linkage_groupings = collections.defaultdict(list)
+
+        try:
+            nn_obj = NearestNeighbors(self.n_neighbours).fit(self.data.space)
+        except ValueError as exc:
+            print repr(exc)
+            raise
+        else:
+            nn_obj.fit(self.data.space.data)
+            nn_dist, idx = nn_obj.kneighbors(self.data.space)
+
+        self.nn_dist = nn_dist[:, -1]
+        for i in range(self.ndata):
+            for j in idx[i]:
+                # skip self-matches (i.e. background terms)
+                ind = np.where(self.linkage[1] == j)[0]
+                self.source_groupings[i].extend(zip(self.linkage[0][ind], self.linkage[1][ind]))
+                # self.source_groupings[i].extend([(k, j) for k in self.linkage_cols[j] if j != k])
+                self.linkage_groupings[i].extend(ind)
+
+
+    def set_kdes(self):
+        # BG KDE: as in parent
+        p_bg = self.p.diagonal()
+        self.bg_kde = self.bg_kde_class(self.data, weights=p_bg, **self.bg_kde_kwargs)
+        self.num_bg.append(sum(p_bg))
+
+        # one KDE defined for each data point, based on the weightings at those points
+        self.trigger_kde = []
+        trig_weights_total = 0.
+        for i in range(self.ndata):
+            # get relevant connections
+            row, col = zip(*self.source_groupings[i])  # unzip a list of tuples
+            weights = np.array(self.p[row, col]).flatten() / float(self.n_neighbours)  # normed
+            interpoint = self.interpoint_data[self.linkage_groupings[i]]
+
+            total_effect = sum(weights)
+
+            if total_effect < (1e-6):  # this point must arise from the background (TODO: set this more intelligently?)
+                print "Kernel %d weights too low" % i
+                self.trigger_kde.append(None)
+            else:
+                trig_weights_total += total_effect / float(self.n_neighbours)
+                try:
+                    self.trigger_kde.append(
+                        self.trigger_kde_class(interpoint, weights=weights, **self.trigger_kde_kwargs)
+                    )
+                except (AttributeError, ValueError) as exc:
+                    # only reason to end up here is a 'zero std' error
+                    # for now, just ignore this datum.
+                    ## FIXME: this is a hack and loses triggering density.
+                    # a better fix involves extending the local neighbourhood to second gen. connections
+                    self.trigger_kde.append(None)
+
+        logger.info("Unable to define KDE for %d / %d data" % (sum([t is None for t in self.trigger_kde]), self.ndata))
+        self.num_trig.append(trig_weights_total)
+
 
 
 
