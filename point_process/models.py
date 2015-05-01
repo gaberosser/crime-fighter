@@ -675,7 +675,6 @@ class LocalSeppDeterministicNn(SeppDeterministicNn):
         logger.info("Unable to define KDE for %d / %d data" % (sum([t is None for t in self.trigger_kde]), self.ndata))
         self.num_trig.append(trig_weights_total)
 
-
     def trigger_density(self, delta_data, source_idx=None):
         """
         :param source_idx: Iterable. For each element of delta_data, source_idx gives the index or indices of the relevant
@@ -809,8 +808,37 @@ class LocalSeppDeterministic2(LocalSeppDeterministicNn):
         logger.info("Unable to define KDE for %d / %d data" % (sum([t is None for t in self.trigger_kde]), self.ndata))
         self.num_trig.append(trig_weights_total)
 
+    def trigger_density(self, delta_data, source_idx=None):
+        """
+        :param source_idx: Iterable. For each element of delta_data, source_idx gives the index or indices of the relevant
+        source dat(um/a).  The default behaviour assumes that delta_data = self.interpoint_data, so the indices
+        are derived directly from linkages.
+        """
+        res = np.zeros(delta_data.ndata, dtype=float)
+        # import ipdb; ipdb.set_trace()
 
+        if source_idx is None:
+            linkage_groupings = self.linkage_groupings
+        else:
+            linkage_groupings = collections.defaultdict(list)
+            for (i, t) in enumerate(source_idx):
+                if hasattr(t, '__iter__'):
+                    x = t
+                else:
+                    x = [t]
+                for tt in x:
+                    linkage_groupings[tt].append(i)
 
+        for t in linkage_groupings:
+            print "Source %d" % t
+            this_delta_data = delta_data.getrows(linkage_groupings[t])
+            if self.trigger_kde[t] is not None:
+                this_res = self.trigger_kde[t].pdf(this_delta_data, normed=False)
+            else:
+                this_res = np.zeros(len(linkage_groupings[t]))
+            res[linkage_groupings[t]] += this_res
+
+        return res
 
 def fluctuation_pre_convergence(sepp_obj, niter=15):
     """

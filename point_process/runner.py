@@ -191,7 +191,7 @@ if __name__ == '__main__':
     # c = simulate.MohlerSimulation()
 
     c = simulate.LocalTriggeringSplitByQuartiles()
-    c.t_total = 1500
+    c.t_total = 1000
     c.num_to_prune = 2500
     c.seed(42)
 
@@ -262,8 +262,8 @@ if __name__ == '__main__':
     #                                     bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
     # r = models.SeppStochasticNnOneSided(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
     #                                     bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
-    # r = models.SeppDeterministicNn(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
-    #                                bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
+    r = models.SeppDeterministicNn(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
+                                   bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
     # r = models.SeppDeterministicNnReflected(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
     #                                bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
     # r = models.SeppStochasticNnIsotropicTrigger(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
@@ -271,8 +271,9 @@ if __name__ == '__main__':
     #                                             seed=42)
     # r = models.LocalSeppDeterministicNn(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
     #                                     bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
-    r = models.LocalSeppDeterministic2(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
-                                       bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
+    # r = models.LocalSeppDeterministic2(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
+    #                                    bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
+
 
 
     # p = estimation.estimator_bowers(data, r.linkage, **init_est_params)
