@@ -846,6 +846,8 @@ class FixedBandwidthRadialKde(FixedBandwidthKde):
         target = self.reduce_spatial_data(target)
         return self._additive_operation('partial_marginal_pdf', target, **kwargs)
 
+    ## TODO: can we (easily) add a marginal_pdf in Cartesian coordinates, so that the multiplots method works?
+
 
 class VariableBandwidthRadialKde(FixedBandwidthRadialKde, VariableBandwidthKde):
     pass
