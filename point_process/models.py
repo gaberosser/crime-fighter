@@ -763,6 +763,7 @@ class LocalSeppDeterministic2(LocalSeppDeterministicNn):
             nn_dist, idx = nn_obj.kneighbors(self.data.space)
 
         self.nn_dist = nn_dist[:, -1]
+        # import ipdb; ipdb.set_trace()
         for i in range(self.ndata):
             for j in idx[i]:
                 # skip self-matches (i.e. background terms)
@@ -783,7 +784,11 @@ class LocalSeppDeterministic2(LocalSeppDeterministicNn):
         trig_weights_total = 0.
         for i in range(self.ndata):
             # get relevant connections
-            row, col = zip(*self.source_groupings[i])  # unzip a list of tuples
+            ind = self.linkage_groupings[i]
+            row = self.linkage[0][ind]
+            col = self.linkage[1][ind]
+            # row, col = zip(*self.source_groupings[i])  # unzip a list of tuples
+            # import ipdb; ipdb.set_trace()
             weights = np.array(self.p[row, col]).flatten() / float(self.n_neighbours)  # normed
             interpoint = self.interpoint_data[self.linkage_groupings[i]]
 
@@ -793,7 +798,7 @@ class LocalSeppDeterministic2(LocalSeppDeterministicNn):
                 print "Kernel %d weights too low" % i
                 self.trigger_kde.append(None)
             else:
-                trig_weights_total += total_effect / float(self.n_neighbours)
+                trig_weights_total += total_effect
                 try:
                     self.trigger_kde.append(
                         self.trigger_kde_class(interpoint, weights=weights, **self.trigger_kde_kwargs)
@@ -820,23 +825,26 @@ class LocalSeppDeterministic2(LocalSeppDeterministicNn):
         if source_idx is None:
             linkage_groupings = self.linkage_groupings
         else:
-            linkage_groupings = collections.defaultdict(list)
-            for (i, t) in enumerate(source_idx):
-                if hasattr(t, '__iter__'):
-                    x = t
-                else:
-                    x = [t]
-                for tt in x:
-                    linkage_groupings[tt].append(i)
+            # this part is now broken
+            # TODO: FIXME
+            raise NotImplementedError()
+            # linkage_groupings = collections.defaultdict(list)
+            # for (j, u) in enumerate(source_idx):
+            #     if hasattr(u, '__iter__'):
+            #         x = u
+            #     else:
+            #         x = [u]
+            #     for tt in x:
+            #         linkage_groupings[tt].append(j)
 
-        for t in linkage_groupings:
-            print "Source %d" % t
-            this_delta_data = delta_data.getrows(linkage_groupings[t])
-            if self.trigger_kde[t] is not None:
-                this_res = self.trigger_kde[t].pdf(this_delta_data, normed=False)
+        for i in range(self.ndata):
+            # print "Source %d" % i
+            this_delta_data = delta_data.getrows(linkage_groupings[i])
+            if self.trigger_kde[i] is not None:
+                this_res = self.trigger_kde[i].pdf(this_delta_data, normed=False)
             else:
-                this_res = np.zeros(len(linkage_groupings[t]))
-            res[linkage_groupings[t]] += this_res
+                this_res = np.zeros(len(linkage_groupings[i]))
+            res[linkage_groupings[i]] += this_res
 
         return res
 
