@@ -244,7 +244,6 @@ if __name__ == '__main__':
         'number_nn': 15,
         'strict': False,
         'min_tol': 1e-4,
-        'n_neighbours': 5,
     }
     # trigger_kde_kwargs = {
     #     'bandwidths': [4., 0.05]
@@ -262,8 +261,8 @@ if __name__ == '__main__':
     #                                     bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
     # r = models.SeppStochasticNnOneSided(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
     #                                     bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
-    r = models.SeppDeterministicNn(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
-                                   bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
+    # r = models.SeppDeterministicNn(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
+    #                                bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
     # r = models.SeppDeterministicNnReflected(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
     #                                bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
     # r = models.SeppStochasticNnIsotropicTrigger(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
@@ -271,8 +270,9 @@ if __name__ == '__main__':
     #                                             seed=42)
     # r = models.LocalSeppDeterministicNn(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
     #                                     bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
-    # r = models.LocalSeppDeterministic2(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
-    #                                    bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
+    r = models.LocalSeppDeterministic2(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
+                                       bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs,
+                                       n_neighbours=5)
 
 
 
