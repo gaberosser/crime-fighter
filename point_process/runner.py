@@ -180,7 +180,7 @@ if __name__ == '__main__':
     logger = logging.getLogger('kde.models')
 
     # num_iter = 100
-    num_iter = 30
+    num_iter = 100
     parallel = True
     t_total = None
 
@@ -191,7 +191,7 @@ if __name__ == '__main__':
     # c = simulate.MohlerSimulation()
 
     c = simulate.LocalTriggeringSplitByQuartiles()
-    c.t_total = 1000
+    c.t_total = 1500
     c.num_to_prune = 2500
     c.seed(42)
 
@@ -215,15 +215,15 @@ if __name__ == '__main__':
 
     c.run()
     data = c.data[:, :3]
-    max_delta_t = 200
-    max_delta_d = 3.
+    max_delta_t = 100
+    max_delta_d = 0.5
     # init_est_params = {
     #     'ct': 1/15.,
     #     'cd': 4.,
     # }
     init_est_params = {
-        'ct': 1 / 300.,
-        'cd': .5,
+        'ct': 1 / 100.,
+        'cd': .3,
         'frac_bg': 0.5,
     }
     # init_est_params = {
@@ -272,7 +272,7 @@ if __name__ == '__main__':
     #                                     bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
     r = models.LocalSeppDeterministic2(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
                                        bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs,
-                                       n_neighbours=5)
+                                       n_neighbours=30)
 
 
 

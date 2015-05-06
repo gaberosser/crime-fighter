@@ -341,22 +341,22 @@ class LocalTriggeringSplitByQuartiles(SeppSimulation):
     @property
     def default_trigger_params(self):
         q1 = {
-            'intensity': 0.2,
+            'intensity': 0.4,
             'time_decay': 0.1,  # day^-1
             'sigma': [0.01, 0.1]
         }
         q2 = {
-            'intensity': 0.2,
+            'intensity': 0.4,
             'time_decay': 0.1,  # day^-1
             'sigma': [0.1, 0.01]
         }
         q3 = {
-            'intensity': 0.2,
+            'intensity': 0.4,
             'time_decay': 0.1,  # day^-1
             'sigma': [0.01, 0.01]
         }
         q4 = {
-            'intensity': 0.2,
+            'intensity': 0.4,
             'time_decay': 0.1,  # day^-1
             'sigma': [0.1, 0.1]
         }
