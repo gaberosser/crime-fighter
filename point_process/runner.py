@@ -180,7 +180,7 @@ if __name__ == '__main__':
     logger = logging.getLogger('kde.models')
 
     # num_iter = 100
-    num_iter = 100
+    num_iter = 20
     parallel = True
     t_total = None
 
@@ -190,7 +190,7 @@ if __name__ == '__main__':
 
     # c = simulate.MohlerSimulation()
 
-    c = simulate.LocalTriggeringSplitByQuartiles()
+    c = simulate.LocalTriggeringFourPoints()
     c.t_total = 1500
     c.num_to_prune = 2500
     c.seed(42)
@@ -243,7 +243,7 @@ if __name__ == '__main__':
         # 'min_bandwidth': [1., .005, .05],
         'number_nn': 15,
         'strict': False,
-        'min_tol': 1e-4,
+        'min_tol': 1e-8,
     }
     # trigger_kde_kwargs = {
     #     'bandwidths': [4., 0.05]
@@ -261,8 +261,8 @@ if __name__ == '__main__':
     #                                     bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
     # r = models.SeppStochasticNnOneSided(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
     #                                     bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
-    # r = models.SeppDeterministicNn(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
-    #                                bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
+    r = models.SeppDeterministicNn(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
+                                   bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
     # r = models.SeppDeterministicNnReflected(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
     #                                bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
     # r = models.SeppStochasticNnIsotropicTrigger(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
@@ -270,9 +270,9 @@ if __name__ == '__main__':
     #                                             seed=42)
     # r = models.LocalSeppDeterministicNn(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
     #                                     bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
-    r = models.LocalSeppDeterministic2(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
-                                       bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs,
-                                       n_neighbours=30)
+    # r = models.LocalSeppDeterministic2(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
+    #                                    bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs,
+    #                                    n_neighbours=50)
 
 
 
@@ -288,8 +288,17 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         num_iter = len(r.num_bg)
 
+    # rl = models.LocalSeppDeterministic3(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
+    #                                     bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs,
+    #                                     n_neighbours=200)
+    # rl.p = r.p
+    # try:
+    #     psl = rl.train(niter=num_iter)
+    # except KeyboardInterrupt:
+    #     pass
+
     # r = noisy_init(c)
     # num_iter = len(r.num_bg)
 
     # plots
-    plotting.multiplots(r, c)
+    # plotting.multiplots(r, c)

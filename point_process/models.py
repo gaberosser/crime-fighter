@@ -753,6 +753,7 @@ class LocalSeppDeterministic2(LocalSeppDeterministicNn):
         # compute neighbourhoods for each point - based on the SPATIAL NEIGHBOURHOOD only
         self.source_groupings = collections.defaultdict(list)
         self.linkage_groupings = collections.defaultdict(list)
+        self.linkage_counts = np.zeros(self.linkage[0].size)
 
         try:
             nn_obj = NearestNeighbors(self.n_neighbours).fit(self.data.space)
@@ -765,14 +766,19 @@ class LocalSeppDeterministic2(LocalSeppDeterministicNn):
 
         self.nn_dist = nn_dist[:, -1]
         # import ipdb; ipdb.set_trace()
-        for i in range(self.ndata):
-            for j in idx[i]:
+        for i in range(self.ndata):  # all neigbourhood centres
+            for j in idx[i]:  # iterate over all points in the spatial neighbourhood
                 # self-matches (i.e. background) are not included in self.linkage
                 # find every interaction whose EFFECT is within the neighbourhood
+                # i.e. the direction of causality is INTO the neighbourhood
                 ind = np.where(self.linkage[1] == j)[0]
                 self.source_groupings[i].extend(zip(self.linkage[0][ind], self.linkage[1][ind]))
-                # self.source_groupings[i].extend([(k, j) for k in self.linkage_cols[j] if j != k])
                 self.linkage_groupings[i].extend(ind)
+                self.linkage_counts[ind] += 1.
+
+        # for simplicity, cast back to normal dict
+        self.source_groupings = dict(self.source_groupings)
+        self.linkage_groupings = dict(self.linkage_groupings)
 
     def set_kdes(self):
         # BG KDE: as in parent
@@ -790,22 +796,18 @@ class LocalSeppDeterministic2(LocalSeppDeterministicNn):
                 ind = self.linkage_groupings[i]
                 row = self.linkage[0][ind]
                 col = self.linkage[1][ind]
-                # row, col = zip(*self.source_groupings[i])  # unzip a list of tuples
-                # import ipdb; ipdb.set_trace()
-                weights = np.array(self.p[row, col]).flatten() / float(self.n_neighbours)  # normed
+
+                # weights = np.array(self.p[row, col]).flatten() / float(self.n_neighbours)  # normed
+                weights = np.array(self.p[row, col]).flatten() / self.linkage_counts[ind]  # normed
                 interpoint = self.interpoint_data[self.linkage_groupings[i]]
 
                 total_effect = sum(weights)
 
                 if total_effect < (1e-6):  # this point must arise from the background (TODO: set this more intelligently?)
                     print "Kernel %d weights too low" % i
-                    # self.trigger_kde.append(None)
                 else:
                     trig_weights_total += total_effect
                     this_tkde = self.trigger_kde_class(interpoint, weights=weights, **self.trigger_kde_kwargs)
-                    # self.trigger_kde.append(
-                    #     self.trigger_kde_class(interpoint, weights=weights, **self.trigger_kde_kwargs)
-                    # )
             except (AttributeError, ValueError) as exc:
 
                 # only reason to end up here is a 'zero std' error
@@ -816,7 +818,9 @@ class LocalSeppDeterministic2(LocalSeppDeterministicNn):
             finally:
                 self.trigger_kde.add_kde(this_tkde)
 
-        logger.info("Unable to define KDE for %d / %d data" % (sum([t is None for t in self.trigger_kde]), self.ndata))
+        n_failed = sum([t is None for t in self.trigger_kde])
+        if n_failed:
+            logger.info("Unable to define KDE for %d / %d data" % (n_failed, self.ndata))
         self.num_trig.append(trig_weights_total)
 
     def trigger_density(self, delta_data, source_idx=None):
@@ -826,7 +830,6 @@ class LocalSeppDeterministic2(LocalSeppDeterministicNn):
         are derived directly from linkages.
         """
         res = np.zeros(delta_data.ndata, dtype=float)
-        # import ipdb; ipdb.set_trace()
 
         if source_idx is not None:
             raise NotImplementedError()
@@ -851,34 +854,128 @@ class LocalSeppDeterministic2(LocalSeppDeterministicNn):
             if data_array[i] is not None:
                 res[idx_array[i]] = separate_res[i]
 
+        return res
 
 
+class LocalSeppDeterministic3(LocalSeppDeterministicNn):
+    """
+    Once more, with feeling.
+    """
+    def __init_extra__(self, **kwargs):
+        # disable parallel KDE as all of them will have 'small' amounts of data
+        self.trigger_kde_kwargs['parallel'] = False
+        if not self.trigger_kde_kwargs.get('min_tol', None):
+            # set default small tolerance to avoid numerical errors
+            self.trigger_kde_kwargs['min_tol'] = 1e-8
 
-        # if source_idx is None:
-        #     linkage_groupings = self.linkage_groupings
-        # else:
-        #     # this part is now broken
-        #     # TODO: FIXME
-        #     raise NotImplementedError()
-        #     # linkage_groupings = collections.defaultdict(list)
-        #     # for (j, u) in enumerate(source_idx):
-        #     #     if hasattr(u, '__iter__'):
-        #     #         x = u
-        #     #     else:
-        #     #         x = [u]
-        #     #     for tt in x:
-        #     #         linkage_groupings[tt].append(j)
+        self.n_neighbours = kwargs.get('n_neighbours', 15)  # number of neighbours defining a neighbourhood
 
-        # for i in range(self.ndata):
-        #     # print "Source %d" % i
-        #     this_delta_data = delta_data.getrows(linkage_groupings[i])
-        #     if self.trigger_kde[i] is not None:
-        #         this_res = self.trigger_kde[i].pdf(this_delta_data, normed=False)
-        #     else:
-        #         this_res = np.zeros(len(linkage_groupings[i]))
-        #     res[linkage_groupings[i]] += this_res
+        # compute neighbourhoods for each point - based on the SPATIAL NEIGHBOURHOOD only
+        self.source_groupings = collections.defaultdict(list)
+        self.linkage_groupings = collections.defaultdict(list)
+        self.linkage_counts = np.zeros(self.linkage[0].size)
+
+        try:
+            nn_obj = NearestNeighbors(self.n_neighbours).fit(self.data.space)
+        except ValueError as exc:
+            print repr(exc)
+            raise
+        else:
+            nn_obj.fit(self.data.space.data)
+            nn_dist, idx = nn_obj.kneighbors(self.data.space)
+
+        self.nn_dist = nn_dist[:, -1]
+        # import ipdb; ipdb.set_trace()
+        for i in range(self.ndata):  # all neigbourhood centres
+            for j in idx[i]:  # iterate over all points in the spatial neighbourhood
+                # self-matches (i.e. background) are not included in self.linkage
+                # find every interaction whose CAUSE is within the neighbourhood
+                # i.e. the direction of causality is FROM WITHIN the neighbourhood
+                ind = np.where(self.linkage[0] == j)[0]
+                self.source_groupings[i].extend(zip(self.linkage[0][ind], self.linkage[1][ind]))
+                self.linkage_groupings[i].extend(ind)
+                self.linkage_counts[ind] += 1.
+
+        # for simplicity, cast back to normal dict
+        self.source_groupings = dict(self.source_groupings)
+        self.linkage_groupings = dict(self.linkage_groupings)
+
+    def set_kdes(self):
+        # BG KDE: as in parent
+        p_bg = self.p.diagonal()
+        self.bg_kde = self.bg_kde_class(self.data, weights=p_bg, **self.bg_kde_kwargs)
+        self.num_bg.append(sum(p_bg))
+
+        # one KDE defined for each data point, based on the weightings at those points
+        self.trigger_kde = MultiKde(parallel=self.parallel)
+        trig_weights_total = 0.
+        for i in range(self.ndata):
+            this_tkde = None
+            try:
+                # get relevant connections
+                ind = self.linkage_groupings[i]
+                row = self.linkage[0][ind]
+                col = self.linkage[1][ind]
+
+                # weights = np.array(self.p[row, col]).flatten() / float(self.n_neighbours)  # normed
+                weights = np.array(self.p[row, col]).flatten() / self.linkage_counts[ind]  # normed
+                interpoint = self.interpoint_data[self.linkage_groupings[i]]
+
+                total_effect = sum(weights)
+
+                if total_effect < (1e-6):  # this point must arise from the background (TODO: set this more intelligently?)
+                    print "Kernel %d weights too low" % i
+                else:
+                    trig_weights_total += total_effect
+                    this_tkde = self.trigger_kde_class(interpoint, weights=weights, **self.trigger_kde_kwargs)
+            except (AttributeError, ValueError) as exc:
+
+                # only reason to end up here is a 'zero std' error
+                # for now, just ignore this datum.
+                ## FIXME: this is a hack and loses triggering density.
+                # a better fix involves extending the local neighbourhood to second gen. connections
+                pass
+            finally:
+                self.trigger_kde.add_kde(this_tkde)
+
+        n_failed = sum([t is None for t in self.trigger_kde])
+        if n_failed:
+            logger.info("Unable to define KDE for %d / %d data" % (n_failed, self.ndata))
+        self.num_trig.append(trig_weights_total)
+
+    def trigger_density(self, delta_data, source_idx=None):
+        """
+        :param source_idx: Iterable. For each element of delta_data, source_idx gives the index or indices of the relevant
+        source dat(um/a).  The default behaviour assumes that delta_data = self.interpoint_data, so the indices
+        are derived directly from linkages.
+        """
+        res = np.zeros(delta_data.ndata, dtype=float)
+
+        if source_idx is not None:
+            raise NotImplementedError()
+
+        data_array = []
+        idx_array = []
+        for i in range(self.ndata):
+            # skip this source if the triggering is nonexistent
+            if self.trigger_kde[i] is None:
+                data_array.append(None)
+                idx_array.append(None)
+                continue
+            # look for links where this datum is the SOURCE
+            idx = np.where(self.linkage[0] == i)[0]
+            idx_array.append(idx)
+            this_delta_data = delta_data.getrows(idx)
+            data_array.append(this_delta_data)
+            # res[idx] = self.trigger_kde[i].pdf(this_delta_data, normed=False)
+
+        separate_res = self.trigger_kde.pdf(data_array, same_data=False, normed=False)
+        for i in range(self.ndata):
+            if data_array[i] is not None:
+                res[idx_array[i]] = separate_res[i]
 
         return res
+
 
 def fluctuation_pre_convergence(sepp_obj, niter=15):
     """

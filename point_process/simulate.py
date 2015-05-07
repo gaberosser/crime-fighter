@@ -345,12 +345,12 @@ class LocalTriggeringSplitByQuartiles(SeppSimulation):
             'time_decay': 0.1,  # day^-1
             'sigma': [0.01, 0.1]
         }
-        q2 = {
+        q3 = {
             'intensity': 0.4,
             'time_decay': 0.1,  # day^-1
             'sigma': [0.1, 0.01]
         }
-        q3 = {
+        q2 = {
             'intensity': 0.4,
             'time_decay': 0.1,  # day^-1
             'sigma': [0.01, 0.01]
@@ -395,3 +395,32 @@ class LocalTriggeringSplitByQuartiles(SeppSimulation):
         for tn, xn in zip(new_t, loc):
             triggered.append([t + tn, xn[0], xn[1], idx])
         return np.array(triggered)
+
+
+class LocalTriggeringFourPoints(LocalTriggeringSplitByQuartiles):
+
+    @property
+    def default_bg_params(self):
+        s = [3., 3.]
+        return [
+            {
+                'location': [-10, -10],
+                'intensity': 1.,
+                'sigma': s,
+            },
+            {
+                'location': [-10, 10],
+                'intensity': 1.,
+                'sigma': s,
+            },
+            {
+                'location': [10, -10],
+                'intensity': 1.,
+                'sigma': s,
+            },
+            {
+                'location': [10, 10],
+                'intensity': 1.,
+                'sigma': s,
+            }
+        ]

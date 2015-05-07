@@ -43,6 +43,21 @@ for i in range(rows * cols):
     ax.set_ylim(y_range)
     ax.text(0, y_range[1] + .5, '%d' % i)
 
+## BG
+
+x_range = y_range = [-20, 20]
+npt = 200
+xy = DataArray.from_meshgrid(*np.meshgrid(
+    np.linspace(x_range[0], x_range[1], npt),
+    np.linspace(y_range[0], y_range[1], npt),
+))
+
+zbg = r.bg_kde.partial_marginal_pdf(xy, normed=False)
+plt.figure()
+plt.contourf(xy.toarray(0), xy.toarray(1), zbg, 50, cmap='afmhot')
+plt.axis('equal')
+ax.set_xlim(x_range)
+ax.set_ylim(y_range)
 
 ### NEW
 
@@ -58,10 +73,10 @@ scatter_ax.plot([0, 0], [-xmax, xmax], 'k--', lw=2)
 
 # find nearest points to (10,10) and similar
 coords = (
-    [5, 5],
-    [-5, 5],
-    [5, -5],
-    [-5, -5]
+    [10, 10],
+    [-10, 10],
+    [10, -10],
+    [-10, -10]
 )
 th = np.linspace(0, 2 * np.pi, 500)
 t = np.linspace(0, r.max_delta_t, 500)
