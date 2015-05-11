@@ -4,3 +4,4 @@ venv/
 *.pyc
 settings/local.py
 scripts/__init__.py*
+.Rhistory
