@@ -1,6 +1,6 @@
 __author__ = 'gabriel'
 import numpy as np
-from network.geos import NetworkPoint
+from network.streetnet import NetPoint, StreetNet
 from warnings import warn
 
 
@@ -30,38 +30,22 @@ class Data(object):
         raise NotImplementedError()
 
 
-class NetworkData(Data):
-
-    def __init__(self, graph, network_points):
-        self.graph = graph
-        self.data = [x if isinstance(x, NetworkPoint) else NetworkPoint(self.graph, **x) for x in network_points]
-
-    @property
-    def ndata(self):
-        return len(self.data)
-
-    def distance(self, other):
-        # distance between self and other
-        if not isinstance(other, NetworkData):
-            raise AttributeError("Cannot find distance between type %s and type %s" % (self.__class__, other.__class))
-        return [x.network_distance(y) for (x, y) in zip(self.data, other.data)]
-
-
 class DataArray(Data):
 
-    def __init__(self, obj):
+    datatype = float
+
+    def __init__(self, obj, **kwargs):
         self.original_shape = None
 
-        if isinstance(obj, DataArray):
+        if isinstance(obj, self.__class__):
             self.data = obj.data.copy()
             self.original_shape = obj.original_shape
             return
 
-
         if not isinstance(obj, np.ndarray):
-            obj = np.array(obj, dtype=float)
+            obj = np.array(obj, dtype=self.datatype)
         else:
-            obj = obj.astype(float)
+            obj = obj.astype(self.datatype)
 
         # check dimensions
         if obj.ndim == 0:
@@ -231,8 +215,8 @@ class SpaceTimeDataArray(DataArray):
     time_class = DataArray
     space_class = DataArray
 
-    def __init__(self, obj):
-        super(SpaceTimeDataArray, self).__init__(obj)
+    # def __init__(self, obj):
+    #     super(SpaceTimeDataArray, self).__init__(obj)
         # if self.nd < 2:
         #     raise AttributeError("Must have >= 2 dimensions for ST data")
 
@@ -245,7 +229,7 @@ class SpaceTimeDataArray(DataArray):
 
     @time.setter
     def time(self, time):
-        self.data[:, 0:1] = DataArray(time).data
+        self.data[:, 0:1] = self.time_class(time).data
 
     @property
     def space(self):
@@ -256,7 +240,7 @@ class SpaceTimeDataArray(DataArray):
 
     @space.setter
     def space(self, space):
-        self.data[:, 1:] = DataArray(space).data
+        self.data[:, 1:] = self.space_class(space).data
 
 
 class CartesianData(DataArray):
@@ -299,4 +283,46 @@ class CartesianSpaceTimeData(SpaceTimeDataArray, CartesianData):
     space_class = CartesianData
 
 
+class NetworkData(DataArray):
 
+    datatype = object
+
+    def __init__(self, network_points, **kwargs):
+        super(NetworkData, self).__init__(network_points, **kwargs)
+        if self.nd != 1:
+            raise AttributeError("NetworkData must be one-dimensional.")
+        # if isinstance(network_points, NetPoint):
+        #     self.data = [network_points]
+        # else:
+        #     self.data = network_points
+        # check graph is the same in all cases
+        self.graph = self.data[0, 0].graph
+        if kwargs.pop('strict', True):
+            for x in self.data.flat:
+                if x.graph is not self.graph:
+                    raise AttributeError("All network points must be defined on the same graph")
+
+    @property
+    def ndata(self):
+        return len(self.data)
+
+    def distance(self, other, directed=False):
+        # distance between self and other
+        if not isinstance(other, self.__class__):
+            raise AttributeError("Cannot find distance between type %s and type %s" % (self.__class__, other.__class))
+        if not self.ndata == other.ndata:
+            raise AttributeError("Lengths of the two data arrays are incompatible")
+
+        def dist_fun(x, y):
+            if directed:
+                return self.graph.path_directed(x, y).length
+            else:
+                return self.graph.path_undirected(x, y).length
+
+        return DataArray([dist_fun(x, y) for (x, y) in zip(self.data.flat, other.data.flat)])
+
+
+class NetworkSpaceTimeData(SpaceTimeDataArray):
+
+    datatype = object
+    space_class = NetworkData
