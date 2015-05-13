@@ -267,7 +267,6 @@ def radial_spatial_triggering_plots(ppobj, simobj=None, xmax=None, ymax=None, cb
         'facecolor': 'w',
     }
 
-
     xmax = xmax or ppobj.trigger_kde.marginal_icdf(ci, dim=1)
     ymax = ymax or xmax
 
@@ -283,7 +282,7 @@ def radial_spatial_triggering_plots(ppobj, simobj=None, xmax=None, ymax=None, cb
         # zxy2 = th / (np.sqrt(2 * np.pi) * sx * sy) * np.exp(
         #     -(xy.toarray(0) ** 2) / (2 * sx**2) - xy.toarray(1) ** 2 / (2 * sy ** 2)
         # )
-        zxy2 = 1 / (2 * np.pi * sx * sy) * np.exp(
+        zxy2 = th / (2 * np.pi * sx * sy) * np.exp(
             -(xy.toarray(0) ** 2) / (2 * sx**2) - xy.toarray(1) ** 2 / (2 * sy ** 2)
         )
         vmax = max(zxy2.max(), vmax)
