@@ -291,11 +291,6 @@ class NetworkData(DataArray):
         super(NetworkData, self).__init__(network_points, **kwargs)
         if self.nd != 1:
             raise AttributeError("NetworkData must be one-dimensional.")
-        # if isinstance(network_points, NetPoint):
-        #     self.data = [network_points]
-        # else:
-        #     self.data = network_points
-        # check graph is the same in all cases
         self.graph = self.data[0, 0].graph
         if kwargs.pop('strict', True):
             for x in self.data.flat:
@@ -306,20 +301,25 @@ class NetworkData(DataArray):
     def ndata(self):
         return len(self.data)
 
+    def distance_function(self, x, y):
+        return (x - y).length
+
     def distance(self, other, directed=False):
         # distance between self and other
         if not isinstance(other, self.__class__):
-            raise AttributeError("Cannot find distance between type %s and type %s" % (self.__class__, other.__class))
+            raise AttributeError("Cannot find distance between type %s and type %s" % (
+                self.__class__.__name__,
+                other.__class__.__name__))
         if not self.ndata == other.ndata:
             raise AttributeError("Lengths of the two data arrays are incompatible")
 
-        def dist_fun(x, y):
-            if directed:
-                return self.graph.path_directed(x, y).length
-            else:
-                return self.graph.path_undirected(x, y).length
+        return DataArray([self.distance_function(x, y) for (x, y) in zip(self.data.flat, other.data.flat)])
 
-        return DataArray([dist_fun(x, y) for (x, y) in zip(self.data.flat, other.data.flat)])
+
+class DirectedNetworkData(NetworkData):
+
+    def distance_function(self, x, y):
+        return self.graph.path_directed(x, y).length
 
 
 class NetworkSpaceTimeData(SpaceTimeDataArray):
