@@ -3,7 +3,7 @@ import numpy as np
 from scipy.stats import gaussian_kde
 from scipy import sparse
 from kde.models import FixedBandwidthKdeScott, VariableBandwidthNnKde
-from data.models import DataArray, CartesianSpaceTimeData, SpaceTimeDataArray
+from data.models import DataArray, CartesianSpaceTimeData, SpaceTimeDataArray, NetworkData, NetworkSpaceTimeData
 from point_process.utils import linkages
 
 
@@ -84,6 +84,7 @@ class SKernelBase(STKernelBase):
     Spatial kernel.  Aggregates data over time, with the time window defined in the input parameter dt.
     This is the base class, from which different KDE variants inherit.
     """
+
     def __init__(self, dt=None):
         self.dt = dt
         self.kde = None
@@ -130,3 +131,50 @@ class SKernelHistoricVariableBandwidthNn(SKernelBase):
 
     def set_kde(self):
         self.kde = VariableBandwidthNnKde(self.data, number_nn=self.nn)
+
+
+class SNetworkKernelBase(SKernelBase):
+    data_class = NetworkData
+
+    def train(self, data):
+        self.set_data(SpaceTimeDataArray(data))
+        self.set_prediction_method()
+
+    def set_prediction_method(self):
+        pass
+
+
+class STNetworkKernelBase(STKernelBase):
+    data_class = NetworkSpaceTimeData
+
+
+class STNetworkBowers(STKernelBowers):
+    data_class = NetworkSpaceTimeData
+
+    def predict(self, data_array, min_frac=1e-6):
+        """
+        Make a prediction on a network using the ProMap method by Bowers et al, modified for a network.
+        :param data_array:
+        :param min_frac: The cutoff point at which to stop considering triggering effect. Defined as the fraction of
+        the initial triggering value.
+        :return:
+        """
+        data_array = self.data_class(data_array)
+
+        # construct linkage indices
+        # e = 0.005
+        e = 1e-6
+        max_delta_t = (1 - e) / (self.a * e)
+        max_delta_d = (1 - e) / (self.b * e)
+
+        link_i, link_j = linkages(self.data, max_delta_t, max_delta_d, data_target=data_array)
+
+        m = sparse.lil_matrix((self.data.ndata, data_array.ndata))
+        tt = 1 / ((data_array.time.getrows(link_j) - self.data.time.getrows(link_i)) * self.a + 1.).toarray(0)
+        dd = 1 / (data_array.space.getrows(link_j).distance(self.data.space.getrows(link_i)) * self.b + 1.).toarray(0)
+
+        m[link_i, link_j] = tt * dd
+        m[tt < 0] = 0.
+
+        return np.array(m.sum(axis=0).flat)
+
