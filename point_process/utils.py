@@ -78,6 +78,18 @@ def linkages(data_source, max_t, max_d, data_target=None, chunksize=2**18, remov
     return np.array(link_i), np.array(link_j)
 
 
+def linkage_mask(data_source, data_target, max_t, max_d, remove_coincident_pairs=False):
+    dt = (data_target.time - data_source.time).toarray(0)
+    dd = (data_target.space.distance(data_source.space)).toarray(0)
+    mask = (dt <= max_t) & (dt > 0.) & (dd <= max_d)
+    if remove_coincident_pairs:
+        mask = mask & (dd != 0)
+    return mask
+
+def parallel_linkages(data_source, max_t, max_d, data_target=None, chunksize=2**18, remove_coincident_pairs=False):
+    pass
+
+
 def augmented_matrix(new_p, old_p):
     """
     Create an augmented matrix based on the previous version, but with new datapoints added

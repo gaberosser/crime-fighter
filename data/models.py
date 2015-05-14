@@ -33,6 +33,7 @@ class Data(object):
 class DataArray(Data):
 
     datatype = float
+    combination_output_class = None
 
     def __init__(self, obj, **kwargs):
         self.original_shape = None
@@ -91,10 +92,12 @@ class DataArray(Data):
         return "{0}({1})".format(self.__class__.__name__, self.data.__str__())
 
     def __builtin_combine__(self, other, func):
+        cls = self.combination_output_class or self.__class__
+
         if isinstance(other, DataArray):
-            res = self.__class__(func(other.data))
+            res = cls(func(other.data))
         else:
-            res = self.__class__(func(other))
+            res = cls(func(other))
         res.original_shape = self.original_shape
         return res
 
@@ -286,8 +289,16 @@ class CartesianSpaceTimeData(SpaceTimeDataArray, CartesianData):
 class NetworkData(DataArray):
 
     datatype = object
+    combination_output_class = DataArray
 
     def __init__(self, network_points, **kwargs):
+        """
+        Create a 1D NetworkData array of network points.
+        :param network_points: iterable containing instances of NetPoint
+        :param kwargs: May contain the optional 'strict' attribute (default True): If True, all points are checked upon
+        instantiation to ensure they have the same network object. This should be very fast.
+        :return:
+        """
         super(NetworkData, self).__init__(network_points, **kwargs)
         if self.nd != 1:
             raise AttributeError("NetworkData must be one-dimensional.")
@@ -296,6 +307,36 @@ class NetworkData(DataArray):
             for x in self.data.flat:
                 if x.graph is not self.graph:
                     raise AttributeError("All network points must be defined on the same graph")
+
+    @classmethod
+    def from_cartesian(cls, net, data, grid_size=50):
+        """
+        Generate a NetworkData object for the (x, y) coordinates in data.
+        :param net: The StreetNet object that will be used to snap network points.
+        :param data: Either a 2D DataArray object or data that can be used to instantiate one.
+        :param grid_size: The size of the grid used to index the network. This is used to speed up snapping.
+        :return: NetworkData object
+        """
+        data = DataArray(data)
+        if data.nd != 2:
+            raise AttributeError("Input data must be 2D")
+        grid_edge_index = net.build_grid_edge_index(grid_size)
+        net_points = []
+        for x, y in data:
+            tmp = net.closest_edges_euclidean(x, y, grid_edge_index=grid_edge_index)
+            if not len(tmp):
+                tmp = net.closest_segments_euclidean_brute_force(x, y)
+            else:
+                tmp = tmp[0]
+            net_points.append(tmp[0])
+        return cls(net_points)
+
+    def to_cartesian(self):
+        """
+        Convert all network points into Cartesian coordinates using linear interpolation of the edge LineStrings
+        :return: CartesianData
+        """
+        return CartesianData([t.cartesian_coords for t in self.data.flat])
 
     @property
     def ndata(self):
