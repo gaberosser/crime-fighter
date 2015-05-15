@@ -178,15 +178,19 @@ class EqualSplitKernel():
 
         for point_id in self.points:
 
-            edge,dist_along=self.points[point_id]
+            net_point = self.points[point_id]
 
             #Make a unique ID triplet for the edge - it needs all this, rather than
             #just the FID, for later operations
-            edge_id=(edge[2]['orientation_neg'],edge[2]['orientation_pos'],edge[2]['fid'])
+            edge_id = (
+                net_point.edge[2]['orientation_neg'],
+                net_point.edge[2]['orientation_pos'],
+                net_point.edge[2]['fid']
+            )
 
             #Add to the list of the relevant edge both the point_id and its distance
             #from each of the end-points of the edge
-            edge_points[edge_id].append((point_id,dist_along))
+            edge_points[edge_id].append(net_point)
 
 
         #Now, for each edge that has points on it, we order the points in sequence,
