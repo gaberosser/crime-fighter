@@ -2,6 +2,7 @@ __author__ = 'gabriel'
 import numpy as np
 from scipy import sparse
 import logging
+import multiprocessing as mp
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +79,7 @@ def linkages(data_source, max_t, max_d, data_target=None, chunksize=2**18, remov
     return np.array(link_i), np.array(link_j)
 
 
-def linkage_mask(data_source, data_target, max_t, max_d, remove_coincident_pairs=False):
+def linkage_mask(data_source, data_target, max_t, max_d, remove_coincident_pairs):
     dt = (data_target.time - data_source.time).toarray(0)
     dd = (data_target.space.distance(data_source.space)).toarray(0)
     mask = (dt <= max_t) & (dt > 0.) & (dd <= max_d)
@@ -86,8 +87,62 @@ def linkage_mask(data_source, data_target, max_t, max_d, remove_coincident_pairs
         mask = mask & (dd != 0)
     return mask
 
+
+# def compute_linkage_chunk(this_idx, idx_i, idx_j, data_source, data_target, max_t, max_d, remove_coincident_pairs):
+#     i = idx_i.flat[this_idx]
+#     j = idx_j.flat[this_idx]
+#     mask = linkage_mask(data_source.getrows(i), data_target.getrows(j), max_t, max_d, remove_coincident_pairs)
+#     return i[mask], j[mask]
+
+def compute_linkage_chunk(this_idx, idx_i, idx_j, data_source, data_target, max_t, max_d, remove_coincident_pairs):
+    i = idx_i.flat[this_idx]
+    j = idx_j.flat[this_idx]
+    mask = linkage_mask(data_source.getrows(i), data_target.getrows(j), max_t, max_d, remove_coincident_pairs)
+    return i[mask], j[mask]
+
+
 def parallel_linkages(data_source, max_t, max_d, data_target=None, chunksize=2**18, remove_coincident_pairs=False):
-    pass
+
+    ## FIXME: something here won't pickle. Try using pathos. Have to get it installed first though!!
+
+    ndata_source = data_source.ndata
+    if data_target is not None:
+        ndata_target = data_target.ndata
+        chunksize = min(chunksize, ndata_source * ndata_target)
+        idx_i, idx_j = np.meshgrid(range(ndata_source), range(ndata_target), copy=False)
+    else:
+        # self-linkage
+        data_target = data_source
+        chunksize = min(chunksize, ndata_source * (ndata_source - 1) / 2)
+        idx_i, idx_j = pairwise_differences_indices(ndata_source)
+
+    pool = mp.Pool()
+
+    processes = []
+    for k in range(0, idx_i.size, chunksize):
+        this_idx = range(k, k + chunksize)
+        processes.append(
+            pool.apply_async(compute_linkage_chunk, args=(
+                this_idx,
+                idx_i,
+                idx_j,
+                data_source,
+                data_target,
+                max_t,
+                max_d,
+                remove_coincident_pairs,
+            ))
+        )
+
+    link_i = []
+    link_j = []
+
+    for p in processes:
+        ii, jj = p.get()
+        link_i.append(ii)
+        link_j.append(jj)
+
+    return np.array(link_i), np.array(link_j)
 
 
 def augmented_matrix(new_p, old_p):
