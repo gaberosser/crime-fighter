@@ -10,7 +10,7 @@ from mock import patch
 from scipy.spatial import KDTree
 import os
 from time import time
-from data.models import CartesianSpaceTimeData, CartesianData
+from data.models import DataArray, CartesianSpaceTimeData, CartesianData
 
 cd = os.path.dirname(os.path.realpath(__file__))
 DATA_DIR = os.path.join(cd, 'test_data')
@@ -30,13 +30,29 @@ class TestSimulation(unittest.TestCase):
         shocks = c.append_triggers(bg)
 
 
-
 class TestUtils(unittest.TestCase):
+
+    def test_linkage_function(self):
+        lf = utils.linkage_func_separable(5., 10.)
+        self.assertTrue(lf(4, 9))
+        self.assertFalse(lf(5.01, 9))
+        self.assertFalse(lf(4, 10.01))
+        dt = DataArray(np.random.rand(10))
+        dd = DataArray(np.random.rand(10))
+        b_in = lf(dt, dd)
+        b_expct = (dt <= 5.) & (dd <= 10.)
+        self.assertTrue(np.all(b_in == b_expct))
+
+        lf = lambda dt, dd: (dt ** 2 + dd ** 2) ** 0.5 < 0.5
+        b_in = lf(dt, dd)
+        b_expct = (dt ** 2 + dd ** 2) ** 0.5 < 0.5
+        self.assertTrue(np.all(b_in == b_expct))
 
     def test_self_linkage(self):
         data1 = CartesianSpaceTimeData(np.random.randn(5000, 3))
         max_t = max_d = 0.5
-        i, j = utils.linkages(data1, max_d=max_d, max_t=max_t)
+        linkage_fun_sep = utils.linkage_func_separable(max_t, max_d)
+        i, j = utils.linkages(data1, linkage_fun_sep)
         # manually test restrictions
         # all time differences positive
         self.assertTrue(np.all(data1[j, 0] > data1[i, 0]))
@@ -50,7 +66,8 @@ class TestUtils(unittest.TestCase):
         data_source = CartesianSpaceTimeData(np.random.randn(5000, 3))
         data_target = CartesianSpaceTimeData(np.random.randn(1000, 3))
         max_t = max_d = 0.5
-        i, j = utils.linkages(data_source=data_source, max_d=max_d, max_t=max_t, data_target=data_target)
+        linkage_fun_sep = utils.linkage_func_separable(max_t, max_d)
+        i, j = utils.linkages(data_source, linkage_fun_sep, data_target=data_target)
         self.assertTrue(np.all(i < 5000))
         self.assertTrue(np.all(j < 1000))
         # manually test restrictions

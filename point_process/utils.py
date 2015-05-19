@@ -3,6 +3,7 @@ import numpy as np
 from scipy import sparse
 import logging
 import multiprocessing as mp
+from data.models import DataArray
 
 logger = logging.getLogger(__name__)
 
@@ -37,15 +38,15 @@ def pairwise_differences_indices(n):
     return idx_i, idx_j
 
 
-def linkages(data_source, max_t, max_d, data_target=None, chunksize=2**18, remove_coincident_pairs=False):
+def linkages(data_source, threshold_fun, data_target=None, chunksize=2**18, remove_coincident_pairs=False):
     """
     Compute the indices of datapoints that are within the following tolerances:
     interpoint distance less than max_d
     time difference greater than zero, less than max_t
     The sign convention is (target - source).  Distances are euclidean.
     :param data_source: EuclideanSpaceTimeData array of source data.  Must be sorted by time ascending.
-    :param max_t: maximum time difference (minimum is always zero)
-    :param max_d: maximum spatial distance
+    :param threshold_fun: function that operates on the DataArray (delta_t, delta_d) returning True for linked points
+    NB: also require that delta_t > 0.
     :param data_target: optional EuclideanSpaceTimeData array.  If supplied, the linkage indices are between
     data_source and data_target, otherwise the two are set equal
     :param chunksize: The size of an iteration chunk.
@@ -68,15 +69,22 @@ def linkages(data_source, max_t, max_d, data_target=None, chunksize=2**18, remov
     for k in range(0, idx_i.size, chunksize):
         i = idx_i.flat[k:(k + chunksize)]
         j = idx_j.flat[k:(k + chunksize)]
-        dt = (data_target.time.getrows(j) - data_source.time.getrows(i)).toarray(0)
-        dd = (data_target.space.getrows(j).distance(data_source.space.getrows(i))).toarray(0)
-        mask = (dt <= max_t) & (dt > 0.) & (dd <= max_d)
+        dt = (data_target.time.getrows(j) - data_source.time.getrows(i))
+        dd = (data_target.space.getrows(j).distance(data_source.space.getrows(i)))
+        mask = threshold_fun(dt, dd) & (dt > 0)
         if remove_coincident_pairs:
-            mask = mask & (dd != 0)
+            mask &= (dd != 0)
+        mask = mask.toarray(0)
         link_i.extend(i[mask])
         link_j.extend(j[mask])
 
     return np.array(link_i), np.array(link_j)
+
+
+def linkage_func_separable(max_t, max_d):
+    def func(dt, dd):
+        return (dt <= max_t) & (dd <= max_d)
+    return func
 
 
 def linkage_mask(data_source, data_target, max_t, max_d, remove_coincident_pairs):
@@ -87,12 +95,6 @@ def linkage_mask(data_source, data_target, max_t, max_d, remove_coincident_pairs
         mask = mask & (dd != 0)
     return mask
 
-
-# def compute_linkage_chunk(this_idx, idx_i, idx_j, data_source, data_target, max_t, max_d, remove_coincident_pairs):
-#     i = idx_i.flat[this_idx]
-#     j = idx_j.flat[this_idx]
-#     mask = linkage_mask(data_source.getrows(i), data_target.getrows(j), max_t, max_d, remove_coincident_pairs)
-#     return i[mask], j[mask]
 
 def compute_linkage_chunk(this_idx, idx_i, idx_j, data_source, data_target, max_t, max_d, remove_coincident_pairs):
     i = idx_i.flat[this_idx]

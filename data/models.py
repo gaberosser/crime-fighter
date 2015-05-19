@@ -38,15 +38,18 @@ class DataArray(Data):
     def __init__(self, obj, **kwargs):
         self.original_shape = None
 
+        # if a dtype kwarg has been supplied, use that
+        dtype = kwargs.get('dtype', None) or self.datatype
+
         if isinstance(obj, self.__class__):
             self.data = obj.data.copy()
             self.original_shape = obj.original_shape
             return
 
         if not isinstance(obj, np.ndarray):
-            obj = np.array(obj, dtype=self.datatype)
+            obj = np.array(obj, dtype=dtype)
         else:
-            obj = obj.astype(self.datatype)
+            obj = obj.astype(dtype)
 
         # check dimensions
         if obj.ndim == 0:
@@ -91,13 +94,13 @@ class DataArray(Data):
     def __repr__(self):
         return "{0}({1})".format(self.__class__.__name__, self.data.__str__())
 
-    def __builtin_combine__(self, other, func):
+    def __builtin_combine__(self, other, func, dtype=None):
         cls = self.combination_output_class or self.__class__
 
         if isinstance(other, DataArray):
-            res = cls(func(other.data))
+            res = cls(func(other.data), dtype=dtype)
         else:
-            res = cls(func(other))
+            res = cls(func(other), dtype=dtype)
         res.original_shape = self.original_shape
         return res
 
@@ -112,26 +115,38 @@ class DataArray(Data):
     def __add__(self, other):
         return self.__builtin_combine__(other, self.data.__add__)
 
+    def __radd__(self, other):
+        return self.__builtin_combine__(other, self.data.__radd__)
+
     def __sub__(self, other):
         return self.__builtin_combine__(other, self.data.__sub__)
+
+    def __rsub__(self, other):
+        return self.__builtin_combine__(other, self.data.__rsub__)
 
     def __div__(self, other):
         return self.__builtin_combine__(other, self.data.__div__)
 
+    def __rdiv__(self, other):
+        return self.__builtin_combine__(other, self.data.__rdiv__)
+
     def __mul__(self, other):
         return self.__builtin_combine__(other, self.data.__mul__)
 
+    def __and__(self, other):
+        return self.__builtin_combine__(other, self.data.__and__, dtype=bool)
+
     def __gt__(self, other):
-        return self.__builtin_combine__(other, self.data.__gt__)
+        return self.__builtin_combine__(other, self.data.__gt__, dtype=bool)
 
     def __lt__(self, other):
-        return self.__builtin_combine__(other, self.data.__lt__)
+        return self.__builtin_combine__(other, self.data.__lt__, dtype=bool)
 
     def __ge__(self, other):
-        return self.__builtin_combine__(other, self.data.__ge__)
+        return self.__builtin_combine__(other, self.data.__ge__, dtype=bool)
 
     def __le__(self, other):
-        return self.__builtin_combine__(other, self.data.__le__)
+        return self.__builtin_combine__(other, self.data.__le__, dtype=bool)
 
     def __neg__(self):
         return self.__builtin_unary__(self.data.__neg__)
@@ -164,7 +179,8 @@ class DataArray(Data):
         obj.original_shape = self.original_shape
         return obj
 
-    def adddim(self, obj, strict=True):
+    def adddim(self, obj, strict=True, type=None):
+        dest_cls = type or DataArray
         obj = DataArray(obj)
         if obj.ndata != self.ndata:
             raise AttributeError("Cannot add dimension because ndata does not match")
@@ -174,7 +190,7 @@ class DataArray(Data):
                 warn("Adding data with no original shape - it will be coerced into the existing shape")
             if obj.original_shape != self.original_shape and self.original_shape is not None:
                 raise AttributeError("Attempting to add data with incompatible original shape.  Set strict=False to bypass this check.")
-        new_obj = DataArray(np.hstack((self.data, obj)))
+        new_obj = dest_cls(np.hstack((self.data, obj)))
         new_obj.original_shape = self.original_shape
         return new_obj
 

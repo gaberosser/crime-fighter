@@ -1,6 +1,6 @@
 __author__ = 'gabriel'
 
-from utils import linkages, random_sample_from_p
+from utils import linkage_func_separable, linkages, random_sample_from_p
 from kde import models as pp_kde
 import numpy as np
 from time import time
@@ -309,7 +309,9 @@ class Sepp(SepBase):
 
     def set_linkages(self):
         # set self.linkage, self.linkage_col, self.interpoint_data
-        self.linkage = linkages(self.data, self.max_delta_t, self.max_delta_d,
+        linkage_fun = linkage_func_separable(self.max_delta_t, self.max_delta_d)
+        self.linkage = linkages(self.data,
+                                linkage_fun,
                                 remove_coincident_pairs=self.remove_coincident_points)
         self.interpoint_data = self.data.getrows(self.linkage[1]) - self.data.getrows(self.linkage[0])
         self.linkage_cols = dict(
@@ -321,7 +323,8 @@ class Sepp(SepBase):
         Compute the valid linkages between self.data and the supplied data set.
         :return: Same format as self.linkage, (idx_i array, idx_j array)
         """
-        return linkages(self.data, self.max_delta_t, self.max_delta_d, data_target=target_data)
+        linkage_fun = linkage_func_separable(self.max_delta_t, self.max_delta_d)
+        return linkages(self.data, linkage_fun, data_target=target_data)
 
     def background_density(self, target_data, spatial_only=False):
         """
@@ -370,7 +373,8 @@ class Sepp(SepBase):
         else:
             source_data = self.data
 
-        link_source, link_target = linkages(source_data, self.max_delta_t, self.max_delta_d, data_target=target_data)
+        linkage_fun = linkage_func_separable(self.max_delta_t, self.max_delta_d)
+        link_source, link_target = linkages(source_data, linkage_fun, data_target=target_data)
         trigger = sparse.csr_matrix((source_data.ndata, target_data.ndata))
 
         if link_source.size:

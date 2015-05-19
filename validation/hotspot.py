@@ -4,7 +4,8 @@ from scipy.stats import gaussian_kde
 from scipy import sparse
 from kde.models import FixedBandwidthKdeScott, VariableBandwidthNnKde
 from data.models import DataArray, CartesianSpaceTimeData, SpaceTimeDataArray, NetworkData, NetworkSpaceTimeData
-from point_process.utils import linkages
+from point_process.utils import linkages, linkage_func_separable
+from network.utils import network_linkages
 
 
 class Hotspot(object):
@@ -62,6 +63,10 @@ class STKernelBowers(STKernelBase):
         self.min_frac = min_frac
         super(STKernelBowers, self).__init__()
 
+    def get_linkages(self, target_data, max_delta_t, max_delta_d):
+        linkage_fun = linkage_func_separable(max_delta_t, max_delta_d)
+        return linkages(self.data, linkage_fun, data_target=target_data)
+
     def predict(self, data_array):
         data_array = self.data_class(data_array)
 
@@ -69,7 +74,7 @@ class STKernelBowers(STKernelBase):
         max_delta_t = (1 - self.min_frac) / (self.a * self.min_frac)
         max_delta_d = (1 - self.min_frac) / (self.b * self.min_frac)
 
-        link_i, link_j = linkages(self.data, max_delta_t, max_delta_d, data_target=data_array)
+        link_i, link_j = self.get_linkages(data_array, max_delta_t, max_delta_d)
 
         m = sparse.lil_matrix((self.data.ndata, data_array.ndata))
         tt = 1 / ((data_array.time.getrows(link_j) - self.data.time.getrows(link_i)) * self.a + 1.).toarray(0)
@@ -151,4 +156,5 @@ class STNetworkKernelBase(STKernelBase):
 
 
 class STNetworkBowers(STNetworkKernelBase, STKernelBowers):
-    pass
+    def get_linkages(self, target_data, max_delta_t, max_delta_d):
+        return network_linkages(self.data, max_delta_t, max_delta_d, data_target_net=target_data)
