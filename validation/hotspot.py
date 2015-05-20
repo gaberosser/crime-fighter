@@ -63,25 +63,35 @@ class STKernelBowers(STKernelBase):
         self.min_frac = min_frac
         super(STKernelBowers, self).__init__()
 
-    def get_linkages(self, target_data, max_delta_t, max_delta_d):
-        linkage_fun = linkage_func_separable(max_delta_t, max_delta_d)
-        return linkages(self.data, linkage_fun, data_target=target_data)
+    def get_linkages(self, target_data):
+        def linkage_fun(dt, dd):
+            aa = 1. / (dt * self.a + 1.)
+            bb = 1. / (dd * self.b + 1.)
+            return aa * bb >= self.min_frac
+        link_i, link_j = linkages(self.data, linkage_fun, data_target=target_data)
+
+        dt = 1 / ((target_data.time.getrows(link_j) - self.data.time.getrows(link_i)) * self.a + 1.).toarray(0)
+        dd = 1 / (target_data.space.getrows(link_j).distance(self.data.space.getrows(link_i)) * self.b + 1.).toarray(0)
+        return link_i, link_j, dt, dd
 
     def predict(self, data_array):
         data_array = self.data_class(data_array)
 
         # construct linkage indices
-        max_delta_t = (1 - self.min_frac) / (self.a * self.min_frac)
-        max_delta_d = (1 - self.min_frac) / (self.b * self.min_frac)
+        # max_delta_t = (1 - self.min_frac) / (self.a * self.min_frac)
+        # max_delta_d = (1 - self.min_frac) / (self.b * self.min_frac)
 
-        link_i, link_j = self.get_linkages(data_array, max_delta_t, max_delta_d)
+        link_i, link_j, dt, dd = self.get_linkages(data_array)
+
+        c1 = 1 / (dt * self.a + 1.)
+        c2 = 1 / (dd * self.b + 1.)
+
+        if np.any(dt < 0):
+            raise ValueError("Negative dt value encountered.")
 
         m = sparse.lil_matrix((self.data.ndata, data_array.ndata))
-        tt = 1 / ((data_array.time.getrows(link_j) - self.data.time.getrows(link_i)) * self.a + 1.).toarray(0)
-        dd = 1 / (data_array.space.getrows(link_j).distance(self.data.space.getrows(link_i)) * self.b + 1.).toarray(0)
 
-        m[link_i, link_j] = tt * dd
-        m[tt < 0] = 0.
+        m[link_i, link_j] = c1 * c2
 
         return np.array(m.sum(axis=0).flat)
 
@@ -100,7 +110,7 @@ class SKernelBase(STKernelBase):
     def set_data(self, data):
         tf = max(data.time)
         if self.dt:
-            self.data = data.space.getrows(data.time.toarray(0) >= (tf - self.dt)) # only spatial component
+            self.data = data.space.getrows(data.time.toarray(0) >= (tf - self.dt))  # only spatial component
         else:
             self.data = data.space
 
@@ -156,5 +166,14 @@ class STNetworkKernelBase(STKernelBase):
 
 
 class STNetworkBowers(STNetworkKernelBase, STKernelBowers):
-    def get_linkages(self, target_data, max_delta_t, max_delta_d):
-        return network_linkages(self.data, max_delta_t, max_delta_d, data_target_net=target_data)
+
+    def get_linkages(self, target_data):
+        def linkage_fun(dt, dd):
+            aa = 1. / (dt * self.a + 1.)
+            bb = 1. / (dd * self.b + 1.)
+            return aa * bb >= self.min_frac
+        return network_linkages(
+            self.data,
+            linkage_fun,
+            data_target_net=target_data
+        )

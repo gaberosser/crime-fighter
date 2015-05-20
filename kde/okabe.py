@@ -21,7 +21,7 @@ from collections import defaultdict
 import bisect as bs
 from network import itn
 from kernels import LinearKernel
-from network.geos import NetworkPoint
+from network.streetnet import NetPoint, Edge
 
 
 #A helper function to do network searching from within the class
@@ -446,7 +446,7 @@ if __name__ == '__main__':
     print TestKernel.evaluate_point('point1')
 
     # define a whole load of points on the network for plotting
-    xy, cd = network_point_coverage(CurrentNet.g, dx=10)
+    xy, cd, edge_count = network_point_coverage(CurrentNet.g, dx=10)
 
     # evaluate KDE at those points
     res = []

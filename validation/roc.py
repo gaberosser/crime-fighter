@@ -3,7 +3,7 @@ __author__ = 'gabriel'
 import numpy as np
 import tools
 from analysis.spatial import create_spatial_grid, random_points_within_poly
-from data.models import DataArray
+from data.models import DataArray, NetworkSpaceTimeData
 from shapely.geometry import Point, Polygon
 
 
@@ -306,6 +306,216 @@ class WeightedRocSpatialGrid(RocSpatialGrid):
             'cumulative_crime': cfrac,
             'cumulative_crime_max': cfrac_max,
             'pai': pai,
+        }
+
+        return res
+
+
+class NetworkRocSegments(object):
+
+    data_class = NetworkSpaceTimeData
+
+    def __init__(self,
+                 data=None,
+                 graph=None,
+                 poly=None,
+                 data_index=None):
+        self.poly = poly
+        self.graph = graph
+
+        # self.side_length = None
+        # self._intersect_grid = None
+        # self._extent_grid = None
+        # self._full_grid_square = None
+        # self._grid_labels = None
+        # self.centroids = None
+
+        self.segments = None
+        self.sample_points = None
+        self.segment_length = None
+        self.prediction_values = None
+        self._data = None
+        self.index = None
+        self.set_data(data, index=data_index)
+
+    @property
+    def data(self):
+        if self._data is not None:
+            return self._data
+        raise AttributeError("Data have not been set yet, call set_data")
+
+    @property
+    def ndata(self):
+        return self.data.ndata
+        # return len(self.data)
+
+    def set_data(self, data, index=None):
+        if data is not None:
+            data = self.data_class(data)
+            if data.nd != 2:
+                raise AttributeError("Data must be a 2D array")
+        self._data = data
+        if index is not None:
+            if len(index) != data.ndata:
+                raise AttributeError("Length of index vector must match number of input data")
+        self.index = index
+
+    def generate_bounding_poly(self):
+        # called when no polygon is provided, computes the bounding rectangle for the data
+        xmin, ymin = np.min(self.data, axis=0)
+        xmax, ymax = np.max(self.data, axis=0)
+        return Polygon([
+                (xmin, ymin),
+                (xmax, ymin),
+                (xmax, ymax),
+                (xmin, ymax),
+                (xmin, ymin),
+        ])
+
+    def set_grid(self, length_or_arr, *args, **kwargs):
+        '''
+        Set the ROC grid.
+        :param length_or_arr: Either a scalar, interpreted as the side length of the grid square, OR an array of
+          shapely Polygon or shapely MultiPolygon objects
+        :param args: Passed to set_sample_points
+        :param kwargs: Passed to set_sample_points
+        :return: None
+        '''
+        # reset prediction values
+        self.prediction_values = None
+        if not self.poly:
+            # find minimal bounding rectangle
+            self.poly = self.generate_bounding_poly()
+
+        if hasattr(length_or_arr, '__iter__'):
+            # list of polygons supplied
+            self.side_length = None
+            self._intersect_grid = length_or_arr
+            self._extent_grid = [x.bounds for x in length_or_arr]
+            # assume none of these are full
+            ## FIXME: improve this by checking whether it's a square?
+            self._full_grid_square = [False] * self.ngrid
+        else:
+            self.side_length = length_or_arr
+            self._intersect_grid, self._extent_grid, self._full_grid_square = create_spatial_grid(self.poly, self.side_length)
+        centroid_coords = lambda x: (x.x, x.y)
+        self.centroids = np.array([centroid_coords(t.centroid) for t in self._intersect_grid])
+        self.a = np.array([t.area for t in self._intersect_grid])
+        self.set_sample_points(*args, **kwargs)
+
+    def copy_grid(self, roc):
+        # reset prediction values
+        self.prediction_values = None
+        self._intersect_grid = list(roc.igrid)
+        self._extent_grid = list(roc.egrid)
+        self._full_grid_square = list(roc.full_grid_square)
+        self.centroids = np.array(roc.centroids)
+        self.sample_points = np.array(roc.sample_points)
+        self.a = np.array(roc.a)
+
+    def set_sample_points(self, *args, **kwargs):
+        # sample points here are just the centroids
+        self.sample_points = DataArray(self.centroids)
+        self.sample_points.original_shape = (1, self.ngrid)
+
+    @property
+    def igrid(self):
+        if self._intersect_grid is not None:
+            return self._intersect_grid
+        raise AttributeError("Grid has not been computed, run set_grid with grid length")
+
+    @property
+    def egrid(self):
+        if self._extent_grid is not None:
+            return self._extent_grid
+        raise AttributeError("Grid has not been computed, run set_grid with grid length")
+
+    @property
+    def ngrid(self):
+        if self._intersect_grid is not None:
+            return len(self._intersect_grid)
+        raise AttributeError("Grid has not been computed, run set_grid with grid length")
+
+    @property
+    def full_grid_square(self):
+        if self._full_grid_square is not None:
+            return self._full_grid_square
+        raise AttributeError("Grid has not been computed, run set_grid with grid length")
+
+    def set_prediction(self, prediction):
+        if prediction.shape[1] != self.ngrid:
+            raise AttributeError("Dim 1 of supplied prediction does not match grid")
+        self.prediction_values = np.mean(prediction, axis=0)
+
+    @property
+    def prediction_rank(self):
+        if self.prediction_values is None:
+            raise AttributeError("No prediction supplied, run set_prediction")
+        return tools.numpy_most_compact_int_dtype(np.argsort(self.prediction_values)[::-1])
+
+    @property
+    def true_count(self):
+
+        n = []
+        for xmin, ymin, xmax, ymax in self.egrid:
+            n.append(sum(
+                (self.data[:, 0] >= xmin)
+                & (self.data[:, 0] < xmax)
+                & (self.data[:, 1] >= ymin)
+                & (self.data[:, 1] < ymax)
+            ))
+        return np.array(n)
+
+    @property
+    def true_grid_index(self):
+        """
+        Return the crime indices in each grid square.
+        The index is self.index if it exists, otherwise just a plain lookup index.
+        """
+        indices = []
+        for xmin, ymin, xmax, ymax in self.egrid:
+            this_idx = (
+                (self.data[:, 0] >= xmin)
+                & (self.data[:, 0] < xmax)
+                & (self.data[:, 1] >= ymin)
+                & (self.data[:, 1] < ymax)
+            )
+            if not np.any(this_idx):
+                indices.append(None)
+            elif self.index is not None:
+                indices.append(self.index[this_idx])
+            else:
+                indices.append(np.where(this_idx)[0])
+        return indices
+
+    def evaluate(self):
+
+        # count actual crimes in testing dataset on same grid
+        true_grid_ind = np.array(self.true_grid_index)[self.prediction_rank]
+        true_counts = np.array([(t.size if t is not None else 0) for t in true_grid_ind])
+        # true_counts = self.true_count[self.prediction_rank]
+        true_counts_sorted = np.sort(self.true_count)[::-1]
+        # disabling due to memory consumption
+        # pred_values = self.prediction_values[self.prediction_rank]
+        area = self.a[self.prediction_rank]
+        total_area = sum(area)
+
+        N = sum(true_counts)
+        n = np.cumsum(true_counts)
+        carea = np.cumsum(area) / total_area
+        cfrac = n / float(N)
+        cfrac_max = np.cumsum(true_counts_sorted) / float(N)
+        pai = cfrac * (total_area / np.cumsum(area))
+
+        res = {
+            'prediction_rank': self.prediction_rank,
+            # 'prediction_values': pred_values,
+            'cumulative_area': carea,
+            'cumulative_crime': cfrac,
+            'cumulative_crime_count': n,
+            'cumulative_crime_max': cfrac_max,
+            'pai': pai,
+            'ranked_crime_id': true_grid_ind,
         }
 
         return res

@@ -449,3 +449,7 @@ class TestValidation(unittest.TestCase):
             # that are float or int
             if hasattr(v, '__iter__'):
                 self.assertEqual(len(v), expct_call_count)
+
+
+class TestHotspot(unittest.TestCase):
+    pass
