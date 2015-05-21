@@ -3,7 +3,7 @@ __author__ = 'gabriel'
 import numpy as np
 import math
 from scipy import special
-from data.models import DataArray, Data, exp
+from data.models import DataArray, exp
 
 PI = np.pi
 root2 = np.sqrt(2)
@@ -57,7 +57,7 @@ class MultivariateNormal(BaseKernel):
     def prep_input(x, expctd_dims=None):
         ## TODO: test the effect this has on speed by profiling
         ## if necessary, can ASSUME a DataArray and implement at a higher level
-        if not isinstance(x, Data):
+        if not isinstance(x, DataArray):
             x = DataArray(x)
         if expctd_dims and x.nd != expctd_dims:
             raise AttributeError("Incorrect dimensions for input variable")

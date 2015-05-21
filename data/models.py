@@ -23,14 +23,7 @@ def exp(data_array):
     return res
 
 
-class Data(object):
-
-    @property
-    def nd(self):
-        raise NotImplementedError()
-
-
-class DataArray(Data):
+class DataArray(object):
 
     datatype = float
     combination_output_class = None

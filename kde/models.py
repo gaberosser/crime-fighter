@@ -8,7 +8,7 @@ import multiprocessing as mp
 from kde import kernels
 from stats.logic import weighted_stdev
 from sklearn.neighbors import NearestNeighbors
-from data.models import Data, DataArray, SpaceTimeDataArray, CartesianSpaceTimeData, negative_time_dimension
+from data.models import DataArray, SpaceTimeDataArray, CartesianSpaceTimeData, negative_time_dimension
 import warnings
 import logging
 

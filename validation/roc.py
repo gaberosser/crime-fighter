@@ -3,7 +3,7 @@ __author__ = 'gabriel'
 import numpy as np
 import tools
 from analysis.spatial import create_spatial_grid, random_points_within_poly
-from data.models import DataArray, NetworkSpaceTimeData
+from data.models import DataArray, NetworkSpaceTimeData, NetworkData
 from shapely.geometry import Point, Polygon
 
 
@@ -312,8 +312,10 @@ class WeightedRocSpatialGrid(RocSpatialGrid):
 
 
 class NetworkRocSegments(object):
-
-    data_class = NetworkSpaceTimeData
+    """
+    Docstring
+    """
+    data_class = NetworkData
 
     def __init__(self,
                  data=None,
@@ -330,9 +332,9 @@ class NetworkRocSegments(object):
         # self._grid_labels = None
         # self.centroids = None
 
-        self.segments = None
+        self.sample_units = None
         self.sample_points = None
-        self.segment_length = None
+        self.segment_lengths = None
         self.prediction_values = None
         self._data = None
         self.index = None
@@ -347,103 +349,73 @@ class NetworkRocSegments(object):
     @property
     def ndata(self):
         return self.data.ndata
-        # return len(self.data)
 
     def set_data(self, data, index=None):
         if data is not None:
             data = self.data_class(data)
-            if data.nd != 2:
-                raise AttributeError("Data must be a 2D array")
         self._data = data
         if index is not None:
             if len(index) != data.ndata:
                 raise AttributeError("Length of index vector must match number of input data")
+        else:
+            index = np.arange(data.ndata)
         self.index = index
 
-    def generate_bounding_poly(self):
-        # called when no polygon is provided, computes the bounding rectangle for the data
-        xmin, ymin = np.min(self.data, axis=0)
-        xmax, ymax = np.max(self.data, axis=0)
-        return Polygon([
-                (xmin, ymin),
-                (xmax, ymin),
-                (xmax, ymax),
-                (xmin, ymax),
-                (xmin, ymin),
-        ])
+    # network-specific
+    @property
+    def cartesian_data(self):
+        return self.data.to_cartesian()
 
+    # network-specific
+    def generate_bounding_poly(self):
+        # called when no polygon is provided, computes the bounding polygon for the data based on the network
+        # TODO: add this method to the StreetNet class?
+        raise NotImplementedError()
+
+    # network-specific
+    # segment-specific
     def set_grid(self, length_or_arr, *args, **kwargs):
         '''
         Set the ROC grid.
-        :param length_or_arr: Either a scalar, interpreted as the side length of the grid square, OR an array of
-          shapely Polygon or shapely MultiPolygon objects
+        :param length_or_arr: ignored here(?)
         :param args: Passed to set_sample_points
         :param kwargs: Passed to set_sample_points
         :return: None
         '''
         # reset prediction values
         self.prediction_values = None
+
         if not self.poly:
             # find minimal bounding rectangle
             self.poly = self.generate_bounding_poly()
 
-        if hasattr(length_or_arr, '__iter__'):
-            # list of polygons supplied
-            self.side_length = None
-            self._intersect_grid = length_or_arr
-            self._extent_grid = [x.bounds for x in length_or_arr]
-            # assume none of these are full
-            ## FIXME: improve this by checking whether it's a square?
-            self._full_grid_square = [False] * self.ngrid
-        else:
-            self.side_length = length_or_arr
-            self._intersect_grid, self._extent_grid, self._full_grid_square = create_spatial_grid(self.poly, self.side_length)
-        centroid_coords = lambda x: (x.x, x.y)
-        self.centroids = np.array([centroid_coords(t.centroid) for t in self._intersect_grid])
-        self.a = np.array([t.area for t in self._intersect_grid])
+        self.sample_units = self.graph.edges()
+        self.centroids = self.data_class([t.centroid for t in self.sample_units])  # array
+        self.segment_lengths = np.array([t['length'] for t in self.sample_units])
+
         self.set_sample_points(*args, **kwargs)
 
+    # network specific
     def copy_grid(self, roc):
         # reset prediction values
         self.prediction_values = None
-        self._intersect_grid = list(roc.igrid)
-        self._extent_grid = list(roc.egrid)
-        self._full_grid_square = list(roc.full_grid_square)
-        self.centroids = np.array(roc.centroids)
-        self.sample_points = np.array(roc.sample_points)
-        self.a = np.array(roc.a)
+        # TODO: set all defining attributes of the grid
+        raise NotImplementedError()
 
+    # segment-specific
     def set_sample_points(self, *args, **kwargs):
         # sample points here are just the centroids
-        self.sample_points = DataArray(self.centroids)
-        self.sample_points.original_shape = (1, self.ngrid)
+        self.sample_points = self.data_class(self.centroids)
+        self.sample_points.original_shape = (1, self.n_sample_units)
 
     @property
-    def igrid(self):
-        if self._intersect_grid is not None:
-            return self._intersect_grid
-        raise AttributeError("Grid has not been computed, run set_grid with grid length")
-
-    @property
-    def egrid(self):
-        if self._extent_grid is not None:
-            return self._extent_grid
-        raise AttributeError("Grid has not been computed, run set_grid with grid length")
-
-    @property
-    def ngrid(self):
-        if self._intersect_grid is not None:
-            return len(self._intersect_grid)
-        raise AttributeError("Grid has not been computed, run set_grid with grid length")
-
-    @property
-    def full_grid_square(self):
-        if self._full_grid_square is not None:
-            return self._full_grid_square
-        raise AttributeError("Grid has not been computed, run set_grid with grid length")
+    def n_sample_units(self):
+        if self.sample_units is not None:
+            return len(self.sample_units)
+        raise AttributeError("Sample units have not been computed, run set_grid with grid length")
 
     def set_prediction(self, prediction):
-        if prediction.shape[1] != self.ngrid:
+        if prediction.shape[1] != self.n_sample_units:
             raise AttributeError("Dim 1 of supplied prediction does not match grid")
         self.prediction_values = np.mean(prediction, axis=0)
 
@@ -453,45 +425,39 @@ class NetworkRocSegments(object):
             raise AttributeError("No prediction supplied, run set_prediction")
         return tools.numpy_most_compact_int_dtype(np.argsort(self.prediction_values)[::-1])
 
+    # network-specific
+    def in_sample_unit(self, sample_unit):
+        """ Return bool array, one entry per data point. True indicates that the datum is within the sample unit. """
+        return np.array([t.edge == sample_unit for t in self.data.toarray(0)])
+
     @property
     def true_count(self):
-
+        """ Return an array in which each element gives the number of crimes in the corresponding to a sample unit."""
         n = []
-        for xmin, ymin, xmax, ymax in self.egrid:
-            n.append(sum(
-                (self.data[:, 0] >= xmin)
-                & (self.data[:, 0] < xmax)
-                & (self.data[:, 1] >= ymin)
-                & (self.data[:, 1] < ymax)
-            ))
+        for t in self.sample_units:
+            n.append(sum(self.in_sample_unit(t)))
         return np.array(n)
 
+    # network-specific
     @property
-    def true_grid_index(self):
+    def true_index(self):
         """
-        Return the crime indices in each grid square.
+        Return the crime indices in each sample unit.
         The index is self.index if it exists, otherwise just a plain lookup index.
         """
         indices = []
-        for xmin, ymin, xmax, ymax in self.egrid:
-            this_idx = (
-                (self.data[:, 0] >= xmin)
-                & (self.data[:, 0] < xmax)
-                & (self.data[:, 1] >= ymin)
-                & (self.data[:, 1] < ymax)
-            )
+        for t in self.sample_units:
+            this_idx = self.in_sample_unit(t)
             if not np.any(this_idx):
                 indices.append(None)
-            elif self.index is not None:
-                indices.append(self.index[this_idx])
             else:
-                indices.append(np.where(this_idx)[0])
-        return indices
+                indices.append(self.index[this_idx])
+        return np.array(indices, dtype=object)
 
     def evaluate(self):
 
         # count actual crimes in testing dataset on same grid
-        true_grid_ind = np.array(self.true_grid_index)[self.prediction_rank]
+        true_grid_ind = self.true_index[self.prediction_rank]
         true_counts = np.array([(t.size if t is not None else 0) for t in true_grid_ind])
         # true_counts = self.true_count[self.prediction_rank]
         true_counts_sorted = np.sort(self.true_count)[::-1]
