@@ -54,7 +54,7 @@ xy = DataArray.from_meshgrid(*np.meshgrid(
 
 zbg = r.bg_kde.partial_marginal_pdf(xy, normed=False)
 plt.figure()
-plt.contourf(xy.toarray(0), xy.toarray(1), zbg, 50, cmap='afmhot')
+plt.contourf(xy.toarray(0), xy.toarray(1), zbg, 50, cmap='Reds')
 plt.axis('equal')
 ax.set_xlim(x_range)
 ax.set_ylim(y_range)
@@ -82,6 +82,16 @@ th = np.linspace(0, 2 * np.pi, 500)
 t = np.linspace(0, r.max_delta_t, 500)
 x = y = np.linspace(-r.max_delta_d, r.max_delta_d, 500)
 
+x_range = y_range = [-r.max_delta_d, r.max_delta_d]
+npt = 200
+xy = DataArray.from_meshgrid(*np.meshgrid(
+    np.linspace(x_range[0], x_range[1], npt),
+    np.linspace(y_range[0], y_range[1], npt),
+))
+
+fig, surf_ax = plt.subplots(2, 2, sharex=True, sharey=True)
+i = 0
+
 for c in coords:
     idx = np.argmin(((r.data.space - c) ** 2).sumdim())
     datum = r.data.getrows(idx)
@@ -103,3 +113,7 @@ for c in coords:
     ax2.plot(t, k.marginal_pdf(t, dim=0, normed=False))
     ax2.plot(t, zt_th, 'k--')
 
+    z_local = k.partial_marginal_pdf(xy, normed=False)
+    surf_ax.flat[i].contourf(xy.toarray(0), xy.toarray(1), z_local, 50, cmap='afmhot')
+
+    i += 1
