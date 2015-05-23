@@ -7,6 +7,31 @@ from data.models import DataArray, CartesianSpaceTimeData, SpaceTimeDataArray, N
 from point_process.utils import linkages, linkage_func_separable
 from network.utils import network_linkages
 
+        # x = self.roc.sample_points.toarray(0)
+        # y = self.roc.sample_points.toarray(1)
+        # ts = np.ones_like(x) * t
+        # data_array = self.data_class.from_args(ts, x, y)
+        # data_array.original_shape = x.shape
+        # return data_array
+
+def generate_st_prediction_dataarray(time, space_arr, dtype=SpaceTimeDataArray):
+    """
+    Combine a DataArray of spatial sampling points and a scalar time into a ST DataArray by duplicating the time
+     and concatenating.
+    :param time:
+    :param space_arr:
+    :return:
+    """
+    try:
+        original_shape = space_arr.original_shape
+    except AttributeError:
+        original_shape = None
+    s_arrs = space_arr.separate
+    t_arr = np.ones_like(s_arrs[0]) * time
+    res = dtype.from_args(t_arr, *s_arrs)
+    res.original_shape = original_shape
+    return res
+
 
 class Hotspot(object):
 
@@ -65,9 +90,10 @@ class STKernelBowers(STKernelBase):
 
     def get_linkages(self, target_data):
         def linkage_fun(dt, dd):
-            aa = 1. / (dt * self.a + 1.)
-            bb = 1. / (dd * self.b + 1.)
-            return aa * bb >= self.min_frac
+            return dd <= 400  # units metres
+            # aa = 1. / (dt * self.a + 1.)
+            # bb = 1. / (dd * self.b + 1.)
+            # return aa * bb >= self.min_frac
         link_i, link_j = linkages(self.data, linkage_fun, data_target=target_data)
 
         dt = 1 / ((target_data.time.getrows(link_j) - self.data.time.getrows(link_i)) * self.a + 1.).toarray(0)
@@ -75,16 +101,19 @@ class STKernelBowers(STKernelBase):
         return link_i, link_j, dt, dd
 
     def predict(self, data_array):
+        ## FIXME: the function used here is basically WRONG
+        #  The original paper advocates only including crimes within a 400m radius then summing the kernel:
+        #  Sum(1/(delta_dist) * 1/(delta_time))
+        #  In practice, going to use (1+delta_dist) in the denominator to avoid the singularity!
+        #  Though this should be mitigated by the remove_coincident_points problem, but that won't sort out delta_t=0
         data_array = self.data_class(data_array)
-
-        # construct linkage indices
-        # max_delta_t = (1 - self.min_frac) / (self.a * self.min_frac)
-        # max_delta_d = (1 - self.min_frac) / (self.b * self.min_frac)
 
         link_i, link_j, dt, dd = self.get_linkages(data_array)
 
         c1 = 1 / (dt * self.a + 1.)
         c2 = 1 / (dd * self.b + 1.)
+        # c1 = 1 / (dt + 1.)
+        # c2 = 1 / (dd + 1.)
 
         if np.any(dt < 0):
             raise ValueError("Negative dt value encountered.")
@@ -92,8 +121,12 @@ class STKernelBowers(STKernelBase):
         m = sparse.lil_matrix((self.data.ndata, data_array.ndata))
 
         m[link_i, link_j] = c1 * c2
+        res = np.array(m.sum(axis=0).flat)
 
-        return np.array(m.sum(axis=0).flat)
+        # reshape if necessary
+        if data_array.original_shape is not None:
+            res = res.reshape(data_array.original_shape)
+        return res
 
 
 class SKernelBase(STKernelBase):
@@ -169,9 +202,10 @@ class STNetworkBowers(STNetworkKernelBase, STKernelBowers):
 
     def get_linkages(self, target_data):
         def linkage_fun(dt, dd):
-            aa = 1. / (dt * self.a + 1.)
-            bb = 1. / (dd * self.b + 1.)
-            return aa * bb >= self.min_frac
+            return dd <= 400
+            # aa = 1. / (dt * self.a + 1.)
+            # bb = 1. / (dd * self.b + 1.)
+            # return aa * bb >= self.min_frac
         return network_linkages(
             self.data,
             linkage_fun,

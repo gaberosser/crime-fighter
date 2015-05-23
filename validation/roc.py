@@ -5,7 +5,9 @@ import tools
 from analysis.spatial import create_spatial_grid, random_points_within_poly
 from data.models import DataArray, NetworkSpaceTimeData, NetworkData
 from shapely.geometry import Point, Polygon
-
+import matplotlib as mpl
+from matplotlib import pyplot as plt
+from matplotlib import cm
 
 class RocSpatialGrid(object):
 
@@ -351,20 +353,60 @@ class NetworkRocSegments(object):
         return self.data.ndata
 
     def set_data(self, data, index=None):
+        """
+        Set the data, and the index if supplied. The purpose of the index is to make it possible to determine
+        retrospectively which specific crimes were correctly predicted. If index is missing, just use the array
+        indices
+        :param data: Array or DataArray of data. Will be converted to DataArray upon loading.
+        :param index: Optional array of crime indices, corresponding to the crimes in data.
+        :return:
+        """
         if data is not None:
             data = self.data_class(data)
-        self._data = data
-        if index is not None:
-            if len(index) != data.ndata:
-                raise AttributeError("Length of index vector must match number of input data")
-        else:
-            index = np.arange(data.ndata)
-        self.index = index
+            self._data = data
+            if index is not None:
+                if len(index) != data.ndata:
+                    raise AttributeError("Length of index vector must match number of input data")
+            else:
+                index = np.arange(data.ndata)
+            self.index = index
 
     # network-specific
     @property
     def cartesian_data(self):
         return self.data.to_cartesian()
+
+    # network-specific
+    # segment-specific
+    def plot(self, show_sample_units=True,
+             show_prediction=True,
+             fmax=0.9,
+             cmap='Reds'
+    ):
+        """
+        Plot the prediction and underlying sample units
+        :param show_sample_units: If True, plot a representation of the sample units
+        :param show_prediction: If True, plot a representation of the prediction
+        :param fmax: The cumulant cutoff for plotting predictions, e.g. 0.9 indicates that the colour axis runs from the
+        min value to the 90th percentile. All values above this are saturated.
+        :return:
+        """
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.set_aspect('equal')
+
+        if show_sample_units and show_prediction:
+            # create dictionary of segment colours for plotting
+            # this requires creating a norm instance and using that to index a colourmap
+            vmax = sorted(self.prediction_values)[int(self.n_sample_units * fmax)]
+            cmap = cm.get_cmap(cmap)
+            norm = mpl.colors.Normalize(vmin=0, vmax=vmax)
+            colour_mapper = cm.ScalarMappable(norm=norm, cmap=cmap)
+            edge_inner_col = {}
+            for pv, edge in zip(self.prediction_values, self.sample_units):
+                edge_inner_col[edge['fid']] = colour_mapper.to_rgba(pv)
+            self.graph.plot_network(ax=ax, edge_width=7, edge_inner_col=edge_inner_col)
+
 
     # network-specific
     def generate_bounding_poly(self):
@@ -373,8 +415,14 @@ class NetworkRocSegments(object):
         raise NotImplementedError()
 
     # network-specific
+    @property
+    def sample_unit_size(self):
+        """ Return the size of each sample unit, e.g. length or area. """
+        return np.array([t['length'] for t in self.sample_units])
+
+    # network-specific
     # segment-specific
-    def set_grid(self, length_or_arr, *args, **kwargs):
+    def set_sample_units(self, length_or_arr, *args, **kwargs):
         '''
         Set the ROC grid.
         :param length_or_arr: ignored here(?)
@@ -385,14 +433,8 @@ class NetworkRocSegments(object):
         # reset prediction values
         self.prediction_values = None
 
-        if not self.poly:
-            # find minimal bounding rectangle
-            self.poly = self.generate_bounding_poly()
-
         self.sample_units = self.graph.edges()
         self.centroids = self.data_class([t.centroid for t in self.sample_units])  # array
-        self.segment_lengths = np.array([t['length'] for t in self.sample_units])
-
         self.set_sample_points(*args, **kwargs)
 
     # network specific
@@ -412,7 +454,7 @@ class NetworkRocSegments(object):
     def n_sample_units(self):
         if self.sample_units is not None:
             return len(self.sample_units)
-        raise AttributeError("Sample units have not been computed, run set_grid with grid length")
+        raise AttributeError("Sample units have not been computed, run set_sample_units")
 
     def set_prediction(self, prediction):
         if prediction.shape[1] != self.n_sample_units:
@@ -443,35 +485,31 @@ class NetworkRocSegments(object):
     def true_index(self):
         """
         Return the crime indices in each sample unit.
-        The index is self.index if it exists, otherwise just a plain lookup index.
         """
         indices = []
         for t in self.sample_units:
             this_idx = self.in_sample_unit(t)
-            if not np.any(this_idx):
-                indices.append(None)
-            else:
-                indices.append(self.index[this_idx])
+            indices.append(self.index[this_idx])
         return np.array(indices, dtype=object)
 
     def evaluate(self):
 
         # count actual crimes in testing dataset on same grid
         true_grid_ind = self.true_index[self.prediction_rank]
-        true_counts = np.array([(t.size if t is not None else 0) for t in true_grid_ind])
+        true_counts = np.array([t.size for t in true_grid_ind])
         # true_counts = self.true_count[self.prediction_rank]
         true_counts_sorted = np.sort(self.true_count)[::-1]
         # disabling due to memory consumption
         # pred_values = self.prediction_values[self.prediction_rank]
-        area = self.a[self.prediction_rank]
-        total_area = sum(area)
+        sample_unit_sizes = self.sample_unit_size[self.prediction_rank]
+        total_sample_unit = sum(sample_unit_sizes)
 
         N = sum(true_counts)
         n = np.cumsum(true_counts)
-        carea = np.cumsum(area) / total_area
+        carea = np.cumsum(sample_unit_sizes) / total_sample_unit
         cfrac = n / float(N)
         cfrac_max = np.cumsum(true_counts_sorted) / float(N)
-        pai = cfrac * (total_area / np.cumsum(area))
+        pai = cfrac * (total_sample_unit / np.cumsum(sample_unit_sizes))
 
         res = {
             'prediction_rank': self.prediction_rank,

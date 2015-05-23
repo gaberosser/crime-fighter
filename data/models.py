@@ -159,6 +159,10 @@ class DataArray(object):
     def __setitem__(self, i, value):
         self.data.__setitem__(i, value)
 
+    ## TODO: check this doesn't break things
+    def __iter__(self):
+        return self.data.__iter__()
+
     def sumdim(self):
         # sums over dimensions, returning a class type with a single dimension and same original_shape
         res = self.__class__(self.data.sum(axis=1))
@@ -345,7 +349,9 @@ class NetworkData(DataArray):
         Convert all network points into Cartesian coordinates using linear interpolation of the edge LineStrings
         :return: CartesianData
         """
-        return CartesianData([t.cartesian_coords for t in self.data.flat])
+        res = CartesianData([t.cartesian_coords for t in self.data.flat])
+        res.original_shape = self.original_shape
+        return res
 
     @property
     def ndata(self):
