@@ -697,8 +697,8 @@ class NetworkRocSegmentsMean(NetworkRocSegments):
             this_sp = []
             for d in da:
                 node_dist = {
-                    edge.node_neg: d,
-                    edge.node_pos: edge['length'] - d,
+                    edge.orientation_neg: d,
+                    edge.orientation_pos: edge['length'] - d,
                 }
                 this_sp.append(NetPoint(self.graph, edge, node_dist))
             sp.extend(this_sp)
