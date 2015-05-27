@@ -20,7 +20,7 @@ import networkx as nx
 from collections import defaultdict
 import bisect as bs
 from network import itn
-from kernels import LinearKernel
+from kde.kernels import LinearKernel
 from network.streetnet import NetPoint, Edge
 
 
@@ -406,11 +406,10 @@ if __name__ == '__main__':
 
     #Just build the network as usual
     itndata = itn.read_gml(ITNFILE)
-    CurrentNet = itn.ITNStreetNet()
-    CurrentNet.load_from_data(itndata)
+    current_net = itn.ITNStreetNet.from_data_structure(itndata)
 
-    xmin, ymin, xmax, ymax = CurrentNet.extent
-    x_grid,y_grid,edge_locator=CurrentNet.bin_edges(xmin, xmax, ymin, ymax, 50)
+    xmin, ymin, xmax, ymax = current_net.extent
+    grid_edge_index = current_net.build_grid_edge_index(50)
 
 
     #Four test points - 1 and 3 on same segment, 2 on neighbouring segment, 4 long way away.
@@ -423,30 +422,26 @@ if __name__ == '__main__':
         [531724, 174826],
         [531013, 175294]
     ]
-    closest_edge = []
-    dist_along = []
     network_points = []
     kde_source_points={}
 
     # Add these points as the kernel sources
     for i, t in enumerate(test_points):
-        c, d, _ = CurrentNet.closest_segments_euclidean(t[0], t[1], x_grid, y_grid, edge_locator)
-        closest_edge.append(c)
-        dist_along.append(d)
-        network_points.append(NetworkPoint(CurrentNet.g, **d))
-        kde_source_points['point%d' % i] = (c, d)
+        net_point, snap_distance = current_net.closest_edges_euclidean(t[0], t[1], grid_edge_index)
+        network_points.append(net_point)
+        kde_source_points['point%d' % i] = net_point
 
 
     #Initialise the kernel
-    TestKernel = EqualSplitKernel(CurrentNet, kde_source_points, 100)
+    TestKernel = EqualSplitKernel(current_net, kde_source_points, 100)
 
     #Both evaluation methods
     ## TODO: see comments in evaluate_point for why these differ
-    print TestKernel.evaluate_non_point((closest_edge[1], dist_along[1]))
+    print TestKernel.evaluate_non_point(network_points[1])
     print TestKernel.evaluate_point('point1')
 
     # define a whole load of points on the network for plotting
-    xy, cd, edge_count = network_point_coverage(CurrentNet.g, dx=10)
+    xy, cd, edge_count = network_point_coverage(current_net.g, dx=10)
 
     # evaluate KDE at those points
     res = []
