@@ -28,7 +28,7 @@ def mc_sampler(poly):
 
 class ValidationBase(object):
 
-    roc_class = roc.RocSpatialGrid
+    roc_class = roc.RocGrid
     data_class = CartesianSpaceTimeData
 
     def __init__(self, data, model_class,
@@ -91,7 +91,7 @@ class ValidationBase(object):
         if isinstance(grid, self.roc_class):
             self.roc.copy_grid(grid)
         else:
-            self.roc.set_grid(grid, *args, **kwargs)
+            self.roc.set_sample_units(grid, *args, **kwargs)
 
     @property
     def spatial_domain(self):
@@ -284,7 +284,7 @@ class ValidationBase(object):
         convert_to_arr = (
             'prediction_rank',
             'cumulative_area',
-            'prediction_values',
+            # 'prediction_values',
             'cumulative_crime',
             'cumulative_crime_count',
             'cumulative_crime_max',
@@ -371,9 +371,10 @@ class WeightedValidation(ValidationBase):
     pass
 
 
+
 class ValidationIntegration(ValidationBase):
 
-    roc_class = roc.RocSpatialGridMonteCarloIntegration
+    roc_class = roc.RocGridMean
 
 
 if __name__ == "__main__":

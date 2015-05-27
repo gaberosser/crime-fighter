@@ -30,13 +30,13 @@ class TestRoc(unittest.TestCase):
         ])
 
     def test_instantiation(self):
-        r = roc.RocSpatialGrid()
+        r = roc.RocGrid()
         with self.assertRaises(AttributeError):
-            r.ngrid
+            _ = r.n_sample_units
         with self.assertRaises(AttributeError):
-            r.ndata
+            _ = r.n_sample_units
         with self.assertRaises(Exception):
-            r.true_count
+            _ = r.true_count
         with self.assertRaises(AttributeError):
             r.set_data(self.udata)
         r.set_data(self.udata[:, 1:])
@@ -44,8 +44,8 @@ class TestRoc(unittest.TestCase):
 
     def test_grid_no_poly(self):
         # no spatial domain supplied
-        r = roc.RocSpatialGrid(data=self.udata[:, 1:])
-        r.set_grid(0.1)
+        r = roc.RocGrid(data=self.udata[:, 1:])
+        r.set_sample_units(0.1)
         self.assertTupleEqual(r.poly.bounds, (
             min(self.udata[:, 1]),
             min(self.udata[:, 2]),
@@ -53,43 +53,43 @@ class TestRoc(unittest.TestCase):
             max(self.udata[:, 2]),
         ))
 
-        self.assertEqual(r.ngrid, 100)
-        self.assertEqual(max(np.array(r.egrid)[:, 2]), 1.0)
-        self.assertEqual(max(np.array(r.egrid)[:, 3]), 1.0)
-        self.assertEqual(sum(np.array([x.area for x in r.igrid]) > 0.00999), 64) # 8 x 8 centre grid
+        self.assertEqual(r.n_sample_units, 100)
+        self.assertEqual(max(np.array(r.sample_units)[:, 2]), 1.0)
+        self.assertEqual(max(np.array(r.sample_units)[:, 3]), 1.0)
+        self.assertEqual(sum(np.array([x.area for x in r.grid_polys]) > 0.00999), 64) # 8 x 8 centre grid
 
         # different arrangement
-        r = roc.RocSpatialGrid(data=self.data)
-        r.set_grid(0.5)
-        self.assertEqual(r.ngrid, 6)
-        areas = sorted([x.area for x in r.igrid])
+        r = roc.RocGrid(data=self.data)
+        r.set_sample_units(0.5)
+        self.assertEqual(r.n_sample_units, 6)
+        areas = sorted([x.area for x in r.grid_polys])
         areas_expctd = [0.0025, 0.0025, 0.0625, 0.0625, 0.125, 0.125]
         for a, ae in zip(areas, areas_expctd):
             self.assertAlmostEqual(a, ae)
 
     def test_sample_points(self):
-        # RocSpatialGrid
-        r = roc.RocSpatialGrid(data=self.data)
-        r.set_grid(0.05)
-        self.assertTrue(np.all(r.sample_points[:, 0] == r.centroids[:, 0]))
-        self.assertTrue(np.all(r.sample_points[:, 1] == r.centroids[:, 1]))
+        # RocGrid
+        r = roc.RocGrid(data=self.data)
+        r.set_sample_units(0.05)
+        self.assertTrue(r.sample_points.getdim(0) == r.centroids.getdim(0))
+        self.assertTrue(r.sample_points.getdim(1) == r.centroids.getdim(1))
 
-        # RocSpatialGridMonteCarloIntegration
-        r = roc.RocSpatialGridMonteCarloIntegration(data=self.data)
-        r.set_grid(0.05, 10)  # 10 sample points per grid square
+        # RocGridMonteCarloIntegration
+        r = roc.RocGridMean(data=self.data)
+        r.set_sample_units(0.05, 10)  # 10 sample points per grid square
 
-        for i in range(r.ngrid):
-            xmin, ymin, xmax, ymax = r.egrid[i]
+        for i in range(r.n_sample_units):
+            xmin, ymin, xmax, ymax = r.sample_units[i]
             self.assertTrue(np.all(r.sample_points.toarray(0)[:, i] > xmin))
             self.assertTrue(np.all(r.sample_points.toarray(0)[:, i] < xmax))
             self.assertTrue(np.all(r.sample_points.toarray(1)[:, i] > ymin))
             self.assertTrue(np.all(r.sample_points.toarray(1)[:, i] < ymax))
 
     def test_true_count(self):
-        r = roc.RocSpatialGrid(data=self.data)
-        r.set_grid(0.5)
+        r = roc.RocGrid(data=self.data)
+        r.set_sample_units(0.5)
         tc = r.true_count
-        self.assertEqual(len(tc), r.ngrid)
+        self.assertEqual(len(tc), r.n_sample_units)
         self.assertEqual(sum(tc), self.data.shape[0])
         expctd_count = {
             (0.26, 0.26): 3,
@@ -101,34 +101,33 @@ class TestRoc(unittest.TestCase):
         }
         for k, v in expctd_count.items():
             # find correct grid square
-            idx = [i for i, x in enumerate(r.igrid) if x.intersects(geometry.Point(k))][0]
+            idx = [i for i, x in enumerate(r.grid_polys) if x.intersects(geometry.Point(k))][0]
             # check count
             self.assertEqual(tc[idx], v)
 
     def test_prediction(self):
-        r = roc.RocSpatialGrid(data=self.data)
-        r.set_grid(0.5)
+        r = roc.RocGrid(data=self.data)
+        r.set_sample_units(0.5)
         tc = r.true_count
 
-        pred = np.linspace(0, 1, r.ngrid).reshape((1, r.ngrid))
+        pred = np.linspace(0, 1, r.n_sample_units)
         # check that an error is raised if the incorrect quantity of data is supplied
         with self.assertRaises(AttributeError):
-            r.set_prediction(pred[:, 1:])
+            r.set_prediction(pred[1:])
         r.set_prediction(pred)
         self.assertTrue(np.all(pred == r.prediction_values))
-        self.assertListEqual(list(r.prediction_rank), range(r.ngrid)[::-1])
+        self.assertListEqual(list(r.prediction_rank), range(r.n_sample_units)[::-1])
 
     def test_evaluate(self):
-        r = roc.RocSpatialGrid(data=self.data)
-        r.set_grid(0.5)
+        r = roc.RocGrid(data=self.data)
+        r.set_sample_units(0.5)
         with self.assertRaises(AttributeError):
             res = r.evaluate()
-        r.set_prediction(np.linspace(0, 1, r.ngrid).reshape((1, r.ngrid)))
+        r.set_prediction(np.linspace(0, 1, r.n_sample_units))
         res = r.evaluate()
-        self.assertListEqual(list(res['prediction_rank']), range(r.ngrid)[::-1])
-        self.assertListEqual(list(res['prediction_values']), list(r.prediction_values[::-1])) # sorted descending
+        self.assertListEqual(list(res['prediction_rank']), range(r.n_sample_units)[::-1])
 
-        cumul_area_expctd = np.cumsum([x.area for x in r.igrid][::-1])
+        cumul_area_expctd = np.cumsum([x.area for x in r.grid_polys][::-1])
         cumul_area_expctd /= cumul_area_expctd[-1]
         self.assertListEqual(list(res['cumulative_area']), list(cumul_area_expctd))
 
@@ -225,7 +224,7 @@ class TestValidation(unittest.TestCase):
         self.assertTrue(vb2.roc.poly is None)
         vb2.set_grid(vb.roc)
 
-        self.assertListEqual(vb.roc.egrid, vb2.roc.egrid)
+        self.assertListEqual(vb.roc.sample_units, vb2.roc.sample_units)
 
     def test_time_cutoff(self):
 
@@ -332,10 +331,10 @@ class TestValidation(unittest.TestCase):
         vb.train_model()
 
         # mock roc object with grid
-        mocroc = mock.create_autospec(roc.RocSpatialGrid)
+        mocroc = mock.create_autospec(roc.RocGrid)
         mocroc.centroids = np.array([[0., 0.],
                                      [1., 1.]])
-        mocroc.egrid = range(2) # needs to have the correct length, contents not used
+        mocroc.sample_units = range(2) # needs to have the correct length, contents not used
         mocroc.sample_points = DataArray([[0., 0.],
                                          [1., 1.]])
         vb.roc = mocroc
@@ -363,11 +362,11 @@ class TestValidation(unittest.TestCase):
         self.assertTrue(np.all(vb.roc.set_prediction.call_args[0][0] == pred_expctd))
 
         # set grid
-        self.assertFalse(vb.roc.set_grid.called)
+        self.assertFalse(vb.roc.set_sample_units.called)
         vb.set_grid(0.1)
-        self.assertTrue(vb.roc.set_grid.called)
-        self.assertEqual(vb.roc.set_grid.call_count, 1)
-        self.assertTupleEqual(vb.roc.set_grid.call_args[0], (0.1,))
+        self.assertTrue(vb.roc.set_sample_units.called)
+        self.assertEqual(vb.roc.set_sample_units.call_count, 1)
+        self.assertTupleEqual(vb.roc.set_sample_units.call_args[0], (0.1,))
 
         # evaluate
         self.assertTrue(vb.roc.evaluate.called)
@@ -444,7 +443,7 @@ class TestValidation(unittest.TestCase):
         vb.set_grid(0.1)
         res = vb.run(time_step=0.1)
         expct_call_count = math.ceil((1 - t0) / 0.1)
-        for v in res.values():
+        for k, v in res.items():
             # only test the length of iterable values, as the res dict also contains some parameter values
             # that are float or int
             if hasattr(v, '__iter__'):

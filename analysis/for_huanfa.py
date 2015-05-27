@@ -31,9 +31,9 @@ if __name__ == "__main__":
         c.append((a, b))
     sq_poly = geos.Polygon(geos.LinearRing(c))
 
-    r = roc.RocSpatialGrid(poly=sq_poly)
+    r = roc.RocGrid(poly=sq_poly)
     print "Setting ROC grid..."
-    r.set_grid(grid_spacing)
+    r.set_sample_units(grid_spacing)
     print "Done."
 
     # prediction on grid
