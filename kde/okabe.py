@@ -36,7 +36,7 @@ def network_linkage(net_obj, source_point, target_points, cutoff, shortest_only=
     connected nodes then test whether we can make it to the point itself.
     We can EITHER search for ONLY the shortest path, OR all paths within the cutoff, excluding loops.
     TODO: add include_loops parameter and support these too
-    :param net_obj:
+    :param net_obj: StreetNet instance
     :param source_point:
     :param target_points:
     :param cutoff:
@@ -44,98 +44,127 @@ def network_linkage(net_obj, source_point, target_points, cutoff, shortest_only=
     """
     target_points = NetworkData(target_points)
     paths = defaultdict(list)
+
     source_neg = source_point.edge.orientation_neg
     source_pos = source_point.edge.orientation_pos
+    source_fid = source_point.edge.fid
 
-    # this search cannot possibly go outside of the circle with radius cutoff
-    # add a little on to the radius to avoid issues with the polygonal approximation of a circle
-    bounding_poly = geometry.Point(*source_point.cartesian_coords).buffer(cutoff * 1.1, resolution=64)
-    edges = net_obj.edges(bounding_poly=bounding_poly)
-    nodes = net_obj.nodes(bounding_poly=bounding_poly)
+    # build array of the possible directional edges to search down
+    # in the undirected case, this is simply both the edge and its reverse
+    # in the directed case, the reverse edge may not exist
 
-    target_distance = target_points.distance(NetworkData([source_point] * target_points.ndata))
+    source_edges = [source_point.edge]
+    add_rev = True
+    if net_obj.directed:
+        # Try to get the reverse edge. If it doesn't exist, this will throw an IndexError
+        ## TODO: haven't actually tested this yet
+        try:
+            edge_rev = net_obj.g_routing[source_neg][source_pos][source_fid]
+        except IndexError:
+            add_rev = False
+
+    if add_rev:
+        print "Adding reverse edge"
+        source_edges.append(
+            Edge(
+                net_obj,
+                orientation_neg=source_pos,
+                orientation_pos=source_neg,
+                fid=source_fid
+            )
+        )
+
+    # quick filter of the targets to exclude any that are too far away based on Euclidean distance
+    target_distance = target_points.euclidean_distance(NetworkData([source_point] * target_points.ndata))
     reduced_target_idx = np.where(target_distance.toarray(0) <= cutoff)[0]
     reduced_targets = target_points.getrows(reduced_target_idx)
+    print "Reduced targets from %d to %d using Euclidean cutoff" % (target_points.ndata, reduced_targets.ndata)
 
-    # before we do anything else, check whether there are any targets on the same edge as the source
-    for i, t in enumerate(reduced_targets.toarray(0)):
-        if t.edge == source_point.edge:
-            # test whether matching targets are sufficiently close and add them if they are
-            dist_between = (t - source_point).length
-            if dist_between <= cutoff:
-                paths[reduced_target_idx[i]].append(([], dist_between))  # no path to record, hence empty array
+    for root_n, source_edge in enumerate(source_edges):
+        print "***"
+        print "Starting at node %s" % source_edge.orientation_pos
+        print "***"
 
-    ## Start at negative node
-    if source_point.node_dist[source_neg] > cutoff:
-        # nothing to do - this node is too far away
-        pass
-    else:
+        # before we do anything else, check whether there are any targets on the starting edge
+        # If this is the reverse edge (root_n==1), we need to skip the
+        # first search for targets - they have already been found
+        if root_n == 1:
+            print "Skipping second search of source edge to avoid repeats"
+        else:
+            for i, t in enumerate(reduced_targets.toarray(0)):
+                if t.edge == source_edge:
+                    # test whether matching targets are sufficiently close and add them if they are
+                    dist_between = (t - source_point).length
+                    if dist_between <= cutoff:
+                        print "Adding target %d as it is on the starting edge." % reduced_target_idx[i]
+                        paths[reduced_target_idx[i]].append(([], dist_between))  # no path to record, hence empty array
+
+        ## Start at negative node
+        if source_point.node_dist[source_edge.orientation_pos] > cutoff:
+            # nothing to do - this node is too far away
+            continue
+
         #A list which monitors the current state of the path
-        current_path = [source_neg]
+        current_path = [source_edge.orientation_pos]
 
         # A list that records the distance to each step on the current path. This is initially equal to the distance from
         # the point to the node.
-        dist = [source_point.node_dist[source_neg]]
+        dist = [source_point.node_dist[source_edge.orientation_pos]]
 
-        # A stack that generates the next nodes to be searched. Each item in the stack
-        # is a generator over the neighbours of a searched node. At each iteration it
-        # returns the node and the length of the connecting edge.
-        # For this first step, we have to manually prevent stepping back over the source point by removing any
-        # edges that are connected to source_pos.
-        stack = [
-            (Edge(net_obj, **t[2]) for t in net_obj.g.edges(source_neg, data=True) if t[0] != source_pos and t[1] != source_pos),
-        ]
+        # A stack that lists the next nodes to be searched. Each item in the stack
+        # is a list of edges accessible from the previous node, excluding a reversal.
+
+        stack = [net_obj.next_turn(source_edge)]  # list of lists
 
         #The stack will empty when the source has been exhausted
         while stack:
 
-            #Take the most recent exploration area added to the stack (stack is last-in-first-out)
-            edge_gen = stack[-1]
+            print "Stack has length %d. Picking from top of the stack." % len(stack)
 
-            #Get the next edge from the generator
-            next_edge = next(edge_gen, None)
-
-            if next_edge is None:
-
-                #If the generator has been exhausted, there are no more nodes to search
-                #down this strand, so the algorithm backtracks.
-
-                #Remove the exhausted generator from the stack
+            if not len(stack[-1]):
+                # no more nodes to search from previous edge
+                # remove the now empty list from the stack
                 stack.pop()
                 #Backtrack to the previous position on the current path
                 current_path.pop()
                 #Adjust the distance list to represent the new state of current_path too
                 dist.pop()
 
+                print "Options exhausted. Backtracking..."
+
                 # skip to next iteration
                 continue
 
-            print "Exploring edge %s" % next_edge
+            # otherwise, grab and remove the next edge to search
+            this_edge = stack[-1].pop()
+
+            print "Exploring edge %s" % this_edge
 
             # Now test whether any targets lie on the new edge
             for i, t in enumerate(reduced_targets.toarray(0)):
-                if t.edge == next_edge:
-                    print "Target %d is on the same edge" % i
+                if t.edge == this_edge:
                     # get distance from current node to this point
                     dist_along = t.node_dist[current_path[-1]]
-                    if dist[-1] + dist_along <= cutoff:
-                        paths[reduced_target_idx[i]].append((list(current_path), dist[-1] + dist_along))
+                    dist_between = dist[-1] + dist_along
+                    print "Target %d is on this edge at a distance of %.2f" % (reduced_target_idx[i], dist_between)
+                    if dist_between <= cutoff:
+                        print "Adding target %d to paths" % reduced_target_idx[i]
+                        paths[reduced_target_idx[i]].append((list(current_path), dist_between))
 
             # Add the next node's edges to the stack if it hasn't already been visited and it's within reach
             # TODO: if we need to support loops, then skip this checking stage?
-            if dist[-1] + next_edge.length <= cutoff:
-                # can't be certain which of the nodes we are currently at, so try one and switch if we got it wrong
-                next_node = next_edge.orientation_pos
-                if next_node == current_path[-1]:
-                    next_node = next_edge.orientation_neg
+            if dist[-1] + this_edge.length <= cutoff:
 
+                next_node = this_edge.orientation_pos
                 # has this node been visited already?
                 if next_node not in current_path:
-                    stack.append(
-                        (Edge(net_obj, **t[2]) for t in net_obj.g.edges(next_node, data=True) if t[0] != current_path[-1] and t[1] != current_path[-1])
-                    )
+                    print "Haven't visited this before, so adding to the stack."
+                    stack.append(net_obj.next_turn(this_edge))
                     current_path.append(next_node)
-                    dist.append(dist[-1] + next_edge.length)
+                    dist.append(dist[-1] + this_edge.length)
+                    print "We are now distance %.2f away from the source point" % dist[-1]
+                else:
+                    print "We were already here on iteration %d so ignoring it" % (current_path.index(next_node) + 1)
 
     return paths
 
