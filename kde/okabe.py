@@ -33,18 +33,21 @@ def all_paths_source_targets(G, source, targets, cutoff=None, weight='length'):
     '''
 
     paths=defaultdict(list)
-
-    #Bail out in the trivial case
-    if cutoff == 0:
-        return paths
-
+    
     #Set up three structures to monitor the state of the search
 
     #A list which monitors the current state of the path
     current_path = [source]
 
     #A list whih records the distance to each step on the current path
-    dist = [0]
+    dist = [0.]
+    
+    if source in targets:
+        paths[source].append((list(current_path), dist[-1]))
+    
+    #Bail out in the trivial case
+    if cutoff == 0:
+        return paths
 
     #A stack which records the next nodes to be searched. Each item in the stack
     #is a generator over the neighbours of a searched node. At each iteration it
@@ -77,15 +80,14 @@ def all_paths_source_targets(G, source, targets, cutoff=None, weight='length'):
         elif dist[-1]+edge_weight <= cutoff:
 
             #If condition passed, we have a viable node
-
-            if successor in targets:
-
-                #If the viable node is one of the targets, record the path that we
-                #took to reach it, together with its length, in a tuple. Add it
-                #to the relevant entry in the paths dictionary
-                paths[successor].append((current_path+[successor], dist[-1]+edge_weight))
-
-            if successor not in current_path:
+            #TODO: Need to handle 'reflection' at nodes of degree 1
+            predecessor = current_path[-2] if len(current_path)>1 else None
+            if successor is not predecessor:
+                if successor in targets:
+                    #If the viable node is one of the targets, record the path that we
+                    #took to reach it, together with its length, in a tuple. Add it
+                    #to the relevant entry in the paths dictionary
+                    paths[successor].append((current_path+[successor], dist[-1]+edge_weight))
 
                 #We also want to continue the search down this path. As long as
                 #it does not cause a loop (hence the check for presence in current_path)
@@ -175,9 +177,7 @@ class EqualSplitKernel():
         #about the kernel centres on that edge
         edge_points=defaultdict(list)
 
-        for point_id in self.points:
-
-            net_point = self.points[point_id]
+        for net_point in self.points:
 
             #Make a unique ID triplet for the edge - it needs all this, rather than
             #just the FID, for later operations
@@ -233,17 +233,9 @@ class EqualSplitKernel():
 
         paths = all_paths_source_targets(self.g_aug, eval_node, self.points, cutoff=self.h, weight='length')
 
-        point_paths={k: v for k, v in paths.iteritems() if k!=eval_node}
+#        point_paths={k: v for k, v in paths.iteritems() if k!=eval_node}
 
-#        #Do a standard Dijkstra shortest path
-#        distance,path=nx.single_source_dijkstra(self.g_aug,eval_node,cutoff=self.h,weight='length')
-#
-#        #Filter this so that we only retain information about nodes which represent
-#        #points. Also ignore the source node.
-#        point_distance={k: v for k, v in distance.iteritems() if k in self.points and k!=eval_node}
-#        point_path={k: v for k, v in path.iteritems() if k in self.points and k!=eval_node}
-
-        return point_paths
+        return paths
 
 
 
@@ -359,7 +351,7 @@ class EqualSplitKernel():
 
                 #Get the value of the univariate kernel
                 kernel_value = self.kernel_univ.pdf(path_distance)
-
+                
                 #Go through every intermediate node, dividing the kernel value
                 for path_node in path:
 
@@ -399,11 +391,6 @@ class EqualSplitKernel():
 
                 total_value += kernel_value
 
-        ## FIXME: this is a hack for now.  We've not included the contribution from the source itself
-        ## Things that break this: (1) if there are two coincident sources, this will only grab one of them.
-        ## (2) it doesn't find loops back to itself, so underestimates the density
-        total_value += self.kernel_univ.pdf(0.)
-
         return total_value
 
 
@@ -414,7 +401,9 @@ if __name__ == '__main__':
     from network.plotting import network_point_coverage
     import numpy as np
 
-    ITNFILE = os.path.join(DATA_DIR, 'network_data/itn_sample', 'mastermap-itn_417209_0_brixton_sample.gml')
+    cur_dir = os.getcwd()
+    ITNFILE = os.path.join(cur_dir, 'network', 'test_data', 'mastermap-itn_417209_0_brixton_sample.gml')
+    ITNFILE = os.path.relpath(ITNFILE)
 
     # A little demo
 
@@ -429,6 +418,7 @@ if __name__ == '__main__':
     #Four test points - 1 and 3 on same segment, 2 on neighbouring segment, 4 long way away.
     test_points = [
         [531291, 175044],
+        [531291, 175044],
         [531293, 175054],
         [531209, 175211],
         [531466, 175005],
@@ -436,24 +426,25 @@ if __name__ == '__main__':
         [531724, 174826],
         [531013, 175294]
     ]
-    network_points = []
-    kde_source_points={}
+    source_points = []
 
     # Add these points as the kernel sources
     for i, t in enumerate(test_points):
         net_point, snap_distance = current_net.closest_edges_euclidean(t[0], t[1], grid_edge_index)[0]
-        network_points.append(net_point)
-        kde_source_points['point%d' % i] = net_point
+        source_points.append(net_point)
 
 
     #Initialise the kernel
-    TestKernel = EqualSplitKernel(current_net, kde_source_points, 100)
+    TestKernel = EqualSplitKernel(current_net, source_points, 100)
 
     #Both evaluation methods
-    ## TODO: see comments in evaluate_point for why these differ
-    print TestKernel.evaluate_non_point(network_points[1])
-    print TestKernel.evaluate_point(network_points[1])
-
+    #Define a new test_point which is at the same location as network_points[0], but is a different point
+    test_point, snap_distance = current_net.closest_edges_euclidean(531291, 175044, grid_edge_index)[0]
+    print TestKernel.evaluate_non_point(test_point)
+    print TestKernel.evaluate_non_point(source_points[0])
+    print TestKernel.evaluate_point(source_points[0])
+    
+    
 #    # define a whole load of points on the network for plotting
 #    xy, cd, edge_count = network_point_coverage(current_net.g, dx=10)
 #
