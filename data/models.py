@@ -371,6 +371,10 @@ class NetworkData(DataArray):
 
         return DataArray([self.distance_function(x, y) for (x, y) in zip(self.data.flat, other.data.flat)])
 
+    def euclidean_distance(self, other):
+        """ Euclidean distance between the data """
+        return DataArray([x.euclidean_distance(y) for (x, y) in zip(self.data.flat, other.data.flat)])
+
 
 class DirectedNetworkData(NetworkData):
 
