@@ -6,7 +6,7 @@ import math
 import hotspot
 import roc
 import collections
-from data.models import CartesianSpaceTimeData
+from data.models import CartesianSpaceTimeData, NetworkSpaceTimeData, DataArray
 import logging
 
 
@@ -34,10 +34,31 @@ class ValidationBase(object):
     def __init__(self, data, model_class,
                  data_index=None,
                  spatial_domain=None,
-                 grid_length=None,
+                 sample_unit_size=None,
                  cutoff_t=None,
                  model_args=None,
                  model_kwargs=None):
+
+        self.data = None
+        self.data_index = None
+        self.set_data(data, data_index=data_index)
+        self.model_args = model_args or []
+        self.model_kwargs = model_kwargs or {}
+        self.model = model_class(*self.model_args, **self.model_kwargs)
+
+        # set initial time cut point
+        self.cutoff_t = cutoff_t or self.t[int(self.ndata / 2)]
+
+        # set roc
+        self.bounding_poly = spatial_domain
+        self.roc = None
+        self.set_roc()
+
+        # setup grid if sample_unit_size supplied
+        if sample_unit_size:
+            self.set_sample_units(sample_unit_size)
+
+    def set_data(self, data, data_index=None):
         # sort data in increasing time
         self.data = self.data_class(data)
         sort_idx = np.argsort(self.data.time.toarray(0))
@@ -47,25 +68,10 @@ class ValidationBase(object):
             self.data_index = np.array(data_index)
             self.data_index = self.data_index[sort_idx]
 
-        self.model_args = model_args or []
-        self.model_kwargs = model_kwargs or {}
-        self.model = model_class(*self.model_args, **self.model_kwargs)
-
-        # set initial time cut point
-        self.cutoff_t = cutoff_t or self.t[int(self.ndata / 2)]
+    def set_roc(self):
 
         # set roc
-        self.roc = None
-        self.set_roc(spatial_domain)
-
-        # setup grid if grid_length supplied
-        if grid_length:
-            self.set_grid(grid_length)
-
-    def set_roc(self, poly):
-
-        # set roc
-        self.roc = self.roc_class(poly=poly)
+        self.roc = self.roc_class(poly=self.bounding_poly)
         # set roc with ALL data initially
         self.roc.set_data(self.data[:, 1:], index=self.data_index)
 
@@ -81,17 +87,17 @@ class ValidationBase(object):
         if b_train:
             self.train_model(**kwargs)
 
-    def set_grid(self, grid, *args, **kwargs):
+    def set_sample_units(self, length_or_roc, *args, **kwargs):
         """
         Set the domain grid for computing SER etc.
         :param grid: Either a scalar giving the grid square length or an instance of RocSpatialGrid from which the grid
         will be copied
         """
-        print "ValidationBase set_grid"
-        if isinstance(grid, self.roc_class):
-            self.roc.copy_grid(grid)
+        print "ValidationBase set_sample_units"
+        if isinstance(length_or_roc, self.roc_class):
+            self.roc.copy_sample_units(length_or_roc)
         else:
-            self.roc.set_sample_units(grid, *args, **kwargs)
+            self.roc.set_sample_units(length_or_roc, *args, **kwargs)
 
     @property
     def spatial_domain(self):
@@ -113,11 +119,11 @@ class ValidationBase(object):
     def training(self):
         return self.data.getrows(self.t <= self.cutoff_t)
 
-    def _testing_idx(self, dt_plus=None, dt_minus=0., as_point=False):
+    def testing_index(self, dt_plus=None, dt_minus=0.):
         """
+        Return the array indices corresponding to the testing data based on the supplied parameters.
         :param dt_plus: Number of time units ahead of cutoff_t to take as maximum testing data.  If None, take ALL data.
         :param dt_minus: Number of time units ahead of cutoff_t to take as minimum testing data.  Defaults to 0.
-        :param as_point: If True, return N length list of (time, geos.Point) tuples, else return N x 3 matrix
         :return: Indices corresponding to the testing data, so that testing data can be extracted as
                  self.data[indices]
         """
@@ -138,7 +144,7 @@ class ValidationBase(object):
         :param as_point: If True, return N length list of (time, Point) tuples, else return N x 3 matrix
         :return: Testing data for comparison with predictions, based on value of cutoff_t.
         """
-        ind = self._testing_idx(dt_plus, dt_minus, as_point)
+        ind = self.testing_index(dt_plus, dt_minus)
         d = self.data.getrows(ind)
         if as_point:
             return [(t[0], Point(list(t[1:]))) for t in d]
@@ -147,13 +153,11 @@ class ValidationBase(object):
 
     def testing_data_index(self, dt_plus=None, dt_minus=0., as_point=False):
         """
-        :param dt_plus: Number of time units ahead of cutoff_t to take as maximum testing data.  If None, take ALL data.
-        :param dt_minus: Number of time units ahead of cutoff_t to take as minimum testing data.  Defaults to 0.
-        :param as_point: If True, return N length list of (time, Point) tuples, else return N x 3 matrix
-        :return: The data indices attached to the testing data.  If data_index has not been set, return the lookup
+        Parameters as per testing_index.
+        :return: The data indices attached to the testing data.  If self.data_index has not been set, return the lookup
         indices instead.
         """
-        ind = self._testing_idx(dt_plus, dt_minus, as_point)
+        ind = self.testing_index(dt_plus, dt_minus)
         if self.data_index is not None:
             return self.data_index[ind]
         else:
@@ -164,11 +168,9 @@ class ValidationBase(object):
         self.model.train(self.training, *args, **kwargs)
 
     def prediction_array(self, t):
-        x = self.roc.sample_points.toarray(0)
-        y = self.roc.sample_points.toarray(1)
-        ts = np.ones_like(x) * t
-        data_array = self.data_class.from_args(ts, x, y)
-        data_array.original_shape = x.shape
+        n = self.roc.sample_points.ndata
+        ts = np.ones(n) * t
+        data_array = DataArray.from_args(ts).adddim(self.roc.sample_points, type=self.data_class)
         return data_array
 
     def predict(self, t, **kwargs):
@@ -377,6 +379,16 @@ class ValidationIntegration(ValidationBase):
     roc_class = roc.RocGridMean
 
 
+class NetworkValidationBase(ValidationBase):
+
+    roc_class = roc.NetworkRocSegments
+    data_class = NetworkSpaceTimeData
+
+    def set_data(self, data, data_index=None):
+        super(NetworkValidationBase, self).set_data(data, data_index=data_index)
+        # add the graph attribute
+        self.graph = data.graph
+
 if __name__ == "__main__":
     from database import models
     from analysis import plotting
@@ -400,15 +412,15 @@ if __name__ == "__main__":
     # use Bowers kernel
     # stk = hotspot.STKernelBowers(1, 1e-4)
     # vb = ValidationBase(data, hotspot.Hotspot, camden.mpoly, model_args=(stk,))
-    # vb.set_grid(200)
+    # vb.set_sample_units(200)
     # vb.set_t_cutoff(4.0)
 
     # use basic historic data spatial hotspot
     sk = hotspot.SKernelHistoric(2) # use heatmap from final 2 days data
     # vb = ValidationBase(data, hotspot.Hotspot, camden.mpoly, model_args=(sk,))
-    # vb.set_grid(200)
+    # vb.set_sample_units(200)
     vb = ValidationIntegration(data, hotspot.Hotspot, camden.mpoly, model_args=(sk,))
-    vb.set_grid(200, n_sample_per_grid=10)
+    vb.set_sample_units(200, n_sample_per_grid=10)
     vb.set_t_cutoff(4.0)
 
     res = vb.run(time_step=1, n_iter=1) # predict one day ahead

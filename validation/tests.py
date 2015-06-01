@@ -209,7 +209,7 @@ class TestValidation(unittest.TestCase):
         self.assertTrue(vb.roc.poly is None)
 
         # instantiate grid
-        vb.set_grid(0.1)
+        vb.set_sample_units(0.1)
 
         # should now have automatically made a spatial domain
         self.assertListEqual(list(vb.roc.poly.bounds), [
@@ -222,7 +222,7 @@ class TestValidation(unittest.TestCase):
         # repeat but this time copy the grid
         vb2 = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
         self.assertTrue(vb2.roc.poly is None)
-        vb2.set_grid(vb.roc)
+        vb2.set_sample_units(vb.roc)
 
         self.assertListEqual(vb.roc.sample_units, vb2.roc.sample_units)
 
@@ -307,7 +307,7 @@ class TestValidation(unittest.TestCase):
         stk = hotspot.SKernelHistoric(1, bdwidth=0.3)
         vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
         vb.train_model()
-        vb.set_grid(0.1)
+        vb.set_sample_units(0.1)
 
         # spoof predict at all grid centroids
         stk = mock.create_autospec(hotspot.STKernelBowers)
@@ -363,7 +363,7 @@ class TestValidation(unittest.TestCase):
 
         # set grid
         self.assertFalse(vb.roc.set_sample_units.called)
-        vb.set_grid(0.1)
+        vb.set_sample_units(0.1)
         self.assertTrue(vb.roc.set_sample_units.called)
         self.assertEqual(vb.roc.set_sample_units.call_count, 1)
         self.assertTupleEqual(vb.roc.set_sample_units.call_args[0], (0.1,))
@@ -379,7 +379,7 @@ class TestValidation(unittest.TestCase):
         with mock.patch.object(validation.ValidationBase, '_iterate_run',
                                return_value=collections.defaultdict(list)) as m:
             vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
-            vb.set_grid(0.1)
+            vb.set_sample_units(0.1)
             t0 = vb.cutoff_t
             vb.run(time_step=0.1)
             expct_call_count = math.ceil((1 - t0) / 0.1)
@@ -392,7 +392,7 @@ class TestValidation(unittest.TestCase):
 
         # need to train model before running, otherwise it won't get past the call to the mocked function
         vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
-        vb.set_grid(0.1)
+        vb.set_sample_units(0.1)
         vb.train_model()
 
         # check correct calls being made to _initial_setup
@@ -413,7 +413,7 @@ class TestValidation(unittest.TestCase):
 
         # need to train model before running, otherwise it won't get past the call to the mocked function
         vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
-        vb.set_grid(0.1)
+        vb.set_sample_units(0.1)
         vb.train_model()
 
         # check correct calls being made to _update
@@ -440,7 +440,7 @@ class TestValidation(unittest.TestCase):
         # no grid specified raises error
         with self.assertRaises(AttributeError):
             res = vb.run(time_step=0.1)
-        vb.set_grid(0.1)
+        vb.set_sample_units(0.1)
         res = vb.run(time_step=0.1)
         expct_call_count = math.ceil((1 - t0) / 0.1)
         for k, v in res.items():
@@ -448,6 +448,44 @@ class TestValidation(unittest.TestCase):
             # that are float or int
             if hasattr(v, '__iter__'):
                 self.assertEqual(len(v), expct_call_count)
+
+    def test_network_validation(self):
+        # load some toy network data
+        from network import TEST_DATA_FILE
+        from network import streetnet, itn
+        from data.models import DataArray, NetworkData, NetworkSpaceTimeData
+        test_data = itn.read_gml(TEST_DATA_FILE)
+        itn_net = itn.ITNStreetNet.from_data_structure(test_data)
+
+        # lay down a few events on the network
+        net_point_array = []
+        edge_idx = [20, 30, 40, 50, 100]
+        for i in edge_idx:
+            net_point_array.append(itn_net.edges()[i].centroid)  # midway along the edge
+        net_point_array = NetworkData(net_point_array)
+
+        # get the spatial extent of the network
+        # xmin, ymin, xmax, ymax = itn_net.extent
+
+        # lay down some random points within that box
+        # num_pts = 100
+        # x_pts = np.random.rand(num_pts) * (xmax - xmin) + xmin
+        # y_pts = np.random.rand(num_pts) * (ymax - ymin) + ymin
+
+        # xy = DataArray.from_args(x_pts, y_pts)
+        # net_point_array = NetworkData.from_cartesian(itn_net, xy, grid_size=50)
+
+        # append to times to get full dataset
+        st_net_array = DataArray.from_args(np.linspace(0, 1, net_point_array.ndata)).adddim(net_point_array, type=NetworkSpaceTimeData)
+
+        stk = hotspot.STNetworkBowers(1.0, 1.0)
+        vb = validation.NetworkValidationBase(st_net_array, hotspot.Hotspot, model_args=(stk,))
+        vb.set_sample_units(None)  # the argument makes no difference here
+        res = vb.run(time_step=0.2)
+
+
+
+
 
 
 class TestHotspot(unittest.TestCase):

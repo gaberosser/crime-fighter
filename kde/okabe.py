@@ -430,7 +430,7 @@ if __name__ == '__main__':
 
     # Add these points as the kernel sources
     for i, t in enumerate(test_points):
-        net_point, snap_distance = current_net.closest_edges_euclidean(t[0], t[1], grid_edge_index)[0]
+        net_point, snap_distance = current_net.closest_edges_euclidean(t[0], t[1], grid_edge_index)
         source_points.append(net_point)
 
 
@@ -439,7 +439,7 @@ if __name__ == '__main__':
 
     #Both evaluation methods
     #Define a new test_point which is at the same location as network_points[0], but is a different point
-    test_point, snap_distance = current_net.closest_edges_euclidean(531291, 175044, grid_edge_index)[0]
+    test_point, snap_distance = current_net.closest_edges_euclidean(531291, 175044, grid_edge_index)
     print TestKernel.evaluate_non_point(test_point)
     print TestKernel.evaluate_non_point(source_points[0])
     print TestKernel.evaluate_point(source_points[0])

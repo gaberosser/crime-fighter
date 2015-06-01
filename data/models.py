@@ -339,8 +339,6 @@ class NetworkData(DataArray):
             tmp = net.closest_edges_euclidean(x, y, grid_edge_index=grid_edge_index)
             if not len(tmp):
                 tmp = net.closest_segments_euclidean_brute_force(x, y)
-            else:
-                tmp = tmp[0]
             net_points.append(tmp[0])
         return cls(net_points)
 
@@ -386,3 +384,7 @@ class NetworkSpaceTimeData(SpaceTimeDataArray):
 
     datatype = object
     space_class = NetworkData
+
+    @property
+    def graph(self):
+        return self.space.graph
