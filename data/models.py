@@ -336,10 +336,7 @@ class NetworkData(DataArray):
         grid_edge_index = net.build_grid_edge_index(grid_size)
         net_points = []
         for x, y in data:
-            tmp = net.closest_edges_euclidean(x, y, grid_edge_index=grid_edge_index)
-            if not len(tmp):
-                tmp = net.closest_segments_euclidean_brute_force(x, y)
-            net_points.append(tmp[0])
+            net_points.append(NetPoint.from_cartesian(net, x, y, grid_edge_index=grid_edge_index))
         return cls(net_points)
 
     def to_cartesian(self):
