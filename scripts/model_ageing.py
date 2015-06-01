@@ -72,7 +72,7 @@ def camden():
                                                        model_kwargs=model_kwargs,
                                                        )
 
-                vb.set_grid(grid_squares, num_sample_points)
+                vb.set_sample_units(grid_squares, num_sample_points)
 
                 try:
                     res[sdn] = vb.run(time_step=1, t_upper=t_upper, verbose=True,
@@ -141,7 +141,7 @@ def run_chicago():
                                                                   model_kwargs=model_kwargs,
                                                                   )
 
-                vb.set_grid(250, num_sample_points)
+                vb.set_sample_units(250, num_sample_points)
 
                 try:
                     res[sdn] = vb.run(time_step=1, t_upper=t_upper, verbose=True,

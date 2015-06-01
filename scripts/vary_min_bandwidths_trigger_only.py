@@ -104,7 +104,7 @@ def chicago_south_side(min_bandwidth, crime_type):
     )
 
     logger.info("Setting validation grid")
-    vb.set_grid(250, num_sample_points)
+    vb.set_sample_units(250, num_sample_points)
     try:
         logger.info("Starting validation run.")
         res = vb.run(time_step=1, n_iter=this_num_validation, verbose=True, train_kwargs={'niter': niter})
@@ -173,7 +173,7 @@ def camden(min_bandwidth, crime_type):
     )
 
     logger.info("Setting validation grid")
-    vb.set_grid(250, num_sample_points)
+    vb.set_sample_units(250, num_sample_points)
     try:
         logger.info("Starting validation run.")
         res = vb.run(time_step=1, n_iter=this_num_validation, verbose=True, train_kwargs={'niter': niter})

@@ -552,7 +552,7 @@ def validate_point_process(
         'estimation_function': lambda x, y: estimation.estimator_bowers(x, y, ct=1, cd=0.02),
         'trigger_kde_kwargs': {'min_bandwidth': np.array([0.3, 5., 5.])},
     })
-    vb.set_grid(grid)
+    vb.set_sample_units(grid)
     vb.set_t_cutoff(end_days, b_train=False)
 
     res = vb.run(time_step=time_step, t_upper=end_days + num_validation, pred_dt_plus=pred_dt_plus,
@@ -592,7 +592,7 @@ def validate_historic_kde(
 
 
     vb = validation.ValidationBase(res, hotspot.Hotspot, poly, model_args=(sk,))
-    vb.set_grid(grid)
+    vb.set_sample_units(grid)
     vb.set_t_cutoff(end_days, b_train=False)
 
     res = vb.run(time_step=prediction_dt, t_upper=end_days + num_validation, pred_dt_plus=pred_dt_plus,

@@ -363,13 +363,13 @@ if __name__ == "__main__":
     # use Bowers kernel
     # stk = hotspot.STKernelBowers(1, 1e-4)
     # vb = ValidationBase(data, hotspot.Hotspot, camden.mpoly, model_args=(stk,))
-    # vb.set_grid(grid_length=200)
+    # vb.set_sample_units(grid_length=200)
     # vb.set_t_cutoff(4.0)
 
     # use basic historic data spatial hotspot
     # sk = hotspot.SKernelHistoric(2) # use heatmap from final 2 days data
     # vb = ValidationBase(data, hotspot.Hotspot, camden.mpoly, model_args=(sk,))
-    # vb.set_grid(grid_length=200)
+    # vb.set_sample_units(grid_length=200)
     # vb.set_t_cutoff(4.0)
 
     # use Point process learning method
@@ -389,7 +389,7 @@ if __name__ == "__main__":
         'include': ('full', 'full_static', 'bg', 'trigger')
     }
 
-    vb.set_grid(3, n_sample_per_grid=10)
+    vb.set_sample_units(3, n_sample_per_grid=10)
     vb.set_t_cutoff(400, b_train=False)
     res = vb.run(time_step=5, n_iter=5, train_kwargs={'niter': 10}, verbose=True, pred_kwargs=pred_kwargs)
 

@@ -131,7 +131,7 @@ def camden():
                                                        model_kwargs=model_kwargs,
                                                        )
 
-                vb.set_grid(grid_squares, num_sample_points)
+                vb.set_sample_units(grid_squares, num_sample_points)
 
                 try:
                     res[(t, d)] = vb.run(time_step=1, n_iter=this_num_validation, verbose=True,
