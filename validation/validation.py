@@ -184,7 +184,7 @@ class ValidationBase(object):
         prediction = self.predict(self.cutoff_t + pred_dt_plus, **kwargs)
         testing_data = self.testing(dt_plus=true_dt_plus, dt_minus=true_dt_minus)
         testing_ind = self.testing_data_index(dt_plus=true_dt_plus, dt_minus=true_dt_minus)
-        self.roc.set_data(testing_data[:, 1:], index=testing_ind)
+        self.roc.set_data(testing_data.space, index=testing_ind)
         self.roc.set_prediction(prediction)
 
         return self.roc.evaluate()
@@ -388,6 +388,12 @@ class NetworkValidationBase(ValidationBase):
         super(NetworkValidationBase, self).set_data(data, data_index=data_index)
         # add the graph attribute
         self.graph = data.graph
+
+
+class NetworkValidationMean(NetworkValidationBase):
+
+    roc_class = roc.NetworkRocSegmentsMean
+
 
 if __name__ == "__main__":
     from database import models

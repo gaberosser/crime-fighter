@@ -9,6 +9,9 @@ import mock
 import math
 import collections
 from shapely import geometry
+from network import TEST_DATA_FILE
+from network import itn
+from data.models import DataArray, NetworkData, NetworkSpaceTimeData
 
 
 class TestRoc(unittest.TestCase):
@@ -451,41 +454,36 @@ class TestValidation(unittest.TestCase):
 
     def test_network_validation(self):
         # load some toy network data
-        from network import TEST_DATA_FILE
-        from network import streetnet, itn
-        from data.models import DataArray, NetworkData, NetworkSpaceTimeData
         test_data = itn.read_gml(TEST_DATA_FILE)
         itn_net = itn.ITNStreetNet.from_data_structure(test_data)
 
         # lay down a few events on the network
         net_point_array = []
-        edge_idx = [20, 30, 40, 50, 100]
+        edge_idx = [20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 100]
         for i in edge_idx:
             net_point_array.append(itn_net.edges()[i].centroid)  # midway along the edge
         net_point_array = NetworkData(net_point_array)
 
-        # get the spatial extent of the network
-        # xmin, ymin, xmax, ymax = itn_net.extent
-
-        # lay down some random points within that box
-        # num_pts = 100
-        # x_pts = np.random.rand(num_pts) * (xmax - xmin) + xmin
-        # y_pts = np.random.rand(num_pts) * (ymax - ymin) + ymin
-
-        # xy = DataArray.from_args(x_pts, y_pts)
-        # net_point_array = NetworkData.from_cartesian(itn_net, xy, grid_size=50)
-
         # append to times to get full dataset
-        st_net_array = DataArray.from_args(np.linspace(0, 1, net_point_array.ndata)).adddim(net_point_array, type=NetworkSpaceTimeData)
+        st_net_array = DataArray.from_args(np.arange(net_point_array.ndata) / float(len(edge_idx))).adddim(net_point_array, type=NetworkSpaceTimeData)
 
-        stk = hotspot.STNetworkBowers(1.0, 1.0)
+        # set the kernel.
+        # use deliberately high parameters to ensure that risk drops off quickly with distance and time
+        stk = hotspot.STNetworkBowers(10.0, 10.0)
         vb = validation.NetworkValidationBase(st_net_array, hotspot.Hotspot, model_args=(stk,))
         vb.set_sample_units(None)  # the argument makes no difference here
-        res = vb.run(time_step=0.2)
+        vb.set_t_cutoff(0.5)
+        res = vb.run(time_step=0.1)
 
+        self.assertEqual(len(res['cutoff_t']), 5)
+        for (t, te) in zip(res['cutoff_t'], np.arange(0.5, 1.0, 0.1)):
+            self.assertAlmostEqual(t, te)
 
-
-
+        # on each step, the segment corresponding to the most recent event should have the highest prediction rank
+        for i in range(5):
+            self.assertTrue(
+                np.all(res['prediction_rank'][i][:(i+1)] == np.array(edge_idx[5:(i + 6)])[::-1])
+            )
 
 
 class TestHotspot(unittest.TestCase):

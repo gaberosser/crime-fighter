@@ -221,7 +221,7 @@ class DataArray(object):
         if self.original_shape:
             return self.data[:, dim].reshape(self.original_shape)
         else:
-            return self.data[:, dim].squeeze()
+            return self.data[:, dim]
 
 
 class SpaceTimeDataArray(DataArray):
@@ -315,11 +315,17 @@ class NetworkData(DataArray):
         super(NetworkData, self).__init__(network_points, **kwargs)
         if self.nd != 1:
             raise AttributeError("NetworkData must be one-dimensional.")
-        self.graph = self.data[0, 0].graph
         if kwargs.pop('strict', True):
             for x in self.data.flat:
                 if x.graph is not self.graph:
                     raise AttributeError("All network points must be defined on the same graph")
+
+    @property
+    def graph(self):
+        if self.ndata:
+            return self.data[0, 0].graph
+        else:
+            return None
 
     @classmethod
     def from_cartesian(cls, net, data, grid_size=50):

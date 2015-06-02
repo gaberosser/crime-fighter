@@ -161,6 +161,13 @@ class SpatialRoc(object):
         return np.array(indices, dtype=object)
 
     def evaluate(self):
+        # check that there are some testing data, and return reduced results if not
+        if self.data.ndata == 0:
+            return {
+                'prediction_rank': self.prediction_rank
+            }
+        else:
+            print "n testing data: %d" % self.data.ndata
 
         # count actual crimes in testing dataset on same grid
         true_grid_ind = self.true_index[self.prediction_rank]
