@@ -8,10 +8,17 @@ import numpy as np
 import mock
 import math
 import collections
+import bisect
 from shapely import geometry
 from network import TEST_DATA_FILE
 from network import itn
 from data.models import DataArray, NetworkData, NetworkSpaceTimeData
+
+
+def load_test_network():
+    # load some toy network data
+    test_data = itn.read_gml(TEST_DATA_FILE)
+    return itn.ITNStreetNet.from_data_structure(test_data)
 
 
 class TestRoc(unittest.TestCase):
@@ -142,6 +149,74 @@ class TestRoc(unittest.TestCase):
         self.assertListEqual(list(res['cumulative_crime_max']), list(cumulative_crime_max_expctd))
 
         ## TODO: test pai too
+
+    def test_network_roc(self):
+        itn_net = load_test_network()
+
+        # lay down a few events on the network
+        net_point_array = []
+        edge_idx = [20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 100]
+        for i in edge_idx:
+            net_point_array.append(itn_net.edges()[i].centroid)  # midway along the edge
+        net_point_array = NetworkData(net_point_array)
+
+        # append to times to get full dataset
+        st_net_array = DataArray.from_args(np.arange(net_point_array.ndata) / float(len(edge_idx))).adddim(net_point_array, type=NetworkSpaceTimeData)
+
+        # test 1: Bowers kernel (decrease with time and distance)
+        stk = hotspot.STNetworkBowers(a=10., b=1.)
+        vb = validation.NetworkValidationBase(st_net_array, hotspot.Hotspot, model_args=(stk,))
+        vb.set_sample_units(None)  # the argument makes no difference here
+        vb.set_t_cutoff(0.5)
+        res = vb.run(time_step=0.1)
+
+        # on each step, the segment corresponding to the most recent event should have the highest prediction rank
+        for i in range(5):
+            self.assertTrue(
+                np.all(res['prediction_rank'][i][:(i+1)] == np.array(edge_idx[5:(i + 6)])[::-1])
+            )
+
+        # test 2: binary mask kernel in space, decr in time
+        # exponential decrease with dt, zero when dd > 10
+        radius = 50.
+        stk = hotspot.STNetworkFixedRadius(radius, 1.0)
+        vb = validation.NetworkValidationBase(st_net_array, hotspot.Hotspot, model_args=(stk,))
+        vb.set_sample_units(None)  # the argument makes no difference here
+        vb.set_t_cutoff(0.5)
+        res = vb.run(time_step=0.1, n_iter=1)
+        pvals = vb.roc.prediction_values
+
+        # check network distance from centroid to sources and verify non zero values
+        pvals_expctd_nonzero = []
+        for i, e in enumerate(vb.roc.sample_units):
+            if np.any([(e.centroid - x).length <= radius for x in vb.training.toarray(1)]):
+                pvals_expctd_nonzero.append(i)
+        pvals_expctd_nonzero = np.array(pvals_expctd_nonzero)
+        self.assertTrue(np.all(pvals.nonzero()[0] == np.array(pvals_expctd_nonzero)))
+
+        # test 3: repeat but with a mean version of the ROC
+
+        vb = validation.NetworkValidationMean(st_net_array, hotspot.Hotspot, model_args=(stk,))
+        vb.set_sample_units(None, 10)  # points are spaced ~10m apart
+        vb.set_t_cutoff(0.5)
+        res = vb.run(time_step=0.1, n_iter=1)  # just one run this time
+        pvals2 = vb.roc.prediction_values
+
+        # check network distance from centroid to sources and verify non zero values
+        pvals_expctd_nonzero2 = []
+        for i, pt in enumerate(vb.sample_points.toarray(0)):
+            if np.any([(pt - x).length <= radius for x in vb.training.toarray(1)]):
+                # find sample unit from sample point
+                this_sample_unit = bisect.bisect_right(
+                    vb.roc.n_sample_point_per_unit.cumsum(),
+                    i
+                )
+                if this_sample_unit not in pvals_expctd_nonzero2:
+                    pvals_expctd_nonzero2.append(this_sample_unit)
+
+        self.assertTrue(np.all(pvals2.nonzero()[0] == np.array(pvals_expctd_nonzero2)))
+        # if you put a set_trace in here, can see that the number of nonzeros is greater in test 3, because lines with
+        # ANY sample point within the radius have a nonzero value, whereas it's only done by centroid in test 2.
 
 
 class TestValidation(unittest.TestCase):
@@ -452,39 +527,47 @@ class TestValidation(unittest.TestCase):
             if hasattr(v, '__iter__'):
                 self.assertEqual(len(v), expct_call_count)
 
-    def test_network_validation(self):
-        # load some toy network data
-        test_data = itn.read_gml(TEST_DATA_FILE)
-        itn_net = itn.ITNStreetNet.from_data_structure(test_data)
-
-        # lay down a few events on the network
-        net_point_array = []
-        edge_idx = [20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 100]
-        for i in edge_idx:
-            net_point_array.append(itn_net.edges()[i].centroid)  # midway along the edge
-        net_point_array = NetworkData(net_point_array)
-
-        # append to times to get full dataset
-        st_net_array = DataArray.from_args(np.arange(net_point_array.ndata) / float(len(edge_idx))).adddim(net_point_array, type=NetworkSpaceTimeData)
-
-        # set the kernel.
-        # use deliberately high parameters to ensure that risk drops off quickly with distance and time
-        stk = hotspot.STNetworkBowers(10.0, 10.0)
-        vb = validation.NetworkValidationBase(st_net_array, hotspot.Hotspot, model_args=(stk,))
-        vb.set_sample_units(None)  # the argument makes no difference here
-        vb.set_t_cutoff(0.5)
-        res = vb.run(time_step=0.1)
-
-        self.assertEqual(len(res['cutoff_t']), 5)
-        for (t, te) in zip(res['cutoff_t'], np.arange(0.5, 1.0, 0.1)):
-            self.assertAlmostEqual(t, te)
-
-        # on each step, the segment corresponding to the most recent event should have the highest prediction rank
-        for i in range(5):
-            self.assertTrue(
-                np.all(res['prediction_rank'][i][:(i+1)] == np.array(edge_idx[5:(i + 6)])[::-1])
-            )
-
 
 class TestHotspot(unittest.TestCase):
-    pass
+
+    def test_network_binary_hotspot(self):
+        from network.streetnet import NetPoint
+
+        stk = hotspot.STNetworkFixedRadius(radius=50)  # value is zero when the net distance is > 50
+        itn_net = load_test_network()
+        e = itn_net.edges()[40]
+        source = NetworkSpaceTimeData([[1.0, e.centroid]])
+        stk.train(source)
+
+        # one edge away
+        targets = []
+        e = itn_net.edges()[41]
+        targets.append(NetPoint(itn_net, e, {e.orientation_neg: 1, e.orientation_pos: e.length - 1}))  # dist ~ 20m
+        targets.append(NetPoint(itn_net, e, {e.orientation_neg: 30, e.orientation_pos: e.length - 30}))  # dist ~ 49m
+        targets.append(NetPoint(itn_net, e, {e.orientation_neg: 35, e.orientation_pos: e.length - 35}))  # dist ~ 49m
+        targets.append(NetPoint(itn_net, e, {e.orientation_neg: 75, e.orientation_pos: e.length - 75}))  # dist >> 50m
+        targets = NetworkData(targets)
+        # combine with times (all same)
+        times = DataArray(np.ones(targets.ndata))
+        st_arr = times.adddim(targets, type=NetworkSpaceTimeData)
+        # combine with times (different)
+
+        # two edges away
+        targets = []
+        e = itn_net.edges()[2]
+        targets.append(NetPoint(itn_net, e, {e.orientation_neg: 120, e.orientation_pos: e.length - 120}))  # dist ~ 40m
+        targets.append(NetPoint(itn_net, e, {e.orientation_neg: 100, e.orientation_pos: e.length - 100}))  # dist ~ 60m
+        targets = NetworkData(targets)
+        # combine with times (all same)
+        times = DataArray(np.ones(targets.ndata))
+        st_arr = times.adddim(targets, type=NetworkSpaceTimeData)
+        # combine with times (different)
+
+        ## TODO: finish!
+
+        """
+        test: choose a single source location
+        (1) drop some targets around it with distance > radius and distance < radius,
+        check the nonzero part makes sense
+        (2) look at the time component - more historic records should return a lower prediction
+        """

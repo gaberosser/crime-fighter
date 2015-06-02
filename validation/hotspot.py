@@ -198,6 +198,40 @@ class STNetworkKernelBase(STKernelBase):
     data_class = NetworkSpaceTimeData
 
 
+class STNetworkFixedRadius(STNetworkKernelBase):
+    def __init__(self, radius, a=1):
+        self.radius = radius
+        self.t_decay = a
+        super(STNetworkFixedRadius, self).__init__()
+
+    def get_linkages(self, target_data):
+        def linkage_fun(dt, dd):
+            return dd <= self.radius
+        return network_linkages(
+            self.data,
+            linkage_fun,
+            data_target_net=target_data
+        )
+
+    def predict(self, data_array):
+        data_array = self.data_class(data_array)
+        link_i, link_j, dt, dd = self.get_linkages(data_array)
+
+        # space_part = np.ones_like(dd)
+        time_part = np.exp(-self.t_decay * dt)
+
+        m = sparse.lil_matrix((self.data.ndata, data_array.ndata))
+
+        m[link_i, link_j] = time_part
+        res = np.array(m.sum(axis=0).flat)
+
+        # reshape if necessary
+        if data_array.original_shape is not None:
+            res = res.reshape(data_array.original_shape)
+        return res
+
+
+
 class STNetworkBowers(STNetworkKernelBase, STKernelBowers):
 
     def get_linkages(self, target_data):
