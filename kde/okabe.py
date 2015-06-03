@@ -22,6 +22,9 @@ import bisect as bs
 from network import itn
 from kde.kernels import LinearKernel
 from network.streetnet import NetPoint, Edge
+from shapely import geometry
+from data.models import NetworkData
+import numpy as np
 
 
 #A helper function to do network searching from within the class

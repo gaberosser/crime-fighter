@@ -2,7 +2,6 @@ __author__ = 'gabriel'
 import validation
 import hotspot
 import roc
-from data.models import DataArray
 import unittest
 import numpy as np
 import mock
@@ -544,30 +543,34 @@ class TestHotspot(unittest.TestCase):
         e = itn_net.edges()[41]
         targets.append(NetPoint(itn_net, e, {e.orientation_neg: 1, e.orientation_pos: e.length - 1}))  # dist ~ 20m
         targets.append(NetPoint(itn_net, e, {e.orientation_neg: 30, e.orientation_pos: e.length - 30}))  # dist ~ 49m
-        targets.append(NetPoint(itn_net, e, {e.orientation_neg: 35, e.orientation_pos: e.length - 35}))  # dist ~ 49m
+        targets.append(NetPoint(itn_net, e, {e.orientation_neg: 30, e.orientation_pos: e.length - 30}))  # dist ~ 49m
+        targets.append(NetPoint(itn_net, e, {e.orientation_neg: 35, e.orientation_pos: e.length - 35}))  # dist ~ 54m
         targets.append(NetPoint(itn_net, e, {e.orientation_neg: 75, e.orientation_pos: e.length - 75}))  # dist >> 50m
         targets = NetworkData(targets)
-        # combine with times (all same)
-        times = DataArray(np.ones(targets.ndata))
+        # combine with times
+        # NB: times less than the source (1.0) will result in zeros
+        times = DataArray([1.1, 0.99, 1.5, 1.01, 1.01])
         st_arr = times.adddim(targets, type=NetworkSpaceTimeData)
-        # combine with times (different)
+        pred = stk.predict(st_arr)
+        pred_expctd = np.array([np.exp(-.1), 0.,  np.exp(-.5), 0., 0.])
+        self.assertTrue(np.all(pred == pred_expctd))
 
         # two edges away
         targets = []
         e = itn_net.edges()[2]
         targets.append(NetPoint(itn_net, e, {e.orientation_neg: 120, e.orientation_pos: e.length - 120}))  # dist ~ 40m
+        targets.append(NetPoint(itn_net, e, {e.orientation_neg: 120, e.orientation_pos: e.length - 120}))  # dist ~ 40m
         targets.append(NetPoint(itn_net, e, {e.orientation_neg: 100, e.orientation_pos: e.length - 100}))  # dist ~ 60m
         targets = NetworkData(targets)
         # combine with times (all same)
-        times = DataArray(np.ones(targets.ndata))
+        times = DataArray([2.7, 0.99, 1.01])
         st_arr = times.adddim(targets, type=NetworkSpaceTimeData)
-        # combine with times (different)
+        pred = stk.predict(st_arr)
+        pred_expctd = np.array([np.exp(-1.7), 0., 0.])
+        for p, pe in zip(pred, pred_expctd):
+            self.assertAlmostEqual(p, pe)
 
-        ## TODO: finish!
 
-        """
-        test: choose a single source location
-        (1) drop some targets around it with distance > radius and distance < radius,
-        check the nonzero part makes sense
-        (2) look at the time component - more historic records should return a lower prediction
-        """
+if __name__ == '__main__':
+    # useful to develop tests in this space to allow interaction through ipython, etc.
+    pass

@@ -219,10 +219,11 @@ class RocGrid(SpatialRoc):
         if data.nd != 2:
             raise AttributeError("Data must be a 2D array")
 
-    def generate_bounding_poly(self):
+    @staticmethod
+    def generate_bounding_poly(data):
         """ Compute the bounding rectangle for the data """
-        xmin, ymin = np.min(self.data, axis=0)
-        xmax, ymax = np.max(self.data, axis=0)
+        xmin, ymin = np.min(data, axis=0)
+        xmax, ymax = np.max(data, axis=0)
         return Polygon([
                 (xmin, ymin),
                 (xmax, ymin),
@@ -244,7 +245,7 @@ class RocGrid(SpatialRoc):
         self.prediction_values = None
         if not self.poly:
             # find minimal bounding rectangle
-            self.poly = self.generate_bounding_poly()
+            self.poly = self.generate_bounding_poly(self.data)
 
         self.side_length = side_length
         self.grid_polys, self.sample_units, self.full_grid_square = create_spatial_grid(self.poly, self.side_length)
@@ -430,7 +431,7 @@ class NetworkRocSegments(SpatialRoc):
         ax = fig.add_subplot(111)
         ax.set_aspect('equal')
 
-        if show_sample_units and show_prediction:
+        if show_prediction:
             # create dictionary of segment colours for plotting
             # this requires creating a norm instance and using that to index a colourmap
             vmax = sorted(self.prediction_values)[int(self.n_sample_units * fmax)]
@@ -441,12 +442,25 @@ class NetworkRocSegments(SpatialRoc):
             for pv, edge in zip(self.prediction_values, self.sample_units):
                 edge_inner_col[edge['fid']] = colour_mapper.to_rgba(pv)
             self.graph.plot_network(ax=ax, edge_width=7, edge_inner_col=edge_inner_col)
+        else:
+            # plot standard network edge outlines without colour
+            self.graph.plot_network()
+
+
+        if show_sample_units:
+            # TODO: this might not be the best way, but going to illustrate sampling with crosses
+            plt.plot(self.sample_points.to_cartesian().toarray(0),
+                     self.sample_points.to_cartesian().toarray(1),
+                     'kx',
+                     markersize=10,
+                     markeredgewidth=3)
 
         # remove x and y ticks as these rarely add anything
         ax.set_xticks([])
         ax.set_yticks([])
 
-    def generate_bounding_poly(self):
+    @staticmethod
+    def generate_bounding_poly(data):
         # called when no polygon is provided, computes the bounding polygon for the data based on the network
         # TODO: add this method to the StreetNet class?
         raise NotImplementedError()
@@ -518,3 +532,64 @@ class NetworkRocSegmentsMean(NetworkRocSegments):
 
         self.sample_points = self.data_class(sp)
         self.n_sample_point_per_unit = np.array(n)
+
+
+
+class NetworkRocUniformSamplingGrid(NetworkRocSegments):
+    """
+    Place sample points uniformly over the network, then divide into sample units by imposing a regular grid
+    """
+    @staticmethod
+    def generate_bounding_poly(data):
+        return RocGrid.generate_bounding_poly(data)
+
+    def set_sample_units(self, side_length, *args, **kwargs):
+        """
+        Set the ROC grid.
+        :param side_length: side length of grid squares
+        :param args: Passed to set_sample_points
+        :param kwargs: Passed to set_sample_points, must contain the parameter 'interval'
+        :return: None
+        """
+        # reset prediction values
+        self.prediction_values = None
+
+        if not self.poly:
+            # find minimal bounding rectangle
+            self.poly = self.generate_bounding_poly(self.data)
+
+        # set sample grid
+        self.side_length = side_length
+        self.grid_polys, self.sample_units, self.full_grid_square = create_spatial_grid(self.poly, self.side_length)
+        # centroid_coords = lambda x: (x.x, x.y)
+        # self.centroids = self.data_class([centroid_coords(t.centroid) for t in self.grid_polys])
+
+        # set network sampling points
+        self.set_sample_points(*args, **kwargs)
+
+    def set_sample_points(self, *args, **kwargs):
+        pass
+
+class HybridNetworkGridMean(SpatialRoc):
+    """
+    This class provides a common baseline for comparing network and free-space predictions.
+    Approach: divide the space into grid squares, as for the gridded method. Then intersect the network with the
+    grid to give network sections within each grid square. These are the sample units for comparison purposes.
+    """
+    grid_roc_class = RocGridMean
+    net_roc_class = NetworkRocSegmentsMean
+
+    def __init__(self,
+                 data=None,
+                 poly=None,
+                 data_index=None,
+                 **kwargs):
+        super(HybridNetworkGridMean, self).__init__(data=data,
+                                                    poly=poly,
+                                                    data_index=data_index,
+                                                    **kwargs)
+        # initialise two separate ROC classes
+        self.grid_roc = None
+        self.net_roc = None
+
+
