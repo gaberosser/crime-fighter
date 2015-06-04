@@ -9,15 +9,8 @@ import math
 import collections
 import bisect
 from shapely import geometry
-from network import TEST_DATA_FILE
-from network import itn
+from network.tests import load_test_network
 from data.models import DataArray, NetworkData, NetworkSpaceTimeData
-
-
-def load_test_network():
-    # load some toy network data
-    test_data = itn.read_gml(TEST_DATA_FILE)
-    return itn.ITNStreetNet.from_data_structure(test_data)
 
 
 class TestRoc(unittest.TestCase):

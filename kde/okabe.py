@@ -402,7 +402,9 @@ if __name__ == '__main__':
     from settings import DATA_DIR
     import os
     from network.plotting import network_point_coverage
+    from network.utils import network_walker_uniform_sample_points
     import numpy as np
+
 
     cur_dir = os.getcwd()
     ITNFILE = os.path.join(cur_dir, 'network', 'test_data', 'mastermap-itn_417209_0_brixton_sample.gml')
@@ -446,21 +448,23 @@ if __name__ == '__main__':
     print TestKernel.evaluate_non_point(test_point)
     print TestKernel.evaluate_non_point(source_points[0])
     print TestKernel.evaluate_point(source_points[0])
-    
-    
-#    # define a whole load of points on the network for plotting
-#    xy, cd, edge_count = network_point_coverage(current_net.g, dx=10)
-#
-#    # evaluate KDE at those points
-#    res = []
-#    failed = []
-#    for arr in cd:
-#        this_res = []
-#        for t in arr:
-#            try:
-#                this_res.append(TestKernel.evaluate_non_point(t))
-#            except KeyError as exc:
-#                this_res.append(np.nan)
-#                failed.append(repr(exc))
-#        res.append(this_res)
 
+    net_points, n_per_segment = network_walker_uniform_sample_points(current_net, 10.)
+
+    res = []
+    failed = []
+    for pt in net_points.toarray(0):
+        try:
+            res.append(TestKernel.evaluate_non_point(pt))
+        except KeyError as exc:
+            res.append(np.nan)
+            failed.append(repr(exc))
+
+    # optionally plot them
+    from network.plotting import colorline
+    from matplotlib import pyplot as plt
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    for n in n_per_segment:
+        # get x,y coords
+        pass

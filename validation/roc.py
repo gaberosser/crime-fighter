@@ -4,11 +4,13 @@ import operator
 import numpy as np
 import tools
 from analysis.spatial import create_spatial_grid, random_points_within_poly
+from analysis.plotting import plot_shapely_geos
 from data.models import DataArray, NetworkSpaceTimeData, NetworkData, NetPoint
 from shapely.geometry import Point, Polygon
 import matplotlib as mpl
 from matplotlib import pyplot as plt
 from matplotlib import cm
+from network.utils import network_walker_uniform_sample_points
 
 
 class SpatialRoc(object):
@@ -541,14 +543,15 @@ class NetworkRocUniformSamplingGrid(NetworkRocSegments):
     """
     @staticmethod
     def generate_bounding_poly(data):
-        return RocGrid.generate_bounding_poly(data)
+        return RocGrid.generate_bounding_poly(data.to_cartesian())
 
-    def set_sample_units(self, side_length, *args, **kwargs):
+    def set_sample_units(self, side_length, interval, *args, **kwargs):
         """
         Set the ROC grid.
         :param side_length: side length of grid squares
+        :param interval: The length interval between sample points
         :param args: Passed to set_sample_points
-        :param kwargs: Passed to set_sample_points, must contain the parameter 'interval'
+        :param kwargs: Passed to set_sample_points.
         :return: None
         """
         # reset prediction values
@@ -560,15 +563,92 @@ class NetworkRocUniformSamplingGrid(NetworkRocSegments):
 
         # set sample grid
         self.side_length = side_length
-        self.grid_polys, self.sample_units, self.full_grid_square = create_spatial_grid(self.poly, self.side_length)
-        # centroid_coords = lambda x: (x.x, x.y)
-        # self.centroids = self.data_class([centroid_coords(t.centroid) for t in self.grid_polys])
+        self.grid_polys, self.sample_units, _ = create_spatial_grid(self.poly, self.side_length)
 
         # set network sampling points
-        self.set_sample_points(*args, **kwargs)
+        self.set_sample_points(interval, *args, **kwargs)
 
-    def set_sample_points(self, *args, **kwargs):
-        pass
+    def set_sample_points(self, interval, *args, **kwargs):
+        # get sample points
+        # these are initially in the same order as the network edges
+        sample_points, _ = network_walker_uniform_sample_points(self.graph, interval)
+
+        # divide into sample units and reorder the sample points
+        # will also need to redefine the sample units and grid polys at the end
+        sample_units = []
+        grid_polys = []
+        reordered_sample_points = []
+        self.n_sample_point_per_unit = []
+        x, y = sample_points.to_cartesian().separate
+
+        for i in range(len(self.sample_units)):
+            xmin, ymin, xmax, ymax = self.sample_units[i]
+            in_su = (x >= xmin) & (x < xmax) & (y >= ymin) & (y < ymax)
+            n = sum(in_su)
+            if n:
+                reordered_sample_points.extend(sample_points.getrows(in_su).toarray(0))
+                self.n_sample_point_per_unit.append(n)
+                sample_units.append((xmin, ymin, xmax, ymax))
+                grid_polys.append(self.grid_polys[i])
+
+        self.n_sample_point_per_unit = np.array(self.n_sample_point_per_unit)
+        self.sample_points = NetworkData(reordered_sample_points)
+        self.sample_units = sample_units
+        self.grid_polys = grid_polys
+
+    def plot(self,
+             show_sample_units=True,
+             show_prediction=True,
+             fmax=0.9,
+             cmap='Reds',
+             **kwargs):
+        from matplotlib import patches
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.set_aspect('equal')
+
+        if show_prediction:
+            # create dictionary of segment colours for plotting
+            # this requires creating a norm instance and using that to index a colourmap
+            vmax = sorted(self.prediction_values)[int(self.n_sample_units * fmax)]
+            cmap = cm.get_cmap(cmap)
+            norm = mpl.colors.Normalize(vmin=0, vmax=vmax)
+            colour_mapper = cm.ScalarMappable(norm=norm, cmap=cmap)
+            edge_inner_col = {}
+            for pv, edge in zip(self.prediction_values, self.sample_units):
+                edge_inner_col[edge['fid']] = colour_mapper.to_rgba(pv)
+            self.graph.plot_network(ax=ax, edge_width=7, edge_inner_col=edge_inner_col)
+        else:
+            # plot standard network edge outlines without colour
+            self.graph.plot_network(edge_width=10, edge_inner_col='w')
+
+        if show_sample_units:
+            # alternating grey - black grid squares / crosses
+            xsp, ysp = self.sample_points.to_cartesian().separate
+            mins = np.array(self.sample_units).min(axis=0)
+            maxs = np.array(self.sample_units).max(axis=0)
+            xmin_group = np.arange(mins[0], maxs[2], 2 * self.side_length)
+            ymin_group = np.arange(mins[1], maxs[3], 2 * self.side_length)
+
+            count = 0
+            for gp, su, n in zip(self.grid_polys, self.sample_units, self.n_sample_point_per_unit):
+                a = np.any(np.abs(xmin_group - su[0]) < 1e-3) ^ np.any(np.abs(ymin_group - su[1]) < 1e-3)
+                fc = np.ones(3) * (0.5 if a else 0.8)
+                mc = np.ones(3) * 0.5 if a else 'k'
+                plot_shapely_geos(gp, facecolor=fc, alpha=0.4)
+                plt.plot(
+                    xsp[count:count + n],
+                    ysp[count:count + n],
+                    'o',
+                    color=mc,
+                    markersize=5,
+                )
+                count += n
+
+        # remove x and y ticks as these rarely add anything
+        ax.set_xticks([])
+        ax.set_yticks([])
 
 class HybridNetworkGridMean(SpatialRoc):
     """
