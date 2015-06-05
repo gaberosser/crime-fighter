@@ -3,7 +3,8 @@ __author__ = 'gabriel'
 import numpy as np
 import math
 from scipy import special
-from data.models import DataArray, exp
+from data.models import DataArray, exp, NetworkData, NetworkSpaceTimeData
+from network import utils
 
 PI = np.pi
 root2 = np.sqrt(2)
@@ -24,17 +25,25 @@ class BaseKernel(object):
     def ndim(self):
         raise NotImplementedError()
 
+    def normalisation_constants(self):
+        raise NotImplementedError()
+
     def pdf(self, x, dims=None):
         raise NotImplementedError()
 
     def marginal_pdf(self, x, dim=0):
-        raise NotImplementedError()
+        """ Return value is 1D marginal pdf with specified dim """
+        return self.pdf(x, dims=[dim])
 
     def marginal_cdf(self, x, dim=0):
         raise NotImplementedError()
 
     def partial_marginal_pdf(self, x, dim=0):
-        raise NotImplementedError()
+        """ Return value is 1D partial marginal pdf:
+            full pdf integrated over specified dim """
+        dims = range(self.ndim)
+        dims.remove(dim)
+        return self.pdf(x, dims=dims)
 
 
 class SpoofKernel(BaseKernel):
@@ -105,21 +114,10 @@ class MultivariateNormal(BaseKernel):
         # return (c * b * a).toarray(0)
         return (c / b).toarray(0)
 
-    def marginal_pdf(self, x, dim=0):
-        """ Return value is 1D marginal pdf with specified dim """
-        return self.pdf(x, dims=[dim])
-
     def marginal_cdf(self, x, dim=0):
         """ Return value is 1D marginal cdf with specified dim """
         x = self.prep_input(x, 1)
         return normcdf(x.toarray(0), self.mean[dim], self.vars[dim])
-
-    def partial_marginal_pdf(self, x, dim=0):
-        """ Return value is 1D partial marginal pdf:
-            full pdf integrated over specified dim """
-        dims = range(self.ndim)
-        dims.remove(dim)
-        return self.pdf(x, dims=dims)
 
 
 class RadialTemporal(MultivariateNormal):
@@ -347,38 +345,6 @@ class SpaceTimeNormalReflective(MultivariateNormal):
         else:
             return super(SpaceTimeNormalReflective, self).marginal_cdf(x, dim=dim)
 
-# class MultivariateNormalScipy():
-#     from scipy.stats import multivariate_normal
-#     """
-#         This method was made for comparison with the simpler diagonal covariance method.
-#         It is substantially slower!  Don't use unless a covariance dependency is required.
-#     """
-#
-#     def __init__(self, mean, vars):
-#         self.ndim = len(vars)
-#         self.mean = mean
-#         self.vars = vars
-#         # create covariance matrix
-#         self.cov = np.zeros((self.ndim, self.ndim))
-#         self.cov[np.diag_indices_from(self.cov)] = self.vars
-#
-#     def pdf(self, *args):
-#         """ Each input is an ndarray of same dims, representing a value of one dimension.
-#             Result is broadcast of these arrays, hence same shape. """
-#         if len(args) != self.ndim:
-#             raise AttributeError("Incorrect dimensions for input variable")
-#
-#         shapes = [np.array(x).shape for x in args]
-#         for i in range(self.ndim - 1):
-#             if shapes[i+1] != shapes[i]:
-#                 raise AttributeError("All input arrays must have the same shape")
-#
-#         it = np.nditer(args + (None,))
-#         for x in it:
-#             x[self.ndim][...] = self.multivariate_normal.pdf(it[:-1], mean=self.mean, cov=self.cov)
-#
-#         return it.operands[self.ndim]
-
 
 class LinearKernel(BaseKernel):
 
@@ -386,18 +352,134 @@ class LinearKernel(BaseKernel):
     Simple linear 1D kernel.  Useful for network KDE.
     """
 
-    def __init__(self, h):
+    def __init__(self, h, loc=0., one_sided=True):
+        """
+
+        :param h: Bandwidth - kernel decreases linearly from loc to zero over this distance
+        :param loc: Central location of kernel, defaults to zero
+        :param one_sided: If True then the kernel is only defined for x >= loc
+        :return:
+        """
         self.h = float(h)
+        self.loc = loc
+        self.one_sided = one_sided
 
     @property
     def ndim(self):
         return 1
 
-    def pdf(self, x):
-        if x <= self.h:
-            return (self.h - x) / self.h ** 2
+    def pdf(self, x, **kwargs):
+        t = x - self.loc
+        if self.one_sided:
+            return 2 * (self.h - t) / self.h ** 2 * (t >= 0) * (t <= self.h)
         else:
-            return 0.
+            return (self.h - t) / self.h ** 2 * (t >= -self.h) * (t <= self.h)
+
+
+class NetworkKernelEqualSplitLinear(BaseKernel):
+    """ Okabe equal split spatial network kernel """
+
+    kernel_class = LinearKernel
+
+    def __init__(self, loc, bandwidth):
+        """
+        :param loc: NetPoint instance giving the network location of the source
+        :param bandwidth: Float giving the search radius / bandwidth of the network kernel
+        """
+        self.loc = loc
+        self.bandwidth = bandwidth
+        self.graph = loc.graph
+        self.kernel = None
+        self.set_kernel()
+
+    def set_kernel(self):
+        # one-sided kernel = only ever get positive network distances
+        self.kernel = self.kernel_class(self.bandwidth, one_sided=True)
+
+    @property
+    def ndim(self):
+        return 1
+
+    @staticmethod
+    def prep_input(x):
+        if not isinstance(x, NetworkData):
+            x = NetworkData(x)
+        return x
+
+    def pdf(self, x, **kwargs):
+        """ x is a NetworkData array of NetPoint objects """
+        from network import utils
+        verbose = kwargs.pop('verbose', False)
+        x = self.prep_input(x)
+        paths = utils.network_paths_source_targets(self.graph,
+                                                   self.loc,
+                                                   x,
+                                                   max_search_distance=self.bandwidth,
+                                                   verbose=verbose)
+        res = np.zeros(x.ndata)
+        for i in range(x.ndata):
+            val = 0.
+            if i in paths:
+                for t in paths[i]:
+                    #  each of these is a unique path from source to a target
+                    degrees = self.graph.g.degree(t[0])
+                    a = np.prod(np.array(degrees.values()) - 1)
+                    if a == 0:
+                        # we passed a node of degree 1 - shouldn't happen
+                        import ipdb; ipdb.set_trace()
+                    # compute kernel value
+                    val += self.kernel.pdf(t[1]) / float(a)
+            res[i] = val
+        return res
+
+class NetworkTemporalKernelEqualSplit(BaseKernel):
+
+    """
+    Kernel defined on a network, with additional Gaussian time component.
+    This makes use of the Okabe approach to computing a KDE on a network (the 'equal split' algorithm)
+    """
+
+    def __init__(self, loc, bandwidths):
+        """
+        :param loc: [Time (float), NetPoint] means for this kernel
+        :param bandwidths: The variance in the time case, the maximum search radius in the network case
+        """
+        if len(loc) != 2:
+            raise AttributeError("Input loc must have 2 elements")
+        if len(bandwidths) != 2:
+            raise AttributeError("Input bandwidths must have 2 elements")
+        self.loc = loc
+        self.bandwidths = np.array(bandwidths, dtype=float)
+        self.network_kernel = None
+        self.set_kernel()
+
+    def set_kernel(self):
+        self.network_kernel = NetworkKernelEqualSplitLinear(self.loc[1], self.bandwidths[1])
+
+    @property
+    def ndim(self):
+        return 2
+
+    def pdf(self, x, dims=None):
+        if dims is not None:
+            if any([t not in [0, 1] for t in dims]):
+                raise AttributeError("Dims requested are out of range")
+            ndim = len(dims)
+        else:
+            ndim = 2
+
+        if ndim == 1:
+            if 0 in dims:
+                # time component
+                t = x.toarray(0) - self.loc[0]
+                return np.exp(-t / self.bandwidths[0]) * (t >= 0) / self.bandwidths[0]
+            else:
+                # network/space component
+                return self.network_kernel.pdf(x)
+        elif ndim == 2:
+            if not isinstance(x, NetworkSpaceTimeData):
+                x = NetworkSpaceTimeData(x)
+            return self.pdf(x.time, dims=[0]) * self.pdf(x.space, dims=[1])
 
 
 def illustrate_kernels():

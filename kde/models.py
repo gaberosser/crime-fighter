@@ -8,12 +8,13 @@ import multiprocessing as mp
 from kde import kernels
 from stats.logic import weighted_stdev
 from sklearn.neighbors import NearestNeighbors
-from data.models import DataArray, SpaceTimeDataArray, CartesianSpaceTimeData, negative_time_dimension
+from data.models import DataArray, SpaceTimeDataArray, CartesianSpaceTimeData, negative_time_dimension, NetworkSpaceTimeData
 import warnings
 import logging
 
 
 logger = logging.getLogger(__name__)
+logger.handlers = []
 # default: output all logs to console
 ch = logging.StreamHandler()
 logger.setLevel(logging.DEBUG)
@@ -853,3 +854,8 @@ class VariableBandwidthRadialKde(FixedBandwidthRadialKde, VariableBandwidthKde):
 
 class VariableBandwidthNnRadialKde(FixedBandwidthRadialKde, VariableBandwidthNnKde):
     pass
+
+
+class NetworkFixedBandwidthKde(FixedBandwidthKde):
+    kernel_class = kernels.NetworkTemporalKernelEqualSplit
+    data_class = NetworkSpaceTimeData
