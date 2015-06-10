@@ -435,7 +435,7 @@ class NetworkKernelEqualSplitLinear(BaseKernel):
 class NetworkTemporalKernelEqualSplit(BaseKernel):
 
     """
-    Kernel defined on a network, with additional Gaussian time component.
+    Kernel defined on a network, with additional exponential time component.
     This makes use of the Okabe approach to computing a KDE on a network (the 'equal split' algorithm)
     """
 
