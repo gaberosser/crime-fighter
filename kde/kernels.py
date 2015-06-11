@@ -12,8 +12,8 @@ rootpi = np.sqrt(PI)
 
 # helper functions
 
-def normcdf(x, mu, var):
-    return 0.5 * (1 + special.erf((x - mu) / (np.sqrt(2 * var))))
+def normcdf(x, mu, std):
+    return 0.5 * (1 + special.erf((x - mu) / (np.sqrt(2) * std)))
 
 
 class BaseKernel(object):
@@ -53,14 +53,18 @@ class SpoofKernel(BaseKernel):
 
 class MultivariateNormal(BaseKernel):
 
-    def __init__(self, mean, vars):
+    def __init__(self, mean, stdevs):
         self.mean = np.array(mean, dtype=float)
-        self.vars = np.array(vars, dtype=float)
+        self.stdevs = np.array(stdevs, dtype=float)
         self.int_constants = self.normalisation_constants()
 
     @property
+    def vars(self):
+        return self.stdevs ** 2
+
+    @property
     def ndim(self):
-        return self.vars.size
+        return self.stdevs.size
 
     @staticmethod
     def prep_input(x, expctd_dims=None):
@@ -74,7 +78,7 @@ class MultivariateNormal(BaseKernel):
         return x
 
     def normalisation_constants(self):
-        return root2 * rootpi * np.sqrt(self.vars)
+        return root2 * rootpi * self.stdevs
 
     def pdf(self, x, dims=None):
         """ Input is an ndarray of dims N x ndim.
@@ -117,12 +121,12 @@ class MultivariateNormal(BaseKernel):
     def marginal_cdf(self, x, dim=0):
         """ Return value is 1D marginal cdf with specified dim """
         x = self.prep_input(x, 1)
-        return normcdf(x.toarray(0), self.mean[dim], self.vars[dim])
+        return normcdf(x.toarray(0), self.mean[dim], self.stdevs[dim])
 
 
 class RadialTemporal(MultivariateNormal):
 
-    def __init__(self, mean, vars):
+    def __init__(self, mean, stdevs):
         """
         Kernel with temporal and radial spatial components (t, r), Gaussian in both.
         The main difference between this and MultivariateNormal is in the NORMALISATION: the expressions for
@@ -132,20 +136,20 @@ class RadialTemporal(MultivariateNormal):
         :param vars:
         :return:
         """
-        if len(mean) != 2 or len(vars) != 2:
+        if len(mean) != 2 or len(stdevs) != 2:
             raise AttributeError("Length of means and vars array must be 2")
-        super(RadialTemporal, self).__init__(mean, vars)
+        super(RadialTemporal, self).__init__(mean, stdevs)
         # set up norming here
         self.int_constants = self.normalisation_constants()
 
     def normalisation_constants(self):
         # time component
-        i_tot_t = root2 * rootpi * np.sqrt(self.vars[0])
+        i_tot_t = root2 * rootpi * self.stdevs[0]
 
         # radial component
         # NB this is only valid for 2D space
         m = self.mean[1]
-        s = np.sqrt(self.vars[1])
+        s = self.stdevs[1]
         i_tot_r = 2 * PI * s ** 2 * np.exp(-m ** 2 / 2 / s ** 2)
         i_tot_r += m * s * root2 * rootpi * PI * (1 + special.erf(m / s / root2))
 
@@ -183,11 +187,10 @@ class RadialTemporal(MultivariateNormal):
         x = self.prep_input(x, 1)
         data = x.toarray(0)
         m = self.mean[dim]
-        v = self.vars[dim]
+        s = self.stdevs[dim]
         if dim == 0:
-            return normcdf(data, m, v)
+            return normcdf(data, m, s)
         elif dim == 1:
-            s = np.sqrt(v)
             cdf = 2 * PI * s ** 2 * (np.exp(-m ** 2 / 2 / s ** 2) - np.exp(-(data - m) ** 2 / 2 / s ** 2))
             cdf += m * s * root2 * rootpi * PI * (special.erf((data - m) / s / root2) + special.erf(m / s / root2))
             # solution only valid for r >= 0, plus very small floating point error at r == 0
@@ -200,14 +203,14 @@ class RadialTemporal(MultivariateNormal):
 
 class SpaceNormalTimeExponential(BaseKernel):
 
-    def __init__(self, mean, vars):
+    def __init__(self, mean, stdevs):
         # first element of mean is actually the LOCATION of the exponential distribution
         # first element of vars is actually the MEAN of the exponential distribution
         self.mean = np.array(mean, dtype=float)
-        self.vars = np.array(vars, dtype=float)
+        self.stdevs = np.array(stdevs, dtype=float)
 
         # construct a sub-kernel from MultivariateNormal
-        self.mvn = MultivariateNormal(self.mean, self.vars)
+        self.mvn = MultivariateNormal(self.mean, self.stdevs)
 
     @staticmethod
     def prep_input(x, expctd_dims=None):
@@ -229,7 +232,7 @@ class SpaceNormalTimeExponential(BaseKernel):
 
         # test whether temporal dimension was included
         if 0 in dims:
-            scale = np.sqrt(self.vars[0])
+            scale = self.stdevs[0]
             t = np.exp((self.mean[0] - x.getdim(0)) / scale) / scale
             t = t.toarray(0)
             t0 = x.toarray(0) < self.mean[0]
@@ -253,7 +256,7 @@ class SpaceNormalTimeExponential(BaseKernel):
     def marginal_cdf(self, x, dim=0):
         x = self.prep_input(x, 1)
         if dim == 0:
-            scale = np.sqrt(self.vars[0])
+            scale = self.stdevs[0]
             c = 1 - np.exp((self.mean[0] - x) / scale)
             c[c < 0] = 0.
             return c
@@ -338,8 +341,8 @@ class SpaceTimeNormalReflective(MultivariateNormal):
     def marginal_cdf(self, x, dim=0):
         if dim == 0:
             x = self.prep_input(x, 1).toarray(0)
-            res = special.erf((x - self.mean[0]) / (math.sqrt(2 * self.vars[0])))
-            res -= special.erf((-x - self.mean[0]) / (math.sqrt(2 * self.vars[0])))
+            res = special.erf((x - self.mean[0]) / (math.sqrt(2) * self.stdevs[0]))
+            res -= special.erf((-x - self.mean[0]) / (math.sqrt(2) * self.stdevs[0]))
             res[x < 0] = 0.
             return 0.5 * res
         else:
@@ -490,13 +493,13 @@ def illustrate_kernels():
     from matplotlib import pyplot as plt
     from analysis import plotting
     means = [1.0, 1.0]
-    vars = [1.0, 1.0]
+    stdevs = [1.0, 1.0]
 
     kernels = []
 
-    kernels.append(MultivariateNormal(means, vars))
-    kernels.append(SpaceTimeNormalOneSided(means, vars))
-    kernels.append(SpaceTimeNormalReflective(means, vars))
+    kernels.append(MultivariateNormal(means, stdevs))
+    kernels.append(SpaceTimeNormalOneSided(means, stdevs))
+    kernels.append(SpaceTimeNormalReflective(means, stdevs))
 
     x = np.linspace(-5, 5, 500)
     ymax = 0.

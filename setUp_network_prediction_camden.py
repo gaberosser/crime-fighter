@@ -249,7 +249,7 @@ plt.ylabel("Density")
 # idx = [i for i in range(psx.size) if geometry.Point((psx[i], psy[i])).within(bbox)]
 # training = post_snap.getrows(idx)
 #
-# kk = kmodels.NetworkFixedBandwidthKde(training, bandwidths=[np.sqrt(60), np.sqrt(200)], parallel=False)
+# kk = kmodels.NetworkFixedBandwidthKde(training, bandwidths=[60, 200], parallel=False)
 #
 # from network.plotting import network_point_coverage, colorline
 # points, n_per_edge = network_point_coverage(itn_box, 10)
@@ -325,14 +325,16 @@ plt.axis([pt[0]-400, pt[0]+400, pt[1]-400, pt[1]+400])
 plt.tight_layout()
 
 plt.rcParams['text.usetex'] = False
-plt.xkcd()
-x = np.linspace(0, 1, 500)
-y1 = x ** 0.5
-y2 = x ** 0.25
-plt.figure()
-plt.plot(x, y1, 'b-')
-plt.plot(x, y2, 'r-')
-plt.plot(x, x, 'k--')
-plt.xlabel('proportion of total network length covered', fontsize=16)
-plt.ylabel('proportion of total crime captured', fontsize=16)
-plt.tight_layout()
+with plt.xkcd():
+    x = np.linspace(0, 1, 500)
+    y1 = x ** 0.5
+    y2 = x ** 0.25
+    plt.figure()
+    plt.plot(x, y1, 'b-')
+    plt.plot(x, y2, 'r-')
+    plt.plot(x, x, 'k--')
+    plt.xlabel('proportion of total network length covered', fontsize=16)
+    plt.ylabel('proportion of total crime captured', fontsize=16)
+    plt.tight_layout()
+
+plt.rcParams['text.usetex'] = True

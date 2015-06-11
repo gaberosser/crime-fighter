@@ -178,8 +178,7 @@ class KernelCluster(object):
 
     @property
     def _kernels(self):
-        # FIXME: should not square the bandwidth here
-        return [self.ktype(self.data[i], self.bandwidths[i]**2) for i in range(self.ndata)]
+        return [self.ktype(self.data[i], self.bandwidths[i]) for i in range(self.ndata)]
 
     def iter_operate(self, funcstr, data, **kwargs):
         """
