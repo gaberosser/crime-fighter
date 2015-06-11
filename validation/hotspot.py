@@ -2,7 +2,7 @@ __author__ = 'gabriel'
 import numpy as np
 from scipy.stats import gaussian_kde
 from scipy import sparse
-from kde.models import FixedBandwidthKdeScott, VariableBandwidthNnKde
+from kde.models import FixedBandwidthKdeScott, VariableBandwidthNnKde, NetworkFixedBandwidthKde
 from data.models import DataArray, CartesianSpaceTimeData, SpaceTimeDataArray, NetworkData, NetworkSpaceTimeData
 from point_process.utils import linkages, linkage_func_separable
 from network.utils import network_linkages
@@ -245,3 +245,23 @@ class STNetworkBowers(STNetworkKernelBase, STKernelBowers):
             linkage_fun,
             data_target_net=target_data
         )
+
+
+class STNetworkLinearSpaceExponentialTime(STNetworkKernelBase):
+    """ Linear kernel in network space, vanishing at radius. Exponentially decaying time component """
+    def __init__(self, radius, time_decay):
+        self.radius = radius  # length unit
+        self.time_decay = time_decay  # time unit
+        self.kde = None
+        super(STNetworkLinearSpaceExponentialTime, self).__init__()
+
+    def train(self, data):
+        super(STNetworkLinearSpaceExponentialTime, self).train(data)
+        # set KDE now
+        self.kde = NetworkFixedBandwidthKde(self.data,
+                                            parallel=False,
+                                            bandwidths=np.sqrt([self.time_decay, self.radius]))
+
+    def predict(self, data_array):
+        data_array = self.data_class(data_array)
+        return self.kde.pdf(data_array)

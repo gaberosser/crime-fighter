@@ -444,6 +444,7 @@ class NetworkTemporalKernelEqualSplit(BaseKernel):
         :param loc: [Time (float), NetPoint] means for this kernel
         :param bandwidths: The variance in the time case, the maximum search radius in the network case
         """
+        # TODO: add time tolerance parameter for further speed improvements
         if len(loc) != 2:
             raise AttributeError("Input loc must have 2 elements")
         if len(bandwidths) != 2:
@@ -472,14 +473,17 @@ class NetworkTemporalKernelEqualSplit(BaseKernel):
             if 0 in dims:
                 # time component
                 t = x.toarray(0) - self.loc[0]
-                return np.exp(-t / self.bandwidths[0]) * (t >= 0) / self.bandwidths[0]
+                res = np.exp(-t / self.bandwidths[0]) * (t >= 0) / self.bandwidths[0]
+                return res
             else:
                 # network/space component
-                return self.network_kernel.pdf(x)
+                res = self.network_kernel.pdf(x)
+                return res
         elif ndim == 2:
             if not isinstance(x, NetworkSpaceTimeData):
                 x = NetworkSpaceTimeData(x)
-            return self.pdf(x.time, dims=[0]) * self.pdf(x.space, dims=[1])
+            res = self.pdf(x.time, dims=[0]) * self.pdf(x.space, dims=[1])
+            return res
 
 
 def illustrate_kernels():
