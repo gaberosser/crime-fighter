@@ -31,20 +31,16 @@ class ValidationBase(object):
     roc_class = roc.RocGrid
     data_class = CartesianSpaceTimeData
 
-    def __init__(self, data, model_class,
+    def __init__(self, data, model,
                  data_index=None,
                  spatial_domain=None,
                  sample_unit_size=None,
-                 cutoff_t=None,
-                 model_args=None,
-                 model_kwargs=None):
+                 cutoff_t=None):
 
         self.data = None
         self.data_index = None
         self.set_data(data, data_index=data_index)
-        self.model_args = model_args or []
-        self.model_kwargs = model_kwargs or {}
-        self.model = model_class(*self.model_args, **self.model_kwargs)
+        self.model = model
 
         # set initial time cut point
         self.cutoff_t = cutoff_t or self.t[int(self.ndata / 2)]
@@ -93,7 +89,6 @@ class ValidationBase(object):
         :param grid: Either a scalar giving the grid square length or an instance of RocSpatialGrid from which the grid
         will be copied
         """
-        print "ValidationBase set_sample_units"
         if isinstance(length_or_roc, self.roc_class):
             self.roc.copy_sample_units(length_or_roc)
         else:
@@ -425,7 +420,7 @@ if __name__ == "__main__":
     sk = hotspot.SKernelHistoric(2) # use heatmap from final 2 days data
     # vb = ValidationBase(data, hotspot.Hotspot, camden.mpoly, model_args=(sk,))
     # vb.set_sample_units(200)
-    vb = ValidationIntegration(data, hotspot.Hotspot, camden.mpoly, model_args=(sk,))
+    vb = ValidationIntegration(data, sk, camden.mpoly)
     vb.set_sample_units(200, n_sample_per_grid=10)
     vb.set_t_cutoff(4.0)
 

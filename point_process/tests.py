@@ -341,22 +341,17 @@ class TestValidate(unittest.TestCase):
         ))
         num_validation = 5
 
-        vb = validate.SeppValidationFixedModel(
-            data,
-            model_kwargs={
-                'max_delta_t': 0.1,
-                'max_delta_d': 0.1,
-                'estimation_function': lambda x, y: estimation.estimator_bowers(x, y, ct=10, cd=10),
+        sepp = models.SeppStochasticStationaryBg(max_delta_t=0.1,
+                                                 max_delta_d=0.1,
+                                                 estimation_function=lambda x, y: estimation.estimator_bowers(x, y, ct=10, cd=10))
 
-            },
-            pp_class=models.SeppStochasticStationaryBg)
+        vb = validate.SeppValidationFixedModel(data, sepp)
         vb.model.set_seed(42)
         vb.set_sample_units(0.05)
         vb.set_t_cutoff(0.5, b_train=False)
         res = vb.run(time_step=0.05, n_iter=num_validation, train_kwargs={'niter': 5}, verbose=True)
 
-
-        vb2 = validate.SeppValidationPredefinedModel(data, model=vb.model)
+        vb2 = validate.SeppValidationPreTrainedModel(data, vb.model)
         vb2.set_sample_units(0.05)
         vb2.set_t_cutoff(0.5)
         res2 = vb2.run(time_step=0.05, n_iter=num_validation, verbose=True)

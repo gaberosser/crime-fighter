@@ -33,28 +33,6 @@ def generate_st_prediction_dataarray(time, space_arr, dtype=SpaceTimeDataArray):
     return res
 
 
-class Hotspot(object):
-
-    def __init__(self, stkernel, data=None):
-        self.stkernel = stkernel
-        if data is not None:
-            self.stkernel.train(data)
-
-    @property
-    def ndata(self):
-        return self.stkernel.ndata
-
-    def train(self, data, **kwargs):
-        self.stkernel.train(data)
-
-    def predict(self, data_array):
-        """
-        :param data_array: data array object that inherits from data.models.Data
-        :return: prediction at the datapoints in data_array
-        """
-        return self.stkernel.predict(data_array)
-
-
 class STKernelBase(object):
 
     data_class = DataArray

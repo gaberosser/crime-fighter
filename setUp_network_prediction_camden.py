@@ -299,8 +299,7 @@ from validation import validation, hotspot, roc
 
 t_decay = 60 # days
 sk = hotspot.STNetworkLinearSpaceExponentialTime(radius=h, time_decay=t_decay)
-vb = validation.NetworkValidationMean(net_data, hotspot.Hotspot, spatial_domain=bbox,
-                                      model_args=(sk,))
+vb = validation.NetworkValidationMean(net_data, sk, spatial_domain=bbox)
 vb.set_t_cutoff(375)
 vb.set_sample_units(None, 20)  # 2nd argument refers to interval between sample points
 

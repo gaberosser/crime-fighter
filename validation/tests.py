@@ -157,7 +157,7 @@ class TestRoc(unittest.TestCase):
 
         # test 1: Bowers kernel (decrease with time and distance)
         stk = hotspot.STNetworkBowers(a=10., b=1.)
-        vb = validation.NetworkValidationBase(st_net_array, hotspot.Hotspot, model_args=(stk,))
+        vb = validation.NetworkValidationBase(st_net_array, stk)
         vb.set_sample_units(None)  # the argument makes no difference here
         vb.set_t_cutoff(0.5)
         res = vb.run(time_step=0.1)
@@ -172,7 +172,7 @@ class TestRoc(unittest.TestCase):
         # exponential decrease with dt, zero when dd > 10
         radius = 50.
         stk = hotspot.STNetworkFixedRadius(radius, 1.0)
-        vb = validation.NetworkValidationBase(st_net_array, hotspot.Hotspot, model_args=(stk,))
+        vb = validation.NetworkValidationBase(st_net_array, stk)
         vb.set_sample_units(None)  # the argument makes no difference here
         vb.set_t_cutoff(0.5)
         res = vb.run(time_step=0.1, n_iter=1)
@@ -188,7 +188,7 @@ class TestRoc(unittest.TestCase):
 
         # test 3: repeat but with a mean version of the ROC
 
-        vb = validation.NetworkValidationMean(st_net_array, hotspot.Hotspot, model_args=(stk,))
+        vb = validation.NetworkValidationMean(st_net_array, stk)
         vb.set_sample_units(None, 10)  # points are spaced ~10m apart
         vb.set_t_cutoff(0.5)
         res = vb.run(time_step=0.1, n_iter=1)  # just one run this time
@@ -268,7 +268,7 @@ class TestValidation(unittest.TestCase):
         np.random.shuffle(data)
 
         stk = hotspot.SKernelHistoric(1, bdwidth=0.3)
-        vb = validation.ValidationBase(data, hotspot.Hotspot, model_args=(stk,))
+        vb = validation.ValidationBase(data, stk)
 
         # check data are present and sorted
         self.assertEqual(vb.ndata, self.data.shape[0])
@@ -290,7 +290,7 @@ class TestValidation(unittest.TestCase):
         ])
 
         # repeat but this time copy the grid
-        vb2 = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
+        vb2 = validation.ValidationBase(self.data, stk)
         self.assertTrue(vb2.roc.poly is None)
         vb2.set_sample_units(vb.roc)
 
@@ -299,7 +299,7 @@ class TestValidation(unittest.TestCase):
     def test_time_cutoff(self):
 
         stk = hotspot.SKernelHistoric(1, bdwidth=0.3)
-        vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
+        vb = validation.ValidationBase(self.data, stk)
 
         # expected cutoff automatically chosen
         cutoff_te = vb.data[int(self.data.shape[0] / 2), 0]
@@ -349,7 +349,7 @@ class TestValidation(unittest.TestCase):
     def test_training(self):
 
         stk = mock.create_autospec(hotspot.STKernelBowers)
-        vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
+        vb = validation.ValidationBase(self.data, stk)
         # check that model is NOT trained initially
         self.assertEqual(stk.train.call_count, 0)
 
@@ -375,7 +375,7 @@ class TestValidation(unittest.TestCase):
     def test_predict(self):
 
         stk = hotspot.SKernelHistoric(1, bdwidth=0.3)
-        vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
+        vb = validation.ValidationBase(self.data, stk)
         vb.train_model()
         vb.set_sample_units(0.1)
 
@@ -397,7 +397,7 @@ class TestValidation(unittest.TestCase):
     def test_assess(self):
 
         stk = hotspot.SKernelHistoric(1, bdwidth=0.3)
-        vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
+        vb = validation.ValidationBase(self.data, stk)
         vb.train_model()
 
         # mock roc object with grid
@@ -448,7 +448,7 @@ class TestValidation(unittest.TestCase):
         # check correct calls are made to _iterate_run with no t_upper
         with mock.patch.object(validation.ValidationBase, '_iterate_run',
                                return_value=collections.defaultdict(list)) as m:
-            vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
+            vb = validation.ValidationBase(self.data, stk)
             vb.set_sample_units(0.1)
             t0 = vb.cutoff_t
             vb.run(time_step=0.1)
@@ -461,7 +461,7 @@ class TestValidation(unittest.TestCase):
         stk = hotspot.SKernelHistoric(1, bdwidth=0.3)
 
         # need to train model before running, otherwise it won't get past the call to the mocked function
-        vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
+        vb = validation.ValidationBase(self.data, stk)
         vb.set_sample_units(0.1)
         vb.train_model()
 
@@ -482,7 +482,7 @@ class TestValidation(unittest.TestCase):
         stk = hotspot.SKernelHistoric(1, bdwidth=0.3)
 
         # need to train model before running, otherwise it won't get past the call to the mocked function
-        vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
+        vb = validation.ValidationBase(self.data, stk)
         vb.set_sample_units(0.1)
         vb.train_model()
 
@@ -500,12 +500,12 @@ class TestValidation(unittest.TestCase):
             self.assertEqual(m.call_args, mock.call(0.1))  # normal operation
 
         stk = hotspot.SKernelHistoric(1, bdwidth=0.3)
-        vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
+        vb = validation.ValidationBase(self.data, stk)
         expct_call_count = math.ceil((1 - vb.cutoff_t) / 0.1)
 
     def test_run_no_grid(self):
         stk = hotspot.SKernelHistoric(1, bdwidth=0.3)
-        vb = validation.ValidationBase(self.data, hotspot.Hotspot, model_args=(stk,))
+        vb = validation.ValidationBase(self.data, stk)
         t0 = vb.cutoff_t
         # no grid specified raises error
         with self.assertRaises(AttributeError):

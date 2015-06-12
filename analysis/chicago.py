@@ -379,7 +379,7 @@ def validate_historic_kernel(start_date=datetime.datetime(2001, 3, 1, 0),
 
     # use basic historic data spatial hotspot
     sk = hotspot.SKernelHistoric(previous_n_days)
-    vb = validation.ValidationBase(res, hotspot.Hotspot, poly, model_args=(sk,))
+    vb = validation.ValidationBase(res, sk, poly)
     vb.set_sample_units(grid_length=grid_size)
     vb.set_t_cutoff(previous_n_days)
     ranks, carea, cfrac, pai = vb.run(dt=1, t_upper=previous_n_days + n_iter)
@@ -403,7 +403,7 @@ def validate_historic_kernel_multi(start_date=datetime.datetime(2001, 3, 1, 0),
     )
     nslices = int(max(res[:, 0]) / dt)
     sk = hotspot.SKernelHistoric(previous_n_days)
-    vb = validation.ValidationBase(res, hotspot.Hotspot, poly, model_args=(sk,))
+    vb = validation.ValidationBase(res, sk, poly)
     vb.set_sample_units(grid_length=grid_size)
     vb.set_t_cutoff(previous_n_days)
 
@@ -453,7 +453,7 @@ def implement_delta_effect(outfile, test_domain=None):
                 )
                 # disable parallel execution as it seems to slow things down here
                 r.set_parallel(False)
-                vb = validate.SeppValidationPredefinedModel(data, copy.deepcopy(r), spatial_domain=test_domain)
+                vb = validate.SeppValidationPreTrainedModel(data, copy.deepcopy(r), spatial_domain=test_domain)
                 vb.set_t_cutoff(0)
                 vb.set_sample_units(150)
                 vres = vb.run(1)
@@ -556,7 +556,7 @@ if __name__ == '__main__':
 
     # use basic historic data spatial hotspot
     sk = hotspot.SKernelHistoric(first_training_size) # use heatmap from same period
-    vb_sk = validation.ValidationBase(res, hotspot.Hotspot, poly, model_args=(sk,))
+    vb_sk = validation.ValidationBase(res, sk, poly)
     vb_sk.roc.copy_sample_units(vb.roc)
     # vb_sk._grid = vb._grid
     # vb_sk.centroids = vb.centroids
@@ -567,7 +567,7 @@ if __name__ == '__main__':
 
     # use variable bandwidth KDE
     skvb = hotspot.SKernelHistoricVariableBandwidthNn(first_training_size)
-    vb_skvb = validation.ValidationBase(res, hotspot.Hotspot, poly, model_args=(skvb,))
+    vb_skvb = validation.ValidationBase(res, skvb, poly)
     vb_skvb.roc.copy_sample_units(vb.roc)
     # vb_skvb._grid = vb._grid
     # vb_skvb.centroids = vb.centroids

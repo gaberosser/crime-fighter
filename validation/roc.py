@@ -168,8 +168,6 @@ class SpatialRoc(object):
             return {
                 'prediction_rank': self.prediction_rank
             }
-        else:
-            print "n testing data: %d" % self.data.ndata
 
         # count actual crimes in testing dataset on same grid
         true_grid_ind = self.true_index[self.prediction_rank]

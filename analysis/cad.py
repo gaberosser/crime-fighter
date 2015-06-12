@@ -591,7 +591,7 @@ def validate_historic_kde(
 
 
 
-    vb = validation.ValidationBase(res, hotspot.Hotspot, poly, model_args=(sk,))
+    vb = validation.ValidationBase(res, sk, poly)
     vb.set_sample_units(grid)
     vb.set_t_cutoff(end_days, b_train=False)
 

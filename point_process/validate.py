@@ -102,16 +102,6 @@ class SeppValidation(validation.ValidationBase):
 
     data_class = CartesianSpaceTimeData
 
-    def __init__(self,
-                 data,
-                 pp_class=models.SeppStochasticNn,
-                 **kwargs):
-        """ Thin wrapper for parent's init method, but pp model class is set """
-        self.pp_class = pp_class or models.SeppStochasticNn
-        super(SeppValidation, self).__init__(data, self.pp_class, **kwargs)
-        # super(SeppValidation, self).__init__(data, self.pp_class, spatial_domain=spatial_domain, grid_length=grid_length,
-        #                                    cutoff_t=cutoff_t, model_args=model_args, model_kwargs=model_kwargs)
-
     def predict_all(self, t, include=None, **kwargs):
         """
         Carry out all prediction methods at time t.  Doing this in one go means computing linkages only once per call.
@@ -302,20 +292,7 @@ class mock_pp_class():
         pass
 
 
-class SeppValidationPredefinedModel(SeppValidationFixedModel):
-
-    def __init__(self,
-                 data,
-                 model,
-                 **kwargs):
-        # pass a mock model to parent constructor
-        pp_class = mock_pp_class
-        super(SeppValidationPredefinedModel, self).__init__(
-            data,
-            pp_class=pp_class,
-            **kwargs)
-        self.pp_class = model.__class__
-        self.model = model
+class SeppValidationPreTrainedModel(SeppValidationFixedModel):
 
     def _initial_setup(self, **train_kwargs):
         """
@@ -331,7 +308,7 @@ class SeppValidationPredefinedModel(SeppValidationFixedModel):
         self.cutoff_t = cutoff_t
 
 
-class SeppValidationPredefinedModelIntegration(validation.ValidationIntegration, SeppValidationPredefinedModel):
+class SeppValidationPreTrainedModelIntegration(validation.ValidationIntegration, SeppValidationPreTrainedModel):
     pass
 
 
@@ -339,10 +316,10 @@ if __name__ == "__main__":
     from database import models as d_models
     from point_process import simulate, estimation
     from matplotlib import pyplot as plt
-    camden = d_models.Division.objects.get(name='Camden')
-    xm = 526500
-    ym = 186000
-    nd = 1000
+    # camden = d_models.Division.objects.get(name='Camden')
+    # xm = 526500
+    # ym = 186000
+    # nd = 1000
     # nice normal data
     # data = np.hstack((np.random.normal(loc=5, scale=5, size=(nd, 1)),
     #                   multivariate_normal.rvs(mean=[xm, ym], cov=np.diag([1e5, 1e5]), size=(nd, 1))))
@@ -379,11 +356,11 @@ if __name__ == "__main__":
     #     'estimation_function': lambda x, y: estimation.estimator_bowers(x, y, ct=1, cd=10),
     #     })
 
-    vb = SeppValidationFixedModel(data, model_kwargs={
-        'max_delta_t': 80,
-        'max_delta_d': 0.75,
-        'estimation_function': lambda x, y: estimation.estimator_bowers(x, y, ct=1, cd=10),
-        })
+    sepp = models.SeppStochasticNn(max_delta_t=80,
+                                   max_delta_d=0.75,
+                                   estimation_function=lambda x, y: estimation.estimator_bowers(x, y, ct=1, cd=10))
+
+    vb = SeppValidationFixedModel(data, sepp)
 
     pred_kwargs = {
         'include': ('full', 'full_static', 'bg', 'trigger')
