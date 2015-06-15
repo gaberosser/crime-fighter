@@ -238,7 +238,7 @@ class STNetworkLinearSpaceExponentialTime(STNetworkKernelBase):
         # set KDE now
         self.kde = NetworkFixedBandwidthKde(self.data,
                                             parallel=False,
-                                            bandwidths=np.sqrt([self.time_decay, self.radius]))
+                                            bandwidths=[self.time_decay, self.radius])
 
     def predict(self, data_array):
         data_array = self.data_class(data_array)
