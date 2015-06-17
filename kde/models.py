@@ -859,3 +859,22 @@ class VariableBandwidthNnRadialKde(FixedBandwidthRadialKde, VariableBandwidthNnK
 class NetworkFixedBandwidthKde(FixedBandwidthKde):
     kernel_class = kernels.NetworkTemporalKernelEqualSplit
     data_class = NetworkSpaceTimeData
+
+    def __init__(self, *args, **kwargs):
+        super(NetworkFixedBandwidthKde, self).__init__(*args, **kwargs)
+        # TODO: define walker
+        self.walker = None
+
+    def set_bandwidths(self, *args, **kwargs):
+        super(NetworkFixedBandwidthKde, self).set_bandwidths(*args, **kwargs)
+        # add network walker to graph object
+        self.walker  # ...
+        bandwidths = kwargs.pop('bandwidths')
+
+        if not hasattr(bandwidths, '__iter__'):
+            bandwidths = [bandwidths] * self.ndim
+
+        if len(bandwidths) != self.ndim:
+            raise AttributeError("Number of supplied bandwidths does not match the dimensionality of the data")
+
+        self.bandwidths = np.tile(bandwidths, (self.ndata, 1))

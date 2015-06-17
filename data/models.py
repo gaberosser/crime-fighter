@@ -359,28 +359,17 @@ class NetworkData(DataArray):
         return len(self.data)
 
     def distance_function(self, x, y):
-        return (x - y).length
+        return x.distance(y)
 
     def distance(self, other, directed=False):
         # distance between self and other
-        if not isinstance(other, self.__class__):
-            raise AttributeError("Cannot find distance between type %s and type %s" % (
-                self.__class__.__name__,
-                other.__class__.__name__))
         if not self.ndata == other.ndata:
             raise AttributeError("Lengths of the two data arrays are incompatible")
-
-        return DataArray([self.distance_function(x, y) for (x, y) in zip(self.data.flat, other.data.flat)])
+        return DataArray([x.distance(y) for (x, y) in zip(self.data.flat, other.data.flat)])
 
     def euclidean_distance(self, other):
         """ Euclidean distance between the data """
         return DataArray([x.euclidean_distance(y) for (x, y) in zip(self.data.flat, other.data.flat)])
-
-
-class DirectedNetworkData(NetworkData):
-
-    def distance_function(self, x, y):
-        return self.graph.path_directed(x, y).length
 
 
 class NetworkSpaceTimeData(SpaceTimeDataArray):
