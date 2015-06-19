@@ -191,6 +191,14 @@ class DataArray(object):
         new_obj.original_shape = self.original_shape
         return new_obj
 
+    def getone(self, idx):
+        if hasattr(idx, '__iter__'):
+            raise AttributeError("Input must be an integer index")
+        if self.nd == 1:
+            return self.data[idx, 0]
+        else:
+            return self.getrows(idx)
+
     def getrows(self, idx):
         if hasattr(idx, '__iter__'):
             new_data = self.data[idx]
@@ -239,7 +247,7 @@ class SpaceTimeDataArray(DataArray):
     @property
     def time(self):
         # time component of datapoints
-        res = self.time_class(self[:, 0])
+        res = self.time_class(self[:, 0].astype(float, copy=False))
         res.original_shape = self.original_shape
         return res
 

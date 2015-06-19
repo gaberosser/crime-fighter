@@ -8,7 +8,7 @@ import multiprocessing as mp
 from kde import kernels
 from stats.logic import weighted_stdev
 from sklearn.neighbors import NearestNeighbors
-from data.models import DataArray, SpaceTimeDataArray, CartesianSpaceTimeData, negative_time_dimension, NetworkSpaceTimeData
+from data.models import DataArray, SpaceTimeDataArray, CartesianSpaceTimeData, NetworkSpaceTimeData
 import warnings
 import logging
 
@@ -160,13 +160,13 @@ def shared_process_init(arr_pt_to_populate, shp_to_populate):
 class KernelCluster(object):
     """ Class for holding a 'cluster' of kernels, useful for parallelisation. """
 
-    def __init__(self, data, bandwidths, ktype=None):
-        self.ktype = ktype or kernels.MultivariateNormal
+    def __init__(self, data, bandwidths, ktype):
+        self.ktype = ktype
         if data.shape != bandwidths.shape:
             raise AttributeError("Dims of data and bandwidths do not match")
         self.data = data
         self.bandwidths = bandwidths
-        self.kernels = self._kernels
+        self.kernels = self.create_kernels()
 
     @property
     def ndim(self):
@@ -176,8 +176,7 @@ class KernelCluster(object):
     def ndata(self):
         return self.data.shape[0]
 
-    @property
-    def _kernels(self):
+    def create_kernels(self):
         return [self.ktype(self.data[i], self.bandwidths[i]) for i in range(self.ndata)]
 
     def iter_operate(self, funcstr, data, **kwargs):
@@ -197,7 +196,7 @@ class KernelCluster(object):
 
 class WeightedKernelCluster(KernelCluster):
 
-    def __init__(self, data, weights, bandwidths, ktype=None):
+    def __init__(self, data, weights, bandwidths, ktype):
         self.weights = weights
         super(WeightedKernelCluster, self).__init__(data, bandwidths, ktype=ktype)
 
@@ -576,6 +575,7 @@ class VariableBandwidthNnKde(VariableBandwidthKde):
 
 
 class WeightedFixedBandwidthKde(FixedBandwidthKde):
+
     def __init__(self, data, weights, tol=None, *args, **kwargs):
         """
         Weighted KDE with fixed bandwidths supplied at instantiation.
@@ -867,8 +867,6 @@ class NetworkFixedBandwidthKde(FixedBandwidthKde):
 
     def set_bandwidths(self, *args, **kwargs):
         super(NetworkFixedBandwidthKde, self).set_bandwidths(*args, **kwargs)
-        # add network walker to graph object
-        self.walker  # ...
         bandwidths = kwargs.pop('bandwidths')
 
         if not hasattr(bandwidths, '__iter__'):

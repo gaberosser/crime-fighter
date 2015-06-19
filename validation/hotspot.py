@@ -175,6 +175,10 @@ class SNetworkKernelBase(SKernelBase):
 class STNetworkKernelBase(STKernelBase):
     data_class = NetworkSpaceTimeData
 
+    @property
+    def spatial_bandwidth(self):
+        raise NotImplementedError()
+
 
 class STNetworkFixedRadius(STNetworkKernelBase):
     def __init__(self, radius, a=1):
@@ -190,6 +194,10 @@ class STNetworkFixedRadius(STNetworkKernelBase):
             linkage_fun,
             data_target_net=target_data
         )
+
+    @property
+    def spatial_bandwidth(self):
+        return self.radius
 
     def predict(self, data_array):
         data_array = self.data_class(data_array)
@@ -224,6 +232,11 @@ class STNetworkBowers(STNetworkKernelBase, STKernelBowers):
             data_target_net=target_data
         )
 
+    @property
+	# FIXME: shouldn't hard-code this parameter
+    def spatial_bandwidth(self):
+        return 400.
+
 
 class STNetworkLinearSpaceExponentialTime(STNetworkKernelBase):
     """ Linear kernel in network space, vanishing at radius. Exponentially decaying time component """
@@ -232,6 +245,10 @@ class STNetworkLinearSpaceExponentialTime(STNetworkKernelBase):
         self.time_decay = time_decay  # time unit
         self.kde = None
         super(STNetworkLinearSpaceExponentialTime, self).__init__()
+
+    @property
+    def spatial_bandwidth(self):
+        return self.radius
 
     def train(self, data):
         super(STNetworkLinearSpaceExponentialTime, self).train(data)

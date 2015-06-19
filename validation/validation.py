@@ -300,6 +300,12 @@ class ValidationBase(object):
         self.set_t_cutoff(self.cutoff_t + time_step, **train_kwargs)
 
     def _initial_setup(self, **train_kwargs):
+        """
+        Called instead of _update on the first iteration of a run.
+        Since this is called *before* the predict step, we don't advance the time on the first iteration
+        :param train_kwargs:
+        :return:
+        """
         self._update(time_step=0., **train_kwargs)
 
     def repeat_run(self, run_res, pred_dt_plus=None, true_dt_plus=None, true_dt_minus=None,
@@ -379,10 +385,23 @@ class NetworkValidationBase(ValidationBase):
     roc_class = roc.NetworkRocSegments
     data_class = NetworkSpaceTimeData
 
+    def __init__(self, *args, **kwargs):
+        # declare extra attributes that are specific to the network class
+        self.graph = None
+        self.net_walker = None  # ??
+        super(NetworkValidationBase, self).__init__(*args, **kwargs)
+
     def set_data(self, data, data_index=None):
         super(NetworkValidationBase, self).set_data(data, data_index=data_index)
         # add the graph attribute
         self.graph = data.graph
+
+    def _initial_setup(self, **train_kwargs):
+        """
+        On first run, set the NetworkWalker that will be used for all subsequent network path finding?
+		Or is it going in the KDE class?
+        """
+        super(NetworkValidationBase, self)._initial_setup(**train_kwargs)
 
 
 class NetworkValidationMean(NetworkValidationBase):
