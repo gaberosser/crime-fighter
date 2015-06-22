@@ -2,7 +2,8 @@ __author__ = 'gabriel'
 import numpy as np
 from scipy.stats import gaussian_kde
 from scipy import sparse
-from kde.models import FixedBandwidthKdeScott, VariableBandwidthNnKde, NetworkFixedBandwidthKde
+from kde.models import FixedBandwidthKdeScott, VariableBandwidthNnKde
+from kde.netmodels import NetworkTemporalKde
 from data.models import DataArray, CartesianSpaceTimeData, SpaceTimeDataArray, NetworkData, NetworkSpaceTimeData
 from point_process.utils import linkages, linkage_func_separable
 from network.utils import network_linkages
@@ -233,8 +234,8 @@ class STNetworkBowers(STNetworkKernelBase, STKernelBowers):
         )
 
     @property
-	# FIXME: shouldn't hard-code this parameter
     def spatial_bandwidth(self):
+    # FIXME: shouldn't hard-code this parameter
         return 400.
 
 
@@ -247,16 +248,33 @@ class STNetworkLinearSpaceExponentialTime(STNetworkKernelBase):
         super(STNetworkLinearSpaceExponentialTime, self).__init__()
 
     @property
-    def spatial_bandwidth(self):
+    def spatial_upper_limit(self):
         return self.radius
+
+    @property
+    def temporal_upper_limit(self):
+        return self.time_decay * 7.
+
+    def reset_kde(self):
+        """ Redefines the KDE, resetting any cached results """
+        self.kde = NetworkTemporalKde(self.data,
+                                      cutoffs=[self.temporal_upper_limit, self.spatial_upper_limit],
+                                      bandwidths=[self.time_decay, self.radius])
 
     def train(self, data):
         super(STNetworkLinearSpaceExponentialTime, self).train(data)
-        # set KDE now
-        self.kde = NetworkFixedBandwidthKde(self.data,
-                                            parallel=False,
-                                            bandwidths=[self.time_decay, self.radius])
+        # If the KDE has not previously been set, define now...
+        if self.kde is None:
+            self.reset_kde()
+        else:
+            # Otherwise just update the existing KDE sources
+            self.kde.update_source_data(self.data, new_bandwidths=[self.time_decay, self.radius])
 
-    def predict(self, data_array):
-        data_array = self.data_class(data_array)
-        return self.kde.pdf(data_array)
+    def predict(self, time, spatial_data_array):
+        """ Generate a prediction from the trained model.
+        """
+        if self.kde.targets_set:
+            return self.kde.pdf(time)
+        else:
+            data_array = self.data_class(spatial_data_array)
+            return self.kde.pdf(time, net_targets=spatial_data_array)

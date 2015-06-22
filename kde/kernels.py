@@ -388,20 +388,25 @@ class NetworkKernelEqualSplitLinear(BaseKernel):
         """
         :param loc: NetPoint instance giving the network location of the source
         :param bandwidth: Float giving the search radius / bandwidth of the network kernel
+        NB: no cutoff required as this is already supplied in the NetWalker instance
         """
         self.loc = loc
         self.bandwidth = bandwidth
-        self.graph = loc.graph
-        self.kernel = None
-        self.set_kernel()
+        self.net_kernel = None
+        self.set_net_kernel()
+        self.walker = None
 
-    def set_kernel(self):
+    def set_net_kernel(self):
         # one-sided kernel = only ever get positive network distances
-        self.kernel = self.kernel_class(self.bandwidth, one_sided=True)
+        self.net_kernel = self.kernel_class(self.bandwidth, one_sided=True)
 
     @property
     def ndim(self):
         return 1
+
+    @property
+    def n_targets(self):
+        return self.walker.n_targets
 
     @staticmethod
     def prep_input(x):
@@ -409,84 +414,75 @@ class NetworkKernelEqualSplitLinear(BaseKernel):
             x = NetworkData(x)
         return x
 
-    def pdf(self, x, **kwargs):
-        """ x is a NetworkData array of NetPoint objects """
-        from network import utils
-        verbose = kwargs.pop('verbose', False)
-        x = self.prep_input(x)
-        paths = utils.network_paths_source_targets(self.graph,
-                                                   self.loc,
-                                                   x,
-                                                   max_search_distance=self.bandwidth,
-                                                   verbose=verbose)
-        res = np.zeros(x.ndata)
-        for i in range(x.ndata):
-            val = 0.
-            if i in paths:
-                for t in paths[i]:
-                    #  each of these is a unique path from source to a target
-                    degrees = self.graph.g.degree(t[0])
-                    a = np.prod(np.array(degrees.values()) - 1)
-                    if a == 0:
-                        # we passed a node of degree 1 - shouldn't happen
-                        import ipdb; ipdb.set_trace()
-                    # compute kernel value
-                    val += self.kernel.pdf(t[1]) / float(a)
-            res[i] = val
+    def set_walker(self, walker):
+        self.walker = walker
+
+    def net_pdf(self, source):
+        paths = self.walker.source_to_targets(source)
+        res = np.zeros(self.n_targets)
+        # iterate over all possible paths from this source to targets
+        for t_idx, p in paths.iteritems():
+            for path in p:
+                dist = path[1]
+                norm = path[-1]
+                res[t_idx] += self.net_kernel.pdf(dist) / norm
         return res
 
-class NetworkTemporalKernelEqualSplit(BaseKernel):
+    def pdf(self, *args, **kwargs):
+        return self.net_pdf(self.loc)
+
+
+class NetworkTemporalKernelEqualSplit(NetworkKernelEqualSplitLinear):
 
     """
     Kernel defined on a network, with additional exponential time component.
     This makes use of the Okabe approach to computing a KDE on a network (the 'equal split' algorithm)
     """
 
-    def __init__(self, loc, bandwidths):
+    def __init__(self, loc, bandwidths, time_cutoff=None):
         """
         :param loc: [Time (float), NetPoint] means for this kernel
         :param bandwidths: The variance in the time case, the maximum search radius in the network case
+        :param time_cutoff: Optional parameter specifying the maximum time difference. Any time differences greater than
+        this value automatically generate a density of zero.
         """
-        # TODO: add time tolerance parameter for further speed improvements
-        if len(loc) != 2:
-            raise AttributeError("Input loc must have 2 elements")
-        if len(bandwidths) != 2:
-            raise AttributeError("Input bandwidths must have 2 elements")
-        self.loc = loc
-        self.bandwidths = np.array(bandwidths, dtype=float)
-        self.network_kernel = None
-        self.set_kernel()
-
-    def set_kernel(self):
-        self.network_kernel = NetworkKernelEqualSplitLinear(self.loc[1], self.bandwidths[1])
+        self.time_cutoff = time_cutoff
+        super(NetworkTemporalKernelEqualSplit, self).__init__(loc, bandwidths)
 
     @property
     def ndim(self):
         return 2
 
-    def pdf(self, x, dims=None):
+    def set_net_kernel(self):
+        # one-sided kernel = only ever get positive network distances
+        self.net_kernel = self.kernel_class(self.bandwidth[1], one_sided=True)
+
+    def pdf(self, target_times=None, dims=None):
         if dims is not None:
             if any([t not in [0, 1] for t in dims]):
                 raise AttributeError("Dims requested are out of range")
             ndim = len(dims)
         else:
+            dims = [0, 1]
             ndim = 2
 
-        if ndim == 1:
-            if 0 in dims:
-                # time component
-                t = x.toarray(0) - self.loc[0]
-                res = np.exp(-t / self.bandwidths[0]) * (t >= 0) / self.bandwidths[0]
-                return res
-            else:
-                # network/space component
-                res = self.network_kernel.pdf(x)
-                return res
-        elif ndim == 2:
-            if not isinstance(x, NetworkSpaceTimeData):
-                x = NetworkSpaceTimeData(x)
-            res = self.pdf(x.time, dims=[0]) * self.pdf(x.space, dims=[1])
-            return res
+        if 0 in dims:
+            # time component
+            if target_times is None:
+                raise AttributeError("Must supply target times if time component is required")
+            t = target_times.toarray(0) - self.loc[0]
+            res_t = np.exp(-t / self.bandwidth[0]) * (t > 0) / self.bandwidth[0]
+            if self.time_cutoff is not None:
+                res_t *= (t <= self.time_cutoff)
+            if ndim == 1:
+                return res_t
+        if 1 in dims:
+            # network/space component
+            res_d = super(NetworkTemporalKernelEqualSplit, self).net_pdf(self.loc[1])
+            if ndim == 1:
+                return res_d
+
+        return res_t * res_d
 
 
 def illustrate_kernels():
