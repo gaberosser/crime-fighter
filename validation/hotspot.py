@@ -4,7 +4,8 @@ from scipy.stats import gaussian_kde
 from scipy import sparse
 from kde.models import FixedBandwidthKdeScott, VariableBandwidthNnKde
 from kde.netmodels import NetworkTemporalKde
-from data.models import DataArray, CartesianSpaceTimeData, SpaceTimeDataArray, NetworkData, NetworkSpaceTimeData
+from data.models import DataArray, CartesianSpaceTimeData, SpaceTimeDataArray, NetworkData, NetworkSpaceTimeData, \
+    CartesianData
 from point_process.utils import linkages, linkage_func_separable
 from network.utils import network_linkages
 
@@ -36,7 +37,8 @@ def generate_st_prediction_dataarray(time, space_arr, dtype=SpaceTimeDataArray):
 
 class STKernelBase(object):
 
-    data_class = DataArray
+    data_class = SpaceTimeDataArray
+    space_class = CartesianData
 
     def __init__(self):
         self.data = None
@@ -50,7 +52,14 @@ class STKernelBase(object):
     def train(self, data):
         self.data = self.data_class(data)
 
-    def predict(self, data_array):
+    def prediction_array(self, time, space_array):
+        space_array = self.space_class(space_array, copy=False)
+        t = DataArray(time * np.ones(space_array.ndata))
+        if space_array.original_shape is not None:
+            t.original_shape = space_array.original_shape
+        return t.adddim(space_array, type=self.data_class)
+
+    def predict(self, time, space_array):
         raise NotImplementedError()
 
 
@@ -70,23 +79,20 @@ class STKernelBowers(STKernelBase):
     def get_linkages(self, target_data):
         def linkage_fun(dt, dd):
             return dd <= 400  # units metres
-            # aa = 1. / (dt * self.a + 1.)
-            # bb = 1. / (dd * self.b + 1.)
-            # return aa * bb >= self.min_frac
+
         link_i, link_j = linkages(self.data, linkage_fun, data_target=target_data)
 
         dt = 1 / ((target_data.time.getrows(link_j) - self.data.time.getrows(link_i)) * self.a + 1.).toarray(0)
         dd = 1 / (target_data.space.getrows(link_j).distance(self.data.space.getrows(link_i)) * self.b + 1.).toarray(0)
         return link_i, link_j, dt, dd
 
-    def predict(self, data_array):
+    def predict(self, time, space_array):
         ## FIXME: the function used here is basically WRONG
         #  The original paper advocates only including crimes within a 400m radius then summing the kernel:
         #  Sum(1/(delta_dist) * 1/(delta_time))
         #  In practice, going to use (1+delta_dist) in the denominator to avoid the singularity!
         #  Though this should be mitigated by the remove_coincident_points problem, but that won't sort out delta_t=0
-        data_array = self.data_class(data_array)
-
+        data_array = self.prediction_array(time, space_array)
         link_i, link_j, dt, dd = self.get_linkages(data_array)
 
         c1 = 1 / (dt * self.a + 1.)
@@ -133,14 +139,10 @@ class SKernelBase(STKernelBase):
         self.set_data(SpaceTimeDataArray(data))
         self.set_kde()
 
-    # def predict(self, data_array):
-    #     data_array = DataArray(data_array)
-    #     assert data_array.nd == 2, 'Predict requires a 2D DataArray'
-    #     return self.kde.pdf(data_array)
+    def predict(self, time, space_array):
+        space_array = self.data_class(space_array, copy=False)
+        return self.kde.pdf(space_array)
 
-    def predict(self, data_array):
-        data_array = SpaceTimeDataArray(data_array)
-        return self.kde.pdf(data_array.space)
 
 class SKernelHistoric(SKernelBase):
 
@@ -165,16 +167,18 @@ class SKernelHistoricVariableBandwidthNn(SKernelBase):
 class SNetworkKernelBase(SKernelBase):
     data_class = NetworkData
 
-    def train(self, data):
-        self.set_data(SpaceTimeDataArray(data))
-        self.set_prediction_method()
+    def __init__(self, dt, max_distance):
+        super(SNetworkKernelBase, self).__init__(dt)
+        self.max_distance = max_distance
 
-    def set_prediction_method(self):
+    def set_kde(self):
+        # instantiate a space-only network KDE
         pass
 
 
 class STNetworkKernelBase(STKernelBase):
     data_class = NetworkSpaceTimeData
+    space_class = NetworkData
 
     @property
     def spatial_bandwidth(self):
@@ -200,8 +204,8 @@ class STNetworkFixedRadius(STNetworkKernelBase):
     def spatial_bandwidth(self):
         return self.radius
 
-    def predict(self, data_array):
-        data_array = self.data_class(data_array)
+    def predict(self, time, space_array):
+        data_array = self.prediction_array(time, space_array)
         link_i, link_j, dt, dd = self.get_linkages(data_array)
 
         # space_part = np.ones_like(dd)
@@ -270,11 +274,18 @@ class STNetworkLinearSpaceExponentialTime(STNetworkKernelBase):
             # Otherwise just update the existing KDE sources
             self.kde.update_source_data(self.data, new_bandwidths=[self.time_decay, self.radius])
 
-    def predict(self, time, spatial_data_array):
-        """ Generate a prediction from the trained model.
+    def predict(self, time, space_array, force_update=False):
         """
-        if self.kde.targets_set:
-            return self.kde.pdf(time)
+        Generate a prediction from the trained model.
+        Supply single time and spatial sample points in separate arrays
+        If force_update=False then the spatial component is assumed unchanged, so only the time is altered.
+        This is important: updating the spatial sample points loses all cached net paths.
+        """
+        if self.kde.targets_set and not force_update:
+            self.kde.update_target_times_single_time(time)
+            return self.kde.pdf()
         else:
-            data_array = self.data_class(spatial_data_array)
-            return self.kde.pdf(time, net_targets=spatial_data_array)
+            space_array = self.space_class(space_array, copy=False)
+            time_array = DataArray(np.ones(space_array.ndata) * time)
+            targets_array = time_array.adddim(space_array, type=self.data_class)
+            return self.kde.pdf(targets=targets_array)

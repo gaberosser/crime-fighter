@@ -420,7 +420,7 @@ class NetworkRocSegments(SpatialRoc):
         return self.data.to_cartesian()
 
     def plot(self,
-             show_sample_units=True,
+             show_sample_units=False,
              show_prediction=True,
              fmax=0.9,
              cmap='Reds',

@@ -170,7 +170,7 @@ class ValidationBase(object):
 
     def predict(self, t, **kwargs):
         # estimate total propensity in each grid poly
-        return self.model.predict(self.prediction_array(t))
+        return self.model.predict(t, self.sample_points)
 
     def _iterate_run(self, pred_dt_plus, true_dt_plus, true_dt_minus, **kwargs):
         true_dt_plus = true_dt_plus or pred_dt_plus
@@ -388,7 +388,6 @@ class NetworkValidationBase(ValidationBase):
     def __init__(self, *args, **kwargs):
         # declare extra attributes that are specific to the network class
         self.graph = None
-        self.net_walker = None  # ??
         super(NetworkValidationBase, self).__init__(*args, **kwargs)
 
     def set_data(self, data, data_index=None):

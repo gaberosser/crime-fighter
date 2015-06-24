@@ -11,7 +11,7 @@ class NetworkTemporalKde(KernelCluster):
 
     def __init__(self, source_data, bandwidths,
                  ktype=NetworkTemporalKernelEqualSplit,
-                 net_targets=None,
+                 targets=None,
                  cutoffs=None,
                  max_net_split=1e4,
                  **kwargs):
@@ -25,13 +25,12 @@ class NetworkTemporalKde(KernelCluster):
         self.bandwidths = None
         self.cutoffs = None
         self.set_bandwidths_and_cutoffs(bandwidths, cutoffs=cutoffs)
-        # self.set_cutoffs(cutoffs)
         self.kernels = self.create_kernels()
-        # create NetWalker object. A reference is passed to all kernels
-        self.net_targets = None
+
+        self.targets = None
         self.walker = None
         if targets is not None:
-            self.set_targets(net_targets)
+            self.set_targets(targets)
 
     @property
     def ndim(self):
@@ -44,10 +43,6 @@ class NetworkTemporalKde(KernelCluster):
     @property
     def norm_constant(self):
         return float(self.ndata)
-
-    @property
-    def targets_set(self):
-        return self.net_targets is not None
 
     def set_bandwidths_and_cutoffs(self, bandwidths, cutoffs=None):
         if not hasattr(bandwidths, '__iter__'):
@@ -65,19 +60,23 @@ class NetworkTemporalKde(KernelCluster):
 
         self.bandwidths = bandwidths
 
-    def set_targets(self, net_targets):
-        self.net_targets = self.data_class(net_targets)
+    def set_targets(self, targets):
+        self.targets = self.data_class(targets, copy=False)
         self.walker = NetworkWalker(self.data.graph,
-                                    targets=self.net_targets,
+                                    targets=self.targets.space,
                                     max_distance=self.cutoffs[1],
                                     max_split=self.max_net_split)
         [k.set_walker(self.walker) for k in self.kernels]
+
+    @property
+    def targets_set(self):
+        return self.targets is not None
 
     def create_kernels(self):
         return [self.ktype(self.data[i], self.bandwidths, time_cutoff=self.cutoffs[0]) for i in range(self.ndata)]
 
     def update_source_data(self, new_source_data, new_bandwidths=None):
-        new_source_data = self.data_class(new_source_data)
+        new_source_data = self.data_class(new_source_data, copy=False)
         if new_bandwidths is None:
             new_bandwidths = self.bandwidths
         self.data = new_source_data
@@ -86,29 +85,38 @@ class NetworkTemporalKde(KernelCluster):
         # set the network walker on the new kernels as they can still use the cache
         [k.set_walker(self.walker) for k in self.kernels]
 
-    def iter_operate(self, funcstr, time, net_targets=None, **kwargs):
+    def iter_operate(self, funcstr, targets=None, **kwargs):
         """
         Return an iterator that executes the fun named in funcstr to each kernel in turn.
         Unlike the base case, the targets data array is optional: targets are retained between calls for
         caching purposes.
         """
-        if net_targets is not None:
+        if targets is not None:
             # reset the network walker
-            self.set_targets(net_targets)
+            self.set_targets(targets)
         # need to send the target times to the kernel, since net walker only stores the spatial (net) targets
-        target_times = DataArray(time * np.ones(self.net_targets.ndata))
+        target_times = self.targets.time
         return (getattr(x, funcstr)(target_times=target_times, **kwargs) for x in self.kernels)
 
-    def additive_operation(self, funcstr, time, net_targets=None, **kwargs):
+    def additive_operation(self, funcstr, targets=None, **kwargs):
         """ Generic interface to call function named in funcstr on the data, reducing data by summing """
-        return reduce(operator.add, self.iter_operate(funcstr, time, net_targets=net_targets, **kwargs))
+        return reduce(operator.add, self.iter_operate(funcstr, targets=targets, **kwargs))
 
-    def operation(self, funcstr, time, net_targets=None, **kwargs):
-        return list(self.iter_operate(funcstr, time, net_targets=net_targets, **kwargs))
+    def operation(self, funcstr, targets=None, **kwargs):
+        return list(self.iter_operate(funcstr, targets=targets, **kwargs))
 
-    def pdf(self, time, net_targets=None, **kwargs):
+    def update_target_times(self, target_times):
+        target_times = DataArray(target_times, copy=False)
+        if target_times.ndata != self.targets.ndata:
+            raise AttributeError("The number of data points does not match existing data in the supplied array")
+        self.targets.time = target_times
+
+    def update_target_times_single_time(self, t):
+        self.targets.data[:, 0] = t
+
+    def pdf(self, targets=None, **kwargs):
         normed = kwargs.pop('normed', True)
-        z = self.additive_operation('pdf', time, net_targets=net_targets)
+        z = self.additive_operation('pdf', targets=targets)
 
         if normed:
             z /= self.norm_constant
@@ -143,7 +151,6 @@ if __name__ == '__main__':
     k.set_walker(nw)
     z = k.pdf()
     zn = z / max(z)
-
     # plt.figure()
     # itn_net.plot_network()
     # plt.scatter(nodes[:, 0], nodes[:, 1], marker='x', s=15, c='k')
@@ -168,22 +175,26 @@ if __name__ == '__main__':
 
 
     this_sources_st = sources_st.getrows(range(50))
-    kk = NetworkTemporalKde(this_sources_st, bandwidths=[0.5, 200.], net_targets=targets)
-    y = kk.pdf(1.0)
+    kk = NetworkTemporalKde(this_sources_st, bandwidths=[0.5, 200.], targets=targets_st)
+    y = kk.pdf()
     yn = y / max(y)
 
     plt.figure()
     itn_net.plot_network()
     plt.scatter(nodes[:, 0], nodes[:, 1], marker='x', s=15, c='k')
     plt.scatter(*targets.to_cartesian().separate, s=(yn * 20) ** 2)
-    plt.scatter(*this_sources_st.space.to_cartesian().separate, c=this_sources_st.time, s=50, vmax=1., vmin=0.5)
+    plt.scatter(*this_sources_st.space.to_cartesian().separate,
+                c=this_sources_st.time.toarray(),
+                s=50, vmax=1., vmin=0.5)
 
     this_sources_st = sources_st.getrows(range(50, 100))
     kk.update_source_data(this_sources_st)
-    y = kk.pdf(1.0)
+    y = kk.pdf()
     yn = y / max(y)
     plt.figure()
     itn_net.plot_network()
     plt.scatter(nodes[:, 0], nodes[:, 1], marker='x', s=15, c='k')
     plt.scatter(*targets.to_cartesian().separate, s=(yn * 20) ** 2)
-    plt.scatter(*this_sources_st.space.to_cartesian().separate, c=this_sources_st.time, s=50, vmax=1., vmin=0.5)
+    plt.scatter(*this_sources_st.space.to_cartesian().separate,
+                c=this_sources_st.time.toarray(),
+                s=50, vmax=1., vmin=0.5)

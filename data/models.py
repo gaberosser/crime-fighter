@@ -2,6 +2,7 @@ __author__ = 'gabriel'
 import numpy as np
 from network.streetnet import NetPoint, StreetNet
 from warnings import warn
+from copy import copy as cpy
 
 
 def negative_time_dimension(data_array):
@@ -28,21 +29,24 @@ class DataArray(object):
     datatype = float
     combination_output_class = None
 
-    def __init__(self, obj, **kwargs):
+    def __init__(self, obj, copy=True, **kwargs):
         self.original_shape = None
 
         # if a dtype kwarg has been supplied, use that
-        dtype = kwargs.get('dtype', None) or self.datatype
+        dtype = kwargs.get('dtype', self.datatype)
 
         if isinstance(obj, self.__class__):
-            self.data = obj.data.copy()
-            self.original_shape = obj.original_shape
+            if copy:
+                self.data = obj.data.copy()
+            else:
+                self.data = obj.data
+            self.original_shape = cpy(obj.original_shape)
             return
 
         if not isinstance(obj, np.ndarray):
-            obj = np.array(obj, dtype=dtype)
+            obj = np.array(obj, dtype=dtype, copy=copy)
         else:
-            obj = obj.astype(dtype)
+            obj = obj.astype(dtype, copy=copy)
 
         # check dimensions
         if obj.ndim == 0:
@@ -69,7 +73,7 @@ class DataArray(object):
             self.data = np.vstack(dim_arrs).transpose()
 
     def copy(self):
-        return self.__class__(self)
+        return self.__class__(self, copy=True)
 
     @classmethod
     def from_meshgrid(cls, *args):
@@ -171,7 +175,7 @@ class DataArray(object):
 
     def getdim(self, dim):
         # extract required dimension
-        obj = DataArray(self.data[:, dim])
+        obj = DataArray(self.data[:, dim], copy=False)
         # set original shape manually
         obj.original_shape = self.original_shape
         return obj
@@ -204,7 +208,7 @@ class DataArray(object):
             new_data = self.data[idx]
         else:
             new_data = self.data[np.newaxis, idx]
-        res = self.__class__(new_data)
+        res = self.__class__(new_data, copy=False)
         # NB cannot restore original shape here, so leave as None
         return res
 
@@ -220,16 +224,21 @@ class DataArray(object):
     def separate(self):
         return tuple(self.toarray(i) for i in range(self.nd))
 
-    def toarray(self, dim):
+    def toarray(self, dim=None):
         # return an np.ndarray object with the same shape as the original
         # dim is a non-optional input argument detailing which dimension is required
         # if all dimensions are required, use separate instead
+        if dim is None:
+            if self.nd == 1:
+                dim = 0
+            else:
+                raise AttributeError("Must specify the dimension required when ndim > 1.")
         if dim > (self.nd - 1):
             raise AttributeError("Requested dim %d but this array has nd %d" % (dim, self.nd))
+        res = self.data[:, dim]
         if self.original_shape:
-            return self.data[:, dim].reshape(self.original_shape)
-        else:
-            return self.data[:, dim]
+            res = res.reshape(self.original_shape)
+        return res
 
 
 class SpaceTimeDataArray(DataArray):
@@ -258,7 +267,7 @@ class SpaceTimeDataArray(DataArray):
     @property
     def space(self):
         # space component of datapoints
-        res = self.space_class(self[:, 1:])
+        res = self.space_class(self[:, 1:], copy=False)
         res.original_shape = self.original_shape
         return res
 
@@ -312,7 +321,7 @@ class NetworkData(DataArray):
     datatype = object
     combination_output_class = DataArray
 
-    def __init__(self, network_points, **kwargs):
+    def __init__(self, network_points, copy=True, **kwargs):
         """
         Create a 1D NetworkData array of network points.
         :param network_points: iterable containing instances of NetPoint
@@ -320,7 +329,7 @@ class NetworkData(DataArray):
         instantiation to ensure they have the same network object. This should be very fast.
         :return:
         """
-        super(NetworkData, self).__init__(network_points, **kwargs)
+        super(NetworkData, self).__init__(network_points, copy=copy, **kwargs)
         if self.nd != 1:
             raise AttributeError("NetworkData must be one-dimensional.")
         if kwargs.pop('strict', True):

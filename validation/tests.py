@@ -386,12 +386,8 @@ class TestValidation(unittest.TestCase):
 
         self.assertEqual(stk.predict.call_count, 1)
         sp = vb.sample_points
-        pred_call_arg = DataArray.from_args(
-            vb.cutoff_t * np.ones(sp.ndata),
-            sp.toarray(0),
-            sp.toarray(1),
-        )
-        self.assertTrue(np.all(stk.predict.call_args[0] == pred_call_arg))
+        pred_call_arg = (vb.cutoff_t, vb.sample_points)
+        self.assertTrue(stk.predict.call_args[0] == pred_call_arg)
 
 
     def test_assess(self):
@@ -428,7 +424,7 @@ class TestValidation(unittest.TestCase):
                 [t, 1., 1.]
             ])
         )
-        pred_expctd = vb.model.predict(pred_arg)
+        pred_expctd = vb.model.predict(t, mocroc.sample_points)
         self.assertTrue(np.all(vb.roc.set_prediction.call_args[0][0] == pred_expctd))
 
         # set grid
@@ -522,6 +518,8 @@ class TestValidation(unittest.TestCase):
 
 class TestHotspot(unittest.TestCase):
 
+    tol = 1e-12
+
     def test_network_binary_hotspot(self):
         from network.streetnet import NetPoint
 
@@ -540,13 +538,19 @@ class TestHotspot(unittest.TestCase):
         targets.append(NetPoint(itn_net, e, {e.orientation_neg: 35, e.orientation_pos: e.length - 35}))  # dist ~ 54m
         targets.append(NetPoint(itn_net, e, {e.orientation_neg: 75, e.orientation_pos: e.length - 75}))  # dist >> 50m
         targets = NetworkData(targets)
-        # combine with times
+
         # NB: times less than the source (1.0) will result in zeros
-        times = DataArray([1.1, 0.99, 1.5, 1.01, 1.01])
-        st_arr = times.adddim(targets, type=NetworkSpaceTimeData)
-        pred = stk.predict(st_arr)
-        pred_expctd = np.array([np.exp(-.1), 0.,  np.exp(-.5), 0., 0.])
-        self.assertTrue(np.all(pred == pred_expctd))
+        pred = stk.predict(0.99, targets)
+        pred_expctd = np.zeros(5)
+        self.assertTrue(np.all(np.abs(pred - pred_expctd) < self.tol))
+        
+        pred = stk.predict(1.01, targets)
+        pred_expctd = np.array([np.exp(-.01)] * 3 + [0., 0.])
+        self.assertTrue(np.all(np.abs(pred - pred_expctd) < self.tol))
+
+        pred = stk.predict(1.1, targets)
+        pred_expctd = np.array([np.exp(-.1)] * 3 + [0., 0.])
+        self.assertTrue(np.all(np.abs(pred - pred_expctd) < self.tol))
 
         # two edges away
         targets = []
@@ -555,13 +559,14 @@ class TestHotspot(unittest.TestCase):
         targets.append(NetPoint(itn_net, e, {e.orientation_neg: 120, e.orientation_pos: e.length - 120}))  # dist ~ 40m
         targets.append(NetPoint(itn_net, e, {e.orientation_neg: 100, e.orientation_pos: e.length - 100}))  # dist ~ 60m
         targets = NetworkData(targets)
-        # combine with times (all same)
-        times = DataArray([2.7, 0.99, 1.01])
-        st_arr = times.adddim(targets, type=NetworkSpaceTimeData)
-        pred = stk.predict(st_arr)
-        pred_expctd = np.array([np.exp(-1.7), 0., 0.])
-        for p, pe in zip(pred, pred_expctd):
-            self.assertAlmostEqual(p, pe)
+
+        pred = stk.predict(1.01, targets)
+        pred_expctd = np.array([np.exp(-.01)] * 2 + [0.])
+        self.assertTrue(np.all(np.abs(pred - pred_expctd) < self.tol))
+
+        pred = stk.predict(2.7, targets)
+        pred_expctd = np.array([np.exp(-1.7)] * 2 + [0.])
+        self.assertTrue(np.all(np.abs(pred - pred_expctd) < self.tol))
 
 
 if __name__ == '__main__':
