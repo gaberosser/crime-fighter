@@ -35,7 +35,10 @@ class ValidationBase(object):
                  data_index=None,
                  spatial_domain=None,
                  sample_unit_size=None,
-                 cutoff_t=None):
+                 cutoff_t=None,
+                 include_predictions=False):
+
+        self.include_predictions = include_predictions
 
         self.data = None
         self.data_index = None
@@ -182,7 +185,7 @@ class ValidationBase(object):
         self.roc.set_data(testing_data.space, index=testing_ind)
         self.roc.set_prediction(prediction)
 
-        return self.roc.evaluate()
+        return self.roc.evaluate(include_predictions=self.include_predictions)
 
     def run(self, time_step,
             pred_dt_plus=None,
@@ -281,14 +284,16 @@ class ValidationBase(object):
         convert_to_arr = (
             'prediction_rank',
             'cumulative_area',
-            # 'prediction_values',
+            'prediction_values',
             'cumulative_crime',
             'cumulative_crime_count',
             'cumulative_crime_max',
             'pai'
         )
         for k in convert_to_arr:
-            res[k] = np.array(res[k])
+            if k in res:
+                # this allows for optional components such as prediction values
+                res[k] = np.array(res[k])
 
     def _update(self, time_step, **train_kwargs):
         """

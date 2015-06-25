@@ -110,7 +110,7 @@ if __name__ == "__main__":
     h = 400 # metres
     t_decay = 60 # days
     sk = hotspot.STNetworkLinearSpaceExponentialTime(radius=h, time_decay=t_decay)
-    vb = validation.NetworkValidationMean(all_data, sk, spatial_domain=None)
+    vb = validation.NetworkValidationMean(all_data, sk, spatial_domain=None, include_predictions=True)
     vb.set_t_cutoff(211)
     vb.set_sample_units(None, 20)  # 2nd argument refers to interval between sample points
 
@@ -119,21 +119,3 @@ if __name__ == "__main__":
     vb_res = vb.run(1, n_iter=100)
     toc = time.time()
     print toc - tic
-    #
-    # small_bbox = geometry.Polygon([
-    #     (pt[0] - 400, pt[1] - 400),
-    #     (pt[0] - 400, pt[1] + 400),
-    #     (pt[0] + 400, pt[1] + 400),
-    #     (pt[0] + 400, pt[1] - 400),
-    #     (pt[0] - 400, pt[1] - 400)
-    # ])
-    #
-    # in_small_bbox = [i for i in range(vb.roc.n_sample_units) if vb.roc.sample_units[vb.roc.prediction_rank[i]].linestring.intersects(small_bbox)]
-    #
-    # vb.roc.plot(show_sample_units=False)
-    # for i in range(10):
-    #     edge = vb.roc.sample_units[vb.roc.prediction_rank[in_small_bbox[i]]]
-    #     cx, cy = edge.centroid_xy
-    #     plt.text(cx, cy, str(i + 1), size=32, color='b')
-    # plt.axis([pt[0]-400, pt[0]+400, pt[1]-400, pt[1]+400])
-    # plt.tight_layout()

@@ -162,7 +162,7 @@ class SpatialRoc(object):
             indices.append(self.index[this_idx])
         return np.array(indices, dtype=object)
 
-    def evaluate(self):
+    def evaluate(self, include_predictions=False):
         # check that there are some testing data, and return reduced results if not
         if self.data.ndata == 0:
             return {
@@ -188,7 +188,6 @@ class SpatialRoc(object):
 
         res = {
             'prediction_rank': self.prediction_rank,
-            # 'prediction_values': pred_values,
             'cumulative_area': carea,
             'cumulative_crime': cfrac,
             'cumulative_crime_count': n,
@@ -196,6 +195,9 @@ class SpatialRoc(object):
             'pai': pai,
             'ranked_crime_id': true_grid_ind,
         }
+
+        if include_predictions:
+            res['prediction_values'] = np.array(self.prediction_values)
 
         return res
 
