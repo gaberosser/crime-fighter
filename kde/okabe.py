@@ -20,7 +20,7 @@ import networkx as nx
 from collections import defaultdict
 import bisect as bs
 from network import itn
-from kde.kernels import LinearKernel
+from kde.kernels import LinearKernel1D
 from network.streetnet import NetPoint, Edge
 from shapely import geometry
 from data.models import NetworkData
@@ -166,7 +166,7 @@ class EqualSplitKernel():
         self.street_net = street_net
         self.points = points
         self.h = h
-        self.kernel_univ = LinearKernel(h)
+        self.kernel_univ = LinearKernel1D(h)
 
         self.build_augmented_network()
 
@@ -401,8 +401,7 @@ if __name__ == '__main__':
 
     from settings import DATA_DIR
     import os
-    from network.plotting import network_point_coverage
-    from network.utils import network_walker_uniform_sample_points
+    from network.utils import network_walker_uniform_sample_points, network_point_coverage
     import numpy as np
 
 

@@ -305,7 +305,10 @@ class CartesianData(DataArray):
         else:
             res = np.sqrt(((self - other) ** 2).sumdim().toarray(0))
 
-        return DataArray(res)
+        res = DataArray(res)
+        if self.original_shape is not None:
+            res.original_shape = self.original_shape
+        return res
 
 
 class CartesianSpaceTimeData(SpaceTimeDataArray, CartesianData):

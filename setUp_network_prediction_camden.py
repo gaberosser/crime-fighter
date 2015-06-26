@@ -108,7 +108,7 @@ if __name__ == "__main__":
 
 
     h = 400 # metres
-    t_decay = 60 # days
+    t_decay = 30 # days
     sk = hotspot.STNetworkLinearSpaceExponentialTime(radius=h, time_decay=t_decay)
     vb = validation.NetworkValidationMean(all_data, sk, spatial_domain=None, include_predictions=True)
     vb.set_t_cutoff(211)
@@ -119,3 +119,6 @@ if __name__ == "__main__":
     vb_res = vb.run(1, n_iter=100)
     toc = time.time()
     print toc - tic
+
+    # compare with grid-based method with same parameters
+

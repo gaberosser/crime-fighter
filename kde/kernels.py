@@ -3,7 +3,7 @@ __author__ = 'gabriel'
 import numpy as np
 import math
 from scipy import special
-from data.models import DataArray, exp, NetworkData, NetworkSpaceTimeData
+from data.models import DataArray, exp, NetworkData, NetworkSpaceTimeData, CartesianSpaceTimeData, CartesianData
 from network import utils
 
 PI = np.pi
@@ -20,6 +20,7 @@ class BaseKernel(object):
     """
     Abstract class to ensure basic conformation of all derived kernels
     """
+    data_class = DataArray
 
     @property
     def ndim(self):
@@ -27,6 +28,13 @@ class BaseKernel(object):
 
     def normalisation_constants(self):
         raise NotImplementedError()
+
+    def prep_input(self, x, expctd_dims=None):
+        if not isinstance(x, self.data_class):
+            x = self.data_class(x, copy=False)
+        if expctd_dims and x.nd != expctd_dims:
+            raise AttributeError("Incorrect dimensions for input variable")
+        return x
 
     def pdf(self, x, dims=None):
         raise NotImplementedError()
@@ -66,17 +74,6 @@ class MultivariateNormal(BaseKernel):
     def ndim(self):
         return self.stdevs.size
 
-    @staticmethod
-    def prep_input(x, expctd_dims=None):
-        ## TODO: test the effect this has on speed by profiling
-        ## if necessary, can ASSUME a DataArray and implement at a higher level
-        if not isinstance(x, DataArray):
-            x = DataArray(x)
-        if expctd_dims and x.nd != expctd_dims:
-            raise AttributeError("Incorrect dimensions for input variable")
-
-        return x
-
     def normalisation_constants(self):
         return root2 * rootpi * self.stdevs
 
@@ -92,8 +89,6 @@ class MultivariateNormal(BaseKernel):
             ndim = self.ndim
 
         x = self.prep_input(x, ndim)
-
-        # a = np.power(2*PI, -ndim * 0.5)
 
         if ndim == 1:
             b = self.int_constants[dims[0]]
@@ -211,10 +206,6 @@ class SpaceNormalTimeExponential(BaseKernel):
 
         # construct a sub-kernel from MultivariateNormal
         self.mvn = MultivariateNormal(self.mean, self.stdevs)
-
-    @staticmethod
-    def prep_input(x, expctd_dims=None):
-        return MultivariateNormal.prep_input(x, expctd_dims=expctd_dims)
 
     @property
     def ndim(self):
@@ -349,13 +340,13 @@ class SpaceTimeNormalReflective(MultivariateNormal):
             return super(SpaceTimeNormalReflective, self).marginal_cdf(x, dim=dim)
 
 
-class LinearKernel(BaseKernel):
+class LinearKernel1D(BaseKernel):
 
     """
     Simple linear 1D kernel.  Useful for network KDE.
     """
 
-    def __init__(self, h, loc=0., one_sided=True):
+    def __init__(self, h, loc=0., one_sided=False):
         """
 
         :param h: Bandwidth - kernel decreases linearly from loc to zero over this distance
@@ -366,23 +357,118 @@ class LinearKernel(BaseKernel):
         self.h = float(h)
         self.loc = loc
         self.one_sided = one_sided
+        self.int_constant = self.normalisation_constants()
 
     @property
     def ndim(self):
         return 1
 
-    def pdf(self, x, **kwargs):
-        t = x - self.loc
-        if self.one_sided:
-            return 2 * (self.h - t) / self.h ** 2 * (t >= 0) * (t <= self.h)
-        else:
-            return (self.h - t) / self.h ** 2 * (t >= -self.h) * (t <= self.h)
+    def normalisation_constants(self):
+        return self.h ** 2
 
+    def pdf(self, x, **kwargs):
+        if self.one_sided:
+            t = x - self.loc
+            return 2 * (self.h - t) * (t >= 0) * (t <= self.h) / self.int_constant
+        else:
+            t = np.abs(x - self.loc)
+            return (self.h - t) * (t <= self.h) / self.int_constant
+
+
+class LinearRadialKernel(BaseKernel):
+    data_class = CartesianData
+
+    def __init__(self, loc, radius):
+        self.loc = np.array(list(loc))
+        self.radius = radius
+        self.int_constant = self.normalisation_constants()
+
+    @property
+    def ndim(self):
+        return self.loc.size
+
+    def normalisation_constants(self):
+        if self.ndim == 1:
+            return self.radius ** 2
+        if self.ndim == 2:
+            return np.pi / 3. * self.radius ** 3
+        if self.ndim == 3:
+            return np.pi / 3. * self.radius ** 4
+        raise NotImplementedError()
+
+    def pdf(self, x, dims=None):
+        if dims:
+            raise NotImplementedError()
+
+        x = self.prep_input(x, self.ndim)
+        loc = self.data_class(np.tile(self.loc, (x.ndata, 1)))
+        d = x.distance(loc)
+        res = (self.radius - d) * (d <= self.radius) / self.int_constant
+
+        return res.toarray()
+
+
+class LinearSpaceExponentialTime(BaseKernel):
+
+    data_class = CartesianSpaceTimeData
+
+    def __init__(self, loc, scale):
+        # first element of mean is actually the LOCATION of the exponential distribution
+        # first element of vars is actually the MEAN of the exponential distribution
+        self.loc = np.array(loc, dtype=float)
+        self.scale = np.array(scale, dtype=float)
+        self.linear_kernel = LinearKernel1D
+
+    @property
+    def ndim(self):
+        return self.loc.size
+
+    def pdf(self, x, dims=None):
+
+        if dims:
+            ndim = len(dims)
+        else:
+            dims = range(self.ndim)
+            ndim = self.ndim
+
+        x = self.prep_input(x, ndim)
+
+        # test whether temporal dimension was included
+        if 0 in dims:
+            scale = self.scale[0]
+            mean = self.loc[0]
+            t = x.time.toarray()
+            res_t = np.exp((mean - t) / scale) / scale * (t > mean)
+            dims.remove(0)
+        else:
+            res_t = 1
+
+        # if dims are left over, these are the spatial components
+        if len(dims):
+            s = x.space
+            res_s = self.mvn.pdf(s, dims=dims)
+        else:
+            s = 1
+
+        return t * s
+
+    def marginal_cdf(self, x, dim=0):
+        x = self.prep_input(x, 1)
+        if dim == 0:
+            scale = self.stdevs[0]
+            c = 1 - np.exp((self.mean[0] - x) / scale)
+            c[c < 0] = 0.
+            return c
+        else:
+            return self.mvn.marginal_cdf(x, dim=dim)
+
+    def partial_marginal_pdf(self, x, dim=0):
+        raise NotImplementedError()
 
 class NetworkKernelEqualSplitLinear(BaseKernel):
     """ Okabe equal split spatial network kernel """
 
-    kernel_class = LinearKernel
+    kernel_class = LinearKernel1D
 
     def __init__(self, loc, bandwidth):
         """

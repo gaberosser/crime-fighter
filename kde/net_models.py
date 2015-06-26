@@ -3,7 +3,7 @@ from network.streetnet import StreetNet, NetPoint
 from network.utils import NetworkWalker
 import numpy as np
 from data.models import NetworkData, NetworkSpaceTimeData
-from kernels import LinearKernel
+from kernels import LinearKernel1D
 import collections
 from time import time
 from matplotlib import pyplot as plt

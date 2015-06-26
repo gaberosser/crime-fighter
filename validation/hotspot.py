@@ -2,6 +2,7 @@ __author__ = 'gabriel'
 import numpy as np
 from scipy.stats import gaussian_kde
 from scipy import sparse
+from kde.kernels import LinearKernel1D
 from kde.models import FixedBandwidthKdeScott, VariableBandwidthNnKde
 from kde.netmodels import NetworkTemporalKde
 from data.models import DataArray, CartesianSpaceTimeData, SpaceTimeDataArray, NetworkData, NetworkSpaceTimeData, \
@@ -61,6 +62,39 @@ class STKernelBase(object):
 
     def predict(self, time, space_array):
         raise NotImplementedError()
+
+
+
+class STLinearSpaceExponentialTime(STKernelBase):
+
+    def __init__(self, radius, mean_time, tol=1e-3):
+        """
+        tol is the value below which links are cut (only applies to time dimension here as linear kernel cuts anyway
+        """
+        self.radius = radius
+        self.mean_time = mean_time
+        self.tol = tol
+        # cutoff time
+        self.dt_max = -mean_time * (np.log(mean_time) + np.log(tol))
+        super(STLinearSpaceExponentialTime, self).__init__()
+
+    def get_linkages(self, target_data):
+        def linkage_fun(dt, dd):
+            return (dd <= self.radius) & (dt <= self.dt_max)
+
+        link_i, link_j = linkages(self.data, linkage_fun, data_target=target_data)
+        return link_i, link_j
+
+    def predict(self, time, space_array):
+        data_array = self.prediction_array(time, space_array)
+        link_i, link_j = self.get_linkages(data_array)
+        dt = (data_array.time.getrows(link_j) - data_array.time.getrows(link_i))
+        dt = dt.toarray()
+        dd = data_array.space.getrows(link_j).distance(data_array.space.getrows(link_i))
+        dd = dd.toarray()
+        a = np.exp(-dt / self.mean_time) / self.mean_time
+        b =
+        import ipdb; ipdb.set_trace()
 
 
 class STKernelBowers(STKernelBase):
