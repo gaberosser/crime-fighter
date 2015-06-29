@@ -2,6 +2,7 @@ __author__ = 'gabriel'
 import math
 import numpy as np
 from shapely import geometry
+import shapefile
 
 
 try:
@@ -98,6 +99,35 @@ def create_spatial_grid(spatial_domain, grid_length, offset_coords=None):
 
     return intersect_polys, full_extents, full_grid_square
 
+
+def shapely_rectangle_from_vertices(xmin, ymin, xmax, ymax):
+    return geometry.Polygon([
+        (xmin, ymin),
+        (xmax, ymin),
+        (xmax, ymax),
+        (xmin, ymax),
+        (xmin, ymin),
+    ])
+
+
+def write_polygons_to_shapefile(outfile, polygons, field_description=None, **other_attrs):
+    """
+
+    :param outfile:
+    :param polygons: List of shapely polygons
+    :param field_description: dictionary, each key is a field name, each value is a dict
+    ('fieldType': 'C', 'size: '50')
+    fieldType may be 'C' for char, 'N' for number.
+    :param other_attrs: arrays of equal length to polygons, one for each field in field_description.
+    """
+    w = shapefile.Writer(shapefile.POLYGON)
+    for fieldname, fieldvals in field_description.items():
+        w.field(fieldname, **fieldvals)
+    for i, p in enumerate(polygons):
+        parts = [list(t) for t in zip(*p.boundary.xy)]
+        w.poly(parts=[parts])
+        w.record(*[other_attrs[k][i] for k in field_description])
+    w.save(outfile)
 
 def is_clockwise(poly):
     c = np.array(poly.exterior.coords)

@@ -10,7 +10,7 @@ from scipy.spatial.distance import pdist
 import collections
 from django.db.models import Q
 from django.contrib.gis.geos import Point
-from plotting import geodjango_to_shapely, plot_geodjango_shapes
+from plotting.spatial import geodjango_to_shapely, plot_geodjango_shapes
 import pandas
 import numpy as np
 import datetime

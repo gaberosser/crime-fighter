@@ -1,7 +1,6 @@
 __author__ = 'gabriel'
 import numpy as np
 from shapely import geometry as shapely_geometry
-from django.contrib.gis import geos
 import cartopy.crs as ccrs
 from matplotlib import pyplot as plt
 from matplotlib import cm
@@ -10,6 +9,69 @@ import matplotlib.path as mpath
 from descartes import PolygonPatch
 import json
 from analysis.spatial import is_clockwise, bounding_box_grid, geodjango_to_shapely
+
+try:
+    from django.contrib.gis import geos
+    HAS_GEODJANGO = True
+except ImportError:
+    geos = None
+    HAS_GEODJANGO = False
+
+
+def polygonpatch_from_geodjango_polygon(poly, **kwargs):
+    return PolygonPatch(json.loads(poly.geojson), **kwargs)
+
+
+def plot_geodjango_shapes(shapes, ax=None, set_axes=True, **kwargs):
+    # shapes is one or an iterable of Geodjango GEOS objects
+    # returns plot object(s)
+    assert HAS_GEODJANGO, "Cannot plot geodjango shapes without geodjango"
+
+    ax = ax or plt.gca()
+    res = []
+    x_min = y_min = 1e8
+    x_max = y_max = -1e8
+
+    if issubclass(shapes.__class__, geos.GEOSGeometry):
+        # single GEOS geometry supplied
+        shapes = [shapes]
+
+    pts = []
+
+    for s in shapes:
+        if set_axes:
+            x_min = min(x_min, s.extent[0])
+            y_min = min(y_min, s.extent[1])
+            x_max = max(x_max, s.extent[2])
+            y_max = max(y_max, s.extent[3])
+        if isinstance(s, geos.Point):
+            pts.append(s.coords)
+            # res.append(ax.plot(s.coords[0], s.coords[1], 'ko', **kwargs))
+        elif isinstance(s, geos.LineString):
+            lsc = s.coords
+            x = [t[0] for t in s.coords]
+            y = [t[1] for t in s.coords]
+            res.append(ax.plot(x, y, **kwargs))
+        elif isinstance(s, geos.Polygon):
+            res.append(ax.add_patch(polygonpatch_from_geodjango_polygon(s, **kwargs)))
+        elif isinstance(s, geos.MultiPolygon):
+            this_res = []
+            for poly in s:
+                this_res.append(ax.add_patch(polygonpatch_from_geodjango_polygon(poly, **kwargs)))
+            res.append(this_res)
+
+    # plot all points together
+    if len(pts):
+        pts = np.array(pts)
+        res.append(ax.plot(pts[:, 0], pts[:, 1], 'ko', **kwargs))
+
+    if set_axes:
+        x_range = x_max - x_min
+        y_range = y_max - y_min
+        ax.set_xlim([x_min - x_range * 0.02, x_max + x_range * 0.02])
+        ax.set_ylim([y_min - y_range * 0.02, y_max + y_range * 0.02])
+        ax.set_aspect('equal')
+    return res
 
 
 def shapely_plot(func):
@@ -63,3 +125,143 @@ def plot_shapely_geos(shapes, ax=None, **kwargs):
 
     ## TODO: may wish to combine plotting of points for efficiency?
     return [plotters[t.__class__](t, ax, **kwargs) for t in shapes]
+
+
+def plot_surface_function_on_polygon(poly, func, ax=None, dx=None, offset_coords=None, cmap=cm.jet, nlevels=50,
+                            vmin=None, vmax=None, fmax=None, colorbar=False, **kwargs):
+    """
+    :param poly: geos Polygon or Multipolygon defining region OR Shapely equivalents
+    :param func: function accepting two vectorized input arrays returning the values to be plotted
+    :param dx: interval distance between grid points
+    :param offset_coords: iterable giving the (x, y) coordinates of a grid point, default = (0, 0)
+    :param cmap: matplotlib cmap to use
+    :param nlevels: number of contour colour levels to use
+    :param vmin: minimum value to plot. Values below this are left unfilled
+    :param vmax: maximum value to assign on colourmap - values beyond this are clipped
+    :param fmax: maximum value on CDF at which to clip z values
+    :param kwargs: any other kwargs are passed to the plt.contourf call
+    :return:
+    """
+    if fmax and vmax:
+        raise AttributeError("Either specify vmax OR fmax")
+
+    if isinstance(poly, geos.GEOSGeometry):
+        poly = geodjango_to_shapely(poly)
+
+    x_min, y_min, x_max, y_max = poly.bounds
+
+    if not dx:
+        dx = ((x_max - x_min) + (y_max - y_min)) / 100
+
+    x, y = bounding_box_grid(poly, dx, offset_coords=offset_coords)
+    xx, yy = np.meshgrid(x, y, copy=False)
+    zz = func(xx, yy)
+
+    if vmax is None:
+        vmax = np.max(zz)
+
+    if vmin is None:
+        vmin = np.min(zz)
+
+    if fmax:
+        tmp = sorted(zz.flat)
+        cut = int(np.floor(len(tmp) * fmax))
+        vmax = tmp[cut]
+        # zz[zz > vmax] = vmax
+
+    # clip max values to vmax so they still get drawn:
+    zz[zz > vmax] = vmax
+
+    levels = np.linspace(vmin, vmax, nlevels)
+
+    if not ax:
+        fig = plt.figure()
+        buf = 2e-2
+        ax = fig.add_axes([buf, buf, 1 - 2 * buf, 1 - 2 * buf])
+        ax.axis('off')
+
+    cont = ax.contourf(xx, yy, zz, levels=levels, cmap=cmap, **kwargs)
+
+    if colorbar:
+        plt.colorbar(cont, shrink=0.9)
+
+    poly_verts = list(poly.exterior.coords)
+    # check handedness of poly
+    if is_clockwise(poly):
+        poly_verts = poly_verts[::-1]
+
+    # mask_outside_polygon(poly_verts, ax=ax)
+    mask_contour(cont, poly_verts, ax=ax, show_clip_path=True)
+
+    # plot_geodjango_shapes(poly, ax=ax, facecolor='none')
+
+    plt.draw()
+
+    return xx, yy, zz
+
+
+def plot_surface_on_polygon((x, y, z), poly=None, ax=None, cmap=cm.jet, nlevels=50,
+                            vmin=None, vmax=None, fmax=None, colorbar=False, **kwargs):
+    """
+    :param poly: geos Polygon or Multipolygon defining region
+    :param (x, y, z): 2D matrices holding the regularly-spaced x and y coordinates and corresponding z values
+    :param cmap: matplotlib cmap to use
+    :param nlevels: number of contour colour levels to use
+    :param vmin: minimum value to plot. Values below this are left unfilled
+    :param vmax: maximum value to assign on colourmap - values beyond this are clipped
+    :param fmax: maximum value on CDF at which to clip z values
+    :param kwargs: any other kwargs are passed to the plt.contourf call
+    :return:
+    """
+    if poly and isinstance(poly, geos.MultiPolygon):
+        poly = poly.simplify()
+        if not isinstance(poly, geos.Polygon):
+            ## TODO: if this ever becomes an issue, can probably break the multipoly into constituent parts
+            raise AttributeError("Unable to use a multipolygon as a mask")
+
+
+    if fmax and vmax:
+        raise AttributeError("Either specify vmax OR fmax")
+
+    if vmax is None:
+        vmax = np.max(z)
+
+    if vmin is None:
+        vmin = np.min(z)
+
+    if fmax:
+        tmp = sorted(z.flat)
+        cut = int(np.floor(len(tmp) * fmax))
+        vmax = tmp[cut]
+
+    # clip max values to vmax so they still get drawn:
+    z[z > vmax] = vmax
+
+    levels = np.linspace(vmin, vmax, nlevels)
+
+    if not ax:
+        fig = plt.figure()
+        buf = 2e-2
+        ax = fig.add_axes([buf, buf, 1 - 2 * buf, 1 - 2 * buf])
+        ax.axis('equal')
+        ax.axis('off')
+
+    cont = ax.contourf(x, y, z, levels=levels, cmap=cmap, **kwargs)
+
+    if colorbar:
+        plt.colorbar(cont, shrink=0.9)
+
+    if poly:
+        poly_verts = list(poly.exterior_ring.coords)
+        # check handedness of poly
+        if is_clockwise(poly):
+            poly_verts = poly_verts[::-1]
+
+        # mask_outside_polygon(poly_verts, ax=ax)
+        mask_contour(cont, poly_verts, ax=ax, show_clip_path=True)
+        spatial.plot_shapely_geos([poly.exterior], ax=ax, facecolor='none')
+        # plot_geodjango_shapes(poly, ax=ax, facecolor='none')
+
+    plt.draw()
+
+    return cont

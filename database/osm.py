@@ -4,7 +4,7 @@ from django.db import connections, connection
 from matplotlib import pyplot as plt
 from matplotlib.path import Path
 from matplotlib.patches import PathPatch
-from analysis import plotting
+from plotting import spatial
 import collections
 import models
 
@@ -241,7 +241,7 @@ class OsmRendererBase(object):
 
     def render(self, ax=None):
         ax = ax or plt.gca()
-        plotting.plot_geodjango_shapes(self.osm.domain, ax=ax, set_axes=True, **self.style['domain'])
+        spatial.plot_geodjango_shapes(self.osm.domain, ax=ax, set_axes=True, **self.style['domain'])
         for t, v in self.osm.elements.iteritems():
             if t in self.style:
                 this_style = self.style[t]
@@ -252,10 +252,10 @@ class OsmRendererBase(object):
                         if buffer:
                             # buffer each entry in list of linestrings
                             x = [a.buffer(buffer) for a in x]
-                        plotting.plot_geodjango_shapes(x, ax=ax, set_axes=False, **s)
+                        spatial.plot_geodjango_shapes(x, ax=ax, set_axes=False, **s)
                     elif '__other' in this_style:
                         s = this_style['__other']
-                        plotting.plot_geodjango_shapes(x, ax=ax, set_axes=False, **s)
+                        spatial.plot_geodjango_shapes(x, ax=ax, set_axes=False, **s)
         ax.set_aspect('equal')
         ax.set_xticks([])
         ax.set_yticks([])

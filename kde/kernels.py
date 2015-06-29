@@ -573,7 +573,6 @@ class NetworkTemporalKernelEqualSplit(NetworkKernelEqualSplitLinear):
 
 def illustrate_kernels():
     from matplotlib import pyplot as plt
-    from analysis import plotting
     means = [1.0, 1.0]
     stdevs = [1.0, 1.0]
 

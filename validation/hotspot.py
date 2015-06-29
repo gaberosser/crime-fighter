@@ -93,7 +93,8 @@ class STLinearSpaceExponentialTime(STKernelBase):
         dd = data_array.space.getrows(link_j).distance(data_array.space.getrows(link_i))
         dd = dd.toarray()
         a = np.exp(-dt / self.mean_time) / self.mean_time
-        b =
+        b = 1.
+        # TODO: finish!
         import ipdb; ipdb.set_trace()
 
 

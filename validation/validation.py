@@ -209,6 +209,8 @@ class ValidationBase(object):
         :param kwargs: kwargs for the run function itself
         :return: results dictionary.
         """
+        assert self.sample_points is not None, "ROC sample units not set. Run set_sample_units first."
+
         if bool(t_upper) and bool(n_iter):
             logger.exception("Both t_upper AND n_iter were supplied, but only one is supported")
             raise AttributeError("Both t_upper AND n_iter were supplied, but only one is supported")
@@ -415,7 +417,7 @@ class NetworkValidationMean(NetworkValidationBase):
 
 if __name__ == "__main__":
     from database import models
-    from analysis import plotting
+    from plotting import spatial
     import matplotlib as mpl
     from matplotlib import pyplot as plt
     camden = models.Division.objects.get(name='Camden')
@@ -459,8 +461,8 @@ if __name__ == "__main__":
     fig = plt.figure()
     ax = fig.add_subplot(111)
     for (p, r) in zip(polys_pred_rank_order, pred_values):
-        plotting.plot_geodjango_shapes(shapes=(p,), ax=ax, facecolor=sm.to_rgba(r), set_axes=False)
-    plotting.plot_geodjango_shapes((vb.spatial_domain,), ax=ax, facecolor='none')
+        spatial.plot_geodjango_shapes(shapes=(p,), ax=ax, facecolor=sm.to_rgba(r), set_axes=False)
+    spatial.plot_geodjango_shapes((vb.spatial_domain,), ax=ax, facecolor='none')
 
     # Figure: surface showing true values by grid square
 
@@ -470,6 +472,6 @@ if __name__ == "__main__":
     fig = plt.figure()
     ax = fig.add_subplot(111)
     for (p, r) in zip(vb.roc.igrid, vb.roc.true_count):
-        plotting.plot_geodjango_shapes(shapes=(p,), ax=ax, facecolor=sm.to_rgba(r), set_axes=False)
-    plotting.plot_geodjango_shapes((vb.spatial_domain,), ax=ax, facecolor='none')
+        spatial.plot_geodjango_shapes(shapes=(p,), ax=ax, facecolor=sm.to_rgba(r), set_axes=False)
+    spatial.plot_geodjango_shapes((vb.spatial_domain,), ax=ax, facecolor='none')
 

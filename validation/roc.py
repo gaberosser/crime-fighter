@@ -3,8 +3,9 @@ from copy import copy
 import operator
 import numpy as np
 import tools
-from analysis.spatial import create_spatial_grid, random_points_within_poly
-from analysis.plotting import plot_shapely_geos
+from analysis.spatial import create_spatial_grid, random_points_within_poly, shapely_rectangle_from_vertices
+from plotting.spatial import plot_shapely_geos
+from plotting.utils import colour_mapper
 from data.models import DataArray, NetworkSpaceTimeData, NetworkData, NetPoint
 from shapely.geometry import Point, Polygon
 import matplotlib as mpl
@@ -234,6 +235,18 @@ class RocGrid(SpatialRoc):
                 (xmin, ymin),
         ])
 
+    def set_sample_units_with_polygons(self, poly_arr, *args, **kwargs):
+        """
+        Set the ROC grid from an array of polygons
+        :param poly_arr: Array of shapely.geometry.Polygon objects
+        :param args:
+        :param kwargs:
+        :return:
+        """
+        # TODO: finish or remove
+        n_poly = len(poly_arr)
+
+
     def set_sample_units(self, side_length, *args, **kwargs):
         '''
         Set the ROC grid.
@@ -279,6 +292,39 @@ class RocGrid(SpatialRoc):
             & (self.data.toarray(1) < ymax)
         )
 
+    def plot(self,
+             show_sample_units=False,
+             show_prediction=True,
+             fmax=0.9,
+             cmap='Reds',
+             **kwargs
+    ):
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.set_aspect('equal')
+        plot_shapely_geos(self.poly, facecolor='none', edgecolor='k', ax=ax)
+
+        if show_prediction:
+            # create dictionary of segment colours for plotting
+            # this requires creating a norm instance and using that to index a colourmap
+            cmapper = colour_mapper(self.prediction_values, fmax=fmax, vmin=0)
+            for pv, grid in zip(self.prediction_values, self.sample_units):
+                sq = shapely_rectangle_from_vertices(*grid)
+                plot_shapely_geos(sq, ax=ax, facecolor=cmapper.to_rgba(pv), edgecolor='none',
+                                  alpha=kwargs.pop('alpha', 0.4))
+
+
+        if show_sample_units:
+            plot_shapely_geos([shapely_rectangle_from_vertices(*grid) for grid in self.sample_units],
+                              ax=ax,
+                              facecolor='none')
+            plt.scatter(*self.sample_points.separate, c='k', marker='o')
+
+        # remove x and y ticks as these rarely add anything
+        ax.set_xticks([])
+        ax.set_yticks([])
+        plt.draw()
+
 
 class RocGridMean(RocGrid):
 
@@ -313,7 +359,11 @@ class RocGridMean(RocGrid):
                     xres[:, i] = rem_x
                     yres[:, i] = rem_y
 
-        self.sample_points = DataArray.from_meshgrid(xres, yres)
+        xres = xres.flatten(order='F')
+        yres = yres.flatten(order='F')
+        self.sample_points = DataArray.from_args(xres, yres)
+
+        self.n_sample_point_per_unit = np.ones(self.n_sample_units) * n_sample_per_grid
 
 
 class RocGridTimeWeighted(RocGrid):
