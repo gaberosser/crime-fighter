@@ -1,5 +1,6 @@
 __author__ = 'gabriel'
 import numpy as np
+from utils import mask_contour
 from shapely import geometry as shapely_geometry
 import cartopy.crs as ccrs
 from matplotlib import pyplot as plt
@@ -259,7 +260,7 @@ def plot_surface_on_polygon((x, y, z), poly=None, ax=None, cmap=cm.jet, nlevels=
 
         # mask_outside_polygon(poly_verts, ax=ax)
         mask_contour(cont, poly_verts, ax=ax, show_clip_path=True)
-        spatial.plot_shapely_geos([poly.exterior], ax=ax, facecolor='none')
+        plot_shapely_geos([poly.exterior], ax=ax, facecolor='none')
         # plot_geodjango_shapes(poly, ax=ax, facecolor='none')
 
     plt.draw()

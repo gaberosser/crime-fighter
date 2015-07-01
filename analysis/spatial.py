@@ -110,6 +110,15 @@ def shapely_rectangle_from_vertices(xmin, ymin, xmax, ymax):
     ])
 
 
+def geodjango_rectangle_from_vertices(xmin, ymin, xmax, ymax):
+    return geos.Polygon([
+        (xmin, ymin),
+        (xmax, ymin),
+        (xmax, ymax),
+        (xmin, ymax),
+        (xmin, ymin),
+    ])
+
 def write_polygons_to_shapefile(outfile, polygons, field_description=None, **other_attrs):
     """
 
@@ -151,7 +160,14 @@ def random_points_within_poly(poly, npts):
     NB this can be VERY SLOW if the polygon does not occupy much of its bounding box
     :return: x, y
     """
-    xmin, ymin, xmax, ymax = poly.extent
+    try:
+        # geodjango/OGR interface
+        xmin, ymin, xmax, ymax = poly.extent
+        is_geodjango = True
+    except AttributeError:
+        # shapely interface
+        xmin, ymin, xmax, ymax = poly.bounds
+        is_geodjango = False
     dx = xmax - xmin
     dy = ymax - ymin
     out_idx = np.ones(npts).astype(bool)
@@ -163,7 +179,10 @@ def random_points_within_poly(poly, npts):
         yn = np.random.random(size=out_idx.sum()) * dy + ymin
         x[out_idx] = xn
         y[out_idx] = yn
-        out_idx = np.array([not geos.Point(a, b).within(poly) for (a, b) in zip(x, y)])
+        if is_geodjango:
+            out_idx = np.array([not geos.Point(a, b).within(poly) for (a, b) in zip(x, y)])
+        else:
+            out_idx = np.array([not geometry.Point(a, b).within(poly) for (a, b) in zip(x, y)])
 
     return x, y
 

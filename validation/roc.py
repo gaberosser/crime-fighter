@@ -1,9 +1,13 @@
 __author__ = 'gabriel'
 from copy import copy
-import operator
 import numpy as np
 import tools
-from analysis.spatial import create_spatial_grid, random_points_within_poly, shapely_rectangle_from_vertices
+from analysis.spatial import (create_spatial_grid,
+                              random_points_within_poly,
+                              shapely_rectangle_from_vertices,
+                              geodjango_rectangle_from_vertices,
+                              HAS_GEODJANGO)
+
 from plotting.spatial import plot_shapely_geos
 from plotting.utils import colour_mapper
 from data.models import DataArray, NetworkSpaceTimeData, NetworkData, NetPoint
@@ -12,6 +16,9 @@ import matplotlib as mpl
 from matplotlib import pyplot as plt
 from matplotlib import cm
 from network.utils import network_walker_uniform_sample_points
+
+if HAS_GEODJANGO:
+    from django.contrib.gis import geos
 
 
 class SpatialRoc(object):
@@ -235,17 +242,46 @@ class RocGrid(SpatialRoc):
                 (xmin, ymin),
         ])
 
-    def set_sample_units_with_polygons(self, poly_arr, *args, **kwargs):
+    def set_centroids(self):
         """
-        Set the ROC grid from an array of polygons
-        :param poly_arr: Array of shapely.geometry.Polygon objects
+        Set the centroids attribute. Requires poly and grid_polys to be defined.
+        """
+        centroid_coords = lambda x: (x.x, x.y)
+        self.centroids = self.data_class([centroid_coords(t.centroid) for t in self.grid_polys])
+
+    def set_sample_units_predefined(self, grid, *args, **kwargs):
+        """
+        Set the ROC grid from an existing result.
+        :param grid: Array of (xmin, ymin, xmax, ymax) giving grid square bounds
         :param args:
         :param kwargs:
         :return:
         """
-        # TODO: finish or remove
-        n_poly = len(poly_arr)
-
+        self.prediction_values = None
+        self.side_length = None
+        if not self.poly:
+            # find minimal bounding rectangle
+            self.poly = self.generate_bounding_poly(self.data)
+        if isinstance(self.poly, Polygon):
+            # shapely
+            creation_func = shapely_rectangle_from_vertices
+        elif HAS_GEODJANGO:
+            # geodjango
+            creation_func = geodjango_rectangle_from_vertices
+        else:
+            raise TypeError("Geodjango is not supported and the polygon is NOT shapely format.")
+        self.sample_units = grid
+        self.grid_polys = []
+        self.full_grid_square = []
+        for g in self.sample_units:
+            t = creation_func(*g)
+            if t.within(self.poly):
+                self.full_grid_square.append(True)
+            else:
+                self.full_grid_square.append(False)
+            self.grid_polys.append(self.poly.intersection(t))
+        self.set_centroids()
+        self.set_sample_points(*args, **kwargs)
 
     def set_sample_units(self, side_length, *args, **kwargs):
         '''
@@ -261,11 +297,9 @@ class RocGrid(SpatialRoc):
         if not self.poly:
             # find minimal bounding rectangle
             self.poly = self.generate_bounding_poly(self.data)
-
         self.side_length = side_length
         self.grid_polys, self.sample_units, self.full_grid_square = create_spatial_grid(self.poly, self.side_length)
-        centroid_coords = lambda x: (x.x, x.y)
-        self.centroids = self.data_class([centroid_coords(t.centroid) for t in self.grid_polys])
+        self.set_centroids()
         self.set_sample_points(*args, **kwargs)
 
     @property

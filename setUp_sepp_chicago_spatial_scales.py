@@ -1,7 +1,7 @@
 __author__ = 'gabriel'
 from analysis import chicago
 from database import models
-from point_process import plotting as pp_plotting
+from point_process import plots as pp_plotting
 import numpy as np
 from matplotlib import pyplot as plt
 
