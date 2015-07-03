@@ -9,7 +9,7 @@ import numpy as np
 import datetime
 import os
 from point_process import utils
-from analysis.plotting import plot_surface_function_on_polygon, plot_shapely_geos
+from plotting.spatial import plot_surface_function_on_polygon, plot_shapely_geos
 from data.models import CartesianSpaceTimeData, DataArray
 from django.contrib.gis import geos
 import collections

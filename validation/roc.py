@@ -1,16 +1,24 @@
 __author__ = 'gabriel'
 from copy import copy
-import operator
 import numpy as np
 import tools
-from analysis.spatial import create_spatial_grid, random_points_within_poly
-from analysis.plotting import plot_shapely_geos
-from data.models import DataArray, NetworkSpaceTimeData, NetworkData, NetPoint
+from analysis.spatial import (create_spatial_grid,
+                              random_points_within_poly,
+                              shapely_rectangle_from_vertices,
+                              geodjango_rectangle_from_vertices,
+                              HAS_GEODJANGO)
+
+from plotting.spatial import plot_shapely_geos
+from plotting.utils import colour_mapper
+from data.models import DataArray, NetworkSpaceTimeData, NetworkData, NetPoint, CartesianData
 from shapely.geometry import Point, Polygon
 import matplotlib as mpl
 from matplotlib import pyplot as plt
 from matplotlib import cm
 from network.utils import network_walker_uniform_sample_points
+
+if HAS_GEODJANGO:
+    from django.contrib.gis import geos
 
 
 class SpatialRoc(object):
@@ -162,7 +170,7 @@ class SpatialRoc(object):
             indices.append(self.index[this_idx])
         return np.array(indices, dtype=object)
 
-    def evaluate(self):
+    def evaluate(self, include_predictions=False):
         # check that there are some testing data, and return reduced results if not
         if self.data.ndata == 0:
             return {
@@ -188,7 +196,6 @@ class SpatialRoc(object):
 
         res = {
             'prediction_rank': self.prediction_rank,
-            # 'prediction_values': pred_values,
             'cumulative_area': carea,
             'cumulative_crime': cfrac,
             'cumulative_crime_count': n,
@@ -196,6 +203,9 @@ class SpatialRoc(object):
             'pai': pai,
             'ranked_crime_id': true_grid_ind,
         }
+
+        if include_predictions:
+            res['prediction_values'] = np.array(self.prediction_values)
 
         return res
 
@@ -232,6 +242,47 @@ class RocGrid(SpatialRoc):
                 (xmin, ymin),
         ])
 
+    def set_centroids(self):
+        """
+        Set the centroids attribute. Requires poly and grid_polys to be defined.
+        """
+        centroid_coords = lambda x: (x.x, x.y)
+        self.centroids = self.data_class([centroid_coords(t.centroid) for t in self.grid_polys])
+
+    def set_sample_units_predefined(self, grid, *args, **kwargs):
+        """
+        Set the ROC grid from an existing result.
+        :param grid: Array of (xmin, ymin, xmax, ymax) giving grid square bounds
+        :param args:
+        :param kwargs:
+        :return:
+        """
+        self.prediction_values = None
+        self.side_length = None
+        if not self.poly:
+            # find minimal bounding rectangle
+            self.poly = self.generate_bounding_poly(self.data)
+        if isinstance(self.poly, Polygon):
+            # shapely
+            creation_func = shapely_rectangle_from_vertices
+        elif HAS_GEODJANGO:
+            # geodjango
+            creation_func = geodjango_rectangle_from_vertices
+        else:
+            raise TypeError("Geodjango is not supported and the polygon is NOT shapely format.")
+        self.sample_units = grid
+        self.grid_polys = []
+        self.full_grid_square = []
+        for g in self.sample_units:
+            t = creation_func(*g)
+            if t.within(self.poly):
+                self.full_grid_square.append(True)
+            else:
+                self.full_grid_square.append(False)
+            self.grid_polys.append(self.poly.intersection(t))
+        self.set_centroids()
+        self.set_sample_points(*args, **kwargs)
+
     def set_sample_units(self, side_length, *args, **kwargs):
         '''
         Set the ROC grid.
@@ -246,11 +297,9 @@ class RocGrid(SpatialRoc):
         if not self.poly:
             # find minimal bounding rectangle
             self.poly = self.generate_bounding_poly(self.data)
-
         self.side_length = side_length
         self.grid_polys, self.sample_units, self.full_grid_square = create_spatial_grid(self.poly, self.side_length)
-        centroid_coords = lambda x: (x.x, x.y)
-        self.centroids = self.data_class([centroid_coords(t.centroid) for t in self.grid_polys])
+        self.set_centroids()
         self.set_sample_points(*args, **kwargs)
 
     @property
@@ -276,6 +325,39 @@ class RocGrid(SpatialRoc):
             & (self.data.toarray(1) >= ymin)
             & (self.data.toarray(1) < ymax)
         )
+
+    def plot(self,
+             show_sample_units=False,
+             show_prediction=True,
+             fmax=0.9,
+             cmap='Reds',
+             **kwargs
+    ):
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.set_aspect('equal')
+        plot_shapely_geos(self.poly, facecolor='none', edgecolor='k', ax=ax)
+
+        if show_prediction:
+            # create dictionary of segment colours for plotting
+            # this requires creating a norm instance and using that to index a colourmap
+            cmapper = colour_mapper(self.prediction_values, fmax=fmax, vmin=0)
+            for pv, grid in zip(self.prediction_values, self.sample_units):
+                sq = shapely_rectangle_from_vertices(*grid)
+                plot_shapely_geos(sq, ax=ax, facecolor=cmapper.to_rgba(pv), edgecolor='none',
+                                  alpha=kwargs.pop('alpha', 0.4))
+
+
+        if show_sample_units:
+            plot_shapely_geos([shapely_rectangle_from_vertices(*grid) for grid in self.sample_units],
+                              ax=ax,
+                              facecolor='none')
+            plt.scatter(*self.sample_points.separate, c='k', marker='o')
+
+        # remove x and y ticks as these rarely add anything
+        ax.set_xticks([])
+        ax.set_yticks([])
+        plt.draw()
 
 
 class RocGridMean(RocGrid):
@@ -311,7 +393,11 @@ class RocGridMean(RocGrid):
                     xres[:, i] = rem_x
                     yres[:, i] = rem_y
 
-        self.sample_points = DataArray.from_meshgrid(xres, yres)
+        xres = xres.flatten(order='F')
+        yres = yres.flatten(order='F')
+        self.sample_points = DataArray.from_args(xres, yres)
+
+        self.n_sample_point_per_unit = np.ones(self.n_sample_units) * n_sample_per_grid
 
 
 class RocGridTimeWeighted(RocGrid):
@@ -420,7 +506,7 @@ class NetworkRocSegments(SpatialRoc):
         return self.data.to_cartesian()
 
     def plot(self,
-             show_sample_units=True,
+             show_sample_units=False,
              show_prediction=True,
              fmax=0.9,
              cmap='Reds',
@@ -501,6 +587,62 @@ class NetworkRocSegments(SpatialRoc):
     def in_sample_unit(self, sample_unit):
         """ Return bool array, one entry per data point. True indicates that the datum is within the sample unit. """
         return np.array([t.edge == sample_unit for t in self.data.toarray(0)])
+
+
+class RocGridByNetworkLengthMean(RocGridMean):
+    """
+    Planar ROC class used for comparison with network predictions. This class generates a grid AND requires a reference
+    to a network object. Predictions are carried out just as in the standard RocGrid fashion, BUT the cumulative_area
+    becomes cumulative length of network segments within the grid squares.
+    """
+    data_class = CartesianData
+
+    def __init__(self,
+                 data=None,
+                 poly=None,
+                 data_index=None,
+                 graph=None,
+                 **kwargs):
+        if graph is None:
+            raise AttributeError("Must specify a graph object.")
+        self.graph = graph
+        self.network_length_in_grid = None
+        super(RocGrid, self).__init__(data=data,
+                                      poly=poly,
+                                      data_index=data_index,
+                                      **kwargs)
+        self.grid_polys = None
+        self.full_grid_square = None
+        self.side_length = None
+
+    def set_sample_units(self, side_length, *args, **kwargs):
+        """
+        Set the ROC grid.
+        :param side_length: side length of grid squares
+        :param args: Passed to set_sample_points
+        :param kwargs: Passed to set_sample_points.
+        :return: None
+        """
+        # define the grid as usual
+        super(RocGridByNetworkLengthMean, self).set_sample_units(side_length, *args, **kwargs)
+
+        # compute intersection with net
+        self.set_network_grid_intersection_lengths()
+
+    def set_network_grid_intersection_lengths(self):
+        # segment the network into edges intersecting grid squares
+        lines = list(self.graph.lines_iter())
+        self.network_length_in_grid = []
+        for t in self.sample_units:
+            sq = shapely_rectangle_from_vertices(*t)
+            this_int = [sq.intersection(t) for t in lines if sq.intersects(t)]
+            this_length = sum([t.length for t in this_int])
+            self.network_length_in_grid.append(this_length)
+        self.network_length_in_grid = np.array(self.network_length_in_grid)
+
+    @property
+    def sample_unit_size(self):
+        return self.network_length_in_grid
 
 
 class NetworkRocSegmentsMean(NetworkRocSegments):

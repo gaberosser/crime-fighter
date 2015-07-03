@@ -35,7 +35,10 @@ class ValidationBase(object):
                  data_index=None,
                  spatial_domain=None,
                  sample_unit_size=None,
-                 cutoff_t=None):
+                 cutoff_t=None,
+                 include_predictions=False):
+
+        self.include_predictions = include_predictions
 
         self.data = None
         self.data_index = None
@@ -170,7 +173,7 @@ class ValidationBase(object):
 
     def predict(self, t, **kwargs):
         # estimate total propensity in each grid poly
-        return self.model.predict(self.prediction_array(t))
+        return self.model.predict(t, self.sample_points)
 
     def _iterate_run(self, pred_dt_plus, true_dt_plus, true_dt_minus, **kwargs):
         true_dt_plus = true_dt_plus or pred_dt_plus
@@ -182,7 +185,7 @@ class ValidationBase(object):
         self.roc.set_data(testing_data.space, index=testing_ind)
         self.roc.set_prediction(prediction)
 
-        return self.roc.evaluate()
+        return self.roc.evaluate(include_predictions=self.include_predictions)
 
     def run(self, time_step,
             pred_dt_plus=None,
@@ -206,6 +209,8 @@ class ValidationBase(object):
         :param kwargs: kwargs for the run function itself
         :return: results dictionary.
         """
+        assert self.sample_points is not None, "ROC sample units not set. Run set_sample_units first."
+
         if bool(t_upper) and bool(n_iter):
             logger.exception("Both t_upper AND n_iter were supplied, but only one is supported")
             raise AttributeError("Both t_upper AND n_iter were supplied, but only one is supported")
@@ -281,14 +286,16 @@ class ValidationBase(object):
         convert_to_arr = (
             'prediction_rank',
             'cumulative_area',
-            # 'prediction_values',
+            'prediction_values',
             'cumulative_crime',
             'cumulative_crime_count',
             'cumulative_crime_max',
             'pai'
         )
         for k in convert_to_arr:
-            res[k] = np.array(res[k])
+            if k in res:
+                # this allows for optional components such as prediction values
+                res[k] = np.array(res[k])
 
     def _update(self, time_step, **train_kwargs):
         """
@@ -300,6 +307,12 @@ class ValidationBase(object):
         self.set_t_cutoff(self.cutoff_t + time_step, **train_kwargs)
 
     def _initial_setup(self, **train_kwargs):
+        """
+        Called instead of _update on the first iteration of a run.
+        Since this is called *before* the predict step, we don't advance the time on the first iteration
+        :param train_kwargs:
+        :return:
+        """
         self._update(time_step=0., **train_kwargs)
 
     def repeat_run(self, run_res, pred_dt_plus=None, true_dt_plus=None, true_dt_minus=None,
@@ -379,10 +392,54 @@ class NetworkValidationBase(ValidationBase):
     roc_class = roc.NetworkRocSegments
     data_class = NetworkSpaceTimeData
 
+    def __init__(self, *args, **kwargs):
+        # declare extra attributes that are specific to the network class
+        self.graph = kwargs.pop('graph', None)
+        super(NetworkValidationBase, self).__init__(*args, **kwargs)
+
     def set_data(self, data, data_index=None):
         super(NetworkValidationBase, self).set_data(data, data_index=data_index)
         # add the graph attribute
         self.graph = data.graph
+
+    def _initial_setup(self, **train_kwargs):
+        """
+        On first run, set the NetworkWalker that will be used for all subsequent network path finding?
+		Or is it going in the KDE class?
+        """
+        super(NetworkValidationBase, self)._initial_setup(**train_kwargs)
+
+
+class ValidationIntegrationByNetworkSegment(NetworkValidationBase):
+
+    roc_class = roc.RocGridByNetworkLengthMean
+    data_class = CartesianSpaceTimeData
+
+    def __init__(self, data, model,
+                 data_index=None,
+                 graph=None,
+                 *args, **kwargs):
+        if graph is None:
+            raise AttributeError('Must specify the kwarg graph at instantiation.')
+        super(ValidationIntegrationByNetworkSegment, self).__init__(data,
+                                                                    model,
+                                                                    data_index=data_index,
+                                                                    graph=graph,
+                                                                    *args, **kwargs)
+        # self.graph = graph
+
+    def set_data(self, data, data_index=None):
+        ValidationBase.set_data(self, data, data_index=data_index)
+
+    def set_roc(self):
+        """
+        The graph instance must be supplied at instantiation to ROC
+        """
+        # set roc
+        self.roc = self.roc_class(poly=self.bounding_poly, graph=self.graph)
+        # set roc with ALL data initially
+        self.roc.set_data(self.data[:, 1:], index=self.data_index)
+
 
 
 class NetworkValidationMean(NetworkValidationBase):
@@ -392,7 +449,7 @@ class NetworkValidationMean(NetworkValidationBase):
 
 if __name__ == "__main__":
     from database import models
-    from analysis import plotting
+    from plotting import spatial
     import matplotlib as mpl
     from matplotlib import pyplot as plt
     camden = models.Division.objects.get(name='Camden')
@@ -436,8 +493,8 @@ if __name__ == "__main__":
     fig = plt.figure()
     ax = fig.add_subplot(111)
     for (p, r) in zip(polys_pred_rank_order, pred_values):
-        plotting.plot_geodjango_shapes(shapes=(p,), ax=ax, facecolor=sm.to_rgba(r), set_axes=False)
-    plotting.plot_geodjango_shapes((vb.spatial_domain,), ax=ax, facecolor='none')
+        spatial.plot_geodjango_shapes(shapes=(p,), ax=ax, facecolor=sm.to_rgba(r), set_axes=False)
+    spatial.plot_geodjango_shapes((vb.spatial_domain,), ax=ax, facecolor='none')
 
     # Figure: surface showing true values by grid square
 
@@ -447,6 +504,6 @@ if __name__ == "__main__":
     fig = plt.figure()
     ax = fig.add_subplot(111)
     for (p, r) in zip(vb.roc.igrid, vb.roc.true_count):
-        plotting.plot_geodjango_shapes(shapes=(p,), ax=ax, facecolor=sm.to_rgba(r), set_axes=False)
-    plotting.plot_geodjango_shapes((vb.spatial_domain,), ax=ax, facecolor='none')
+        spatial.plot_geodjango_shapes(shapes=(p,), ax=ax, facecolor=sm.to_rgba(r), set_axes=False)
+    spatial.plot_geodjango_shapes((vb.spatial_domain,), ax=ax, facecolor='none')
 

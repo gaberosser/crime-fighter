@@ -413,6 +413,11 @@ class Sepp(SepBase):
         raise NotImplementedError
 
 
+class Senp(Sepp):
+    """ Self-exciting network process """
+    data_class = data_models.NetworkSpaceTimeData
+
+
 class SeppStochastic(Sepp):
 
     bg_kde_class = pp_kde.FixedBandwidthKdeSeparable

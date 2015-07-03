@@ -1,3 +1,5 @@
+from network.utils import network_point_coverage
+
 __author__ = 'gabriel'
 from network import TEST_DATA_FILE
 from network.itn import read_gml, ITNStreetNet
@@ -10,7 +12,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 from utils import network_linkages, network_walker
 from validation import hotspot, roc
-import plotting
+
 
 def load_test_network():
     # load some toy network data
@@ -73,7 +75,6 @@ class TestNetworkData(unittest.TestCase):
             self.assertEqual((net_points[i] - net_points[i]).length, 0.)
 
         net_point_array = models.NetworkData(net_points)
-        net_point_array_directed = models.DirectedNetworkData(net_points)
 
         self.assertFalse(np.any(net_point_array.distance(net_point_array).data.sum()))
 
@@ -229,10 +230,8 @@ if __name__ == "__main__":
     r.set_sample_units(None)
     prediction_points_net = r.sample_points
     prediction_points_xy = prediction_points_net.to_cartesian()
-    prediction_points_tnet = hotspot.generate_st_prediction_dataarray(0.6,
-                                                                      prediction_points_net,
-                                                                      dtype=models.NetworkSpaceTimeData)
-    z = h.predict(prediction_points_tnet)
+
+    z = h.predict(0.6, prediction_points_net)
     r.set_prediction(z)
 
     if b_plot:
@@ -248,10 +247,8 @@ if __name__ == "__main__":
         r2.set_sample_units(None, 10)
         prediction_points_net2 = r2.sample_points
         prediction_points_xy2 = prediction_points_net2.to_cartesian()
-        prediction_points_tnet2 = hotspot.generate_st_prediction_dataarray(0.6,
-                                                                           prediction_points_net2,
-                                                                           dtype=models.NetworkSpaceTimeData)
-        z2 = h.predict(prediction_points_tnet2)
+
+        z2 = h.predict(0.6, prediction_points_net2)
         r2.set_prediction(z2)
 
         if b_plot:
@@ -262,7 +259,8 @@ if __name__ == "__main__":
             plt.colorbar()
 
     # get a roughly even coverage of points across the network
-    xy_points, net_points, edge_count = plotting.network_point_coverage(itn_net, dx=10)
+    net_points, edge_count = network_point_coverage(itn_net, dx=10)
+    xy_points = net_points.to_cartesian()
     c_edge_count = np.cumsum(edge_count)
 
     # make a 'prediction' for time 1.1
@@ -384,8 +382,12 @@ if __name__ == "__main__":
 
     # network KDE stuff
     from kde import models as kde_models, kernels
-    ## TODO: current implementation is centered around gaussians so, ridiculously, squares all bandwidths
-    a = kde_models.NetworkFixedBandwidthKde(training_data, bandwidths=[np.sqrt(5.), np.sqrt(50.)], parallel=False)
+
+    prediction_points_tnet = hotspot.generate_st_prediction_dataarray(0.6,
+                                                                      prediction_points_net,
+                                                                      dtype=models.NetworkSpaceTimeData)
+
+    a = kde_models.NetworkFixedBandwidthKde(training_data, bandwidths=[5., 50.], parallel=False)
     res = a.pdf(prediction_points_tnet)
 
     if b_plot:
