@@ -241,7 +241,7 @@ class SepBase(object):
             # set data, linkages and p
             self.set_data(data)
             self.set_linkages()
-            self.initial_estimate()
+            self.initial_estimate()  ## FIXME: remove this line?
         elif self.data is None:
             raise AttributeError("No data supplied")
 
