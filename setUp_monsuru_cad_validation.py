@@ -112,16 +112,19 @@ def apply_sepp_stochastic_nn(data,
                              data_index,
                              domain,
                              grid_squares=None,
-                             max_t=60,
+                             max_t=90,
                              max_d=500,
                              niter_training=50,
                              num_sample_points=10,
                              seed=43):
 
-    sepp = pp_models.SeppStochasticNn(max_delta_t=max_t,
+    est_fun = lambda x, y: estimation.estimator_bowers_fixed_proportion_bg(x, y, ct=1, cd=10, frac_bg=0.5)
+    sepp = pp_models.SeppStochasticNn(data=data,
+                                      max_delta_t=max_t,
                                       max_delta_d=max_d,
-                                      estimation_function=lambda x, y: estimation.estimator_bowers(x, y, ct=1, cd=10),
-                                      seed=seed)
+                                      seed=seed,
+                                      estimation_function=est_fun)
+
     vb = validate.SeppValidationFixedModelIntegration(data=data,
                                                       model=sepp,
                                                       data_index=data_index,
@@ -137,7 +140,7 @@ def apply_sepp_stochastic_nn(data,
     return res
 
 
-def dump_results_to_rdata_file(output_file, b_sepp=False, **components):
+def dump_results_to_rdata_file(output_file, b_sepp=False, suffix='', **components):
     """
     Save a collection of results to an Rdata file.
     :param filename: The full path to the output file
@@ -179,7 +182,7 @@ def dump_results_to_rdata_file(output_file, b_sepp=False, **components):
             [captured_crimes.append([xx, 1, i + 1]) for xx in this_cap_ids]
             [captured_crimes.append([xx, 0, i + 1]) for xx in this_uncap_ids]
 
-        var_name = 'captured_crimes_20pct_%s' % k
+        var_name = 'captured_crimes_20pct_%s%s' % (k, suffix)
         captured_crimes = np.array(captured_crimes, dtype=int)
 
         captured_crimes_dict[k] = captured_crimes
@@ -190,7 +193,7 @@ def dump_results_to_rdata_file(output_file, b_sepp=False, **components):
         var_names.append(var_name)
 
         # ranking
-        var_name = 'grid_rank_%s' % k
+        var_name = 'grid_rank_%s%s' % (k, suffix)
         # need to add 1 to all rankings as Monsuru's IDs are one-indexed and mine are zero-indexed
         r_vec = robjects.IntVector(np.array(main_res['prediction_rank']).flatten() + 1)
         r_mat = robjects.r['matrix'](r_vec, ncol=num_validation)
@@ -198,7 +201,7 @@ def dump_results_to_rdata_file(output_file, b_sepp=False, **components):
         var_names.append(var_name)
 
         # hit rate by crime count
-        var_name = 'crime_count_%s' % k
+        var_name = 'crime_count_%s%s' % (k, suffix)
         r_vec = robjects.IntVector(np.array(main_res['cumulative_crime_count']).flatten())
         r_mat = robjects.r['matrix'](r_vec, ncol=num_validation)
         rinterface.globalenv[var_name] = r_mat
@@ -222,20 +225,30 @@ if __name__ == '__main__':
     for k in data.keys():
         this_data = data[k][0]
         this_data_index = data[k][-1]
-        this_res_kde = apply_historic_kde_variable_bandwidth(this_data,
-                                                             this_data_index,
-                                                             south,
-                                                             grid_squares=grid_squares)
-        this_res_sepp = apply_sepp_stochastic_nn(this_data,
-                                                 this_data_index,
-                                                 south,
-                                                 grid_squares=grid_squares,
-                                                 max_t=90)
-        res_kde[k] = this_res_kde
-        res_sepp[k] = this_res_sepp
+        try:
+            this_res_kde = apply_historic_kde_variable_bandwidth(this_data,
+                                                                 this_data_index,
+                                                                 south,
+                                                                 grid_squares=grid_squares)
+            res_kde[k] = this_res_kde
+        except Exception as exc:
+            print repr(exc)
 
-    dump_results_to_rdata_file('chicago_south_side_variable_bandwidth_kde_nn.Rdata', **res_kde)
-    dump_results_to_rdata_file('chicago_south_side_sepp_stochastic_nn.Rdata', b_sepp=True, **res_sepp)
+        try:
+            this_res_sepp = apply_sepp_stochastic_nn(this_data,
+                                                     this_data_index,
+                                                     south,
+                                                     grid_squares=grid_squares,
+                                                     max_t=90,
+                                                     max_d=500)
+            res_sepp[k] = this_res_sepp
+        except Exception as exc:
+            print repr(exc)
+
+    dump_results_to_rdata_file('chicago_south_side_variable_bandwidth_kde_nn.Rdata',
+                               suffix='_ss', **res_kde)
+    dump_results_to_rdata_file('chicago_south_side_sepp_stochastic_nn.Rdata', b_sepp=True,
+                               suffix='_ss', **res_sepp)
 
     # b_save_to_r = True
     # output_file = 'kde_variable_bandwidth_nn_assess.Rdata'
