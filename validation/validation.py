@@ -394,7 +394,7 @@ class NetworkValidationBase(ValidationBase):
 
     def __init__(self, *args, **kwargs):
         # declare extra attributes that are specific to the network class
-        self.graph = None
+        self.graph = kwargs.pop('graph', None)
         super(NetworkValidationBase, self).__init__(*args, **kwargs)
 
     def set_data(self, data, data_index=None):
@@ -408,6 +408,38 @@ class NetworkValidationBase(ValidationBase):
 		Or is it going in the KDE class?
         """
         super(NetworkValidationBase, self)._initial_setup(**train_kwargs)
+
+
+class ValidationIntegrationByNetworkSegment(NetworkValidationBase):
+
+    roc_class = roc.RocGridByNetworkLengthMean
+    data_class = CartesianSpaceTimeData
+
+    def __init__(self, data, model,
+                 data_index=None,
+                 graph=None,
+                 *args, **kwargs):
+        if graph is None:
+            raise AttributeError('Must specify the kwarg graph at instantiation.')
+        super(ValidationIntegrationByNetworkSegment, self).__init__(data,
+                                                                    model,
+                                                                    data_index=data_index,
+                                                                    graph=graph,
+                                                                    *args, **kwargs)
+        # self.graph = graph
+
+    def set_data(self, data, data_index=None):
+        ValidationBase.set_data(self, data, data_index=data_index)
+
+    def set_roc(self):
+        """
+        The graph instance must be supplied at instantiation to ROC
+        """
+        # set roc
+        self.roc = self.roc_class(poly=self.bounding_poly, graph=self.graph)
+        # set roc with ALL data initially
+        self.roc.set_data(self.data[:, 1:], index=self.data_index)
+
 
 
 class NetworkValidationMean(NetworkValidationBase):

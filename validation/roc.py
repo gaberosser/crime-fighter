@@ -10,7 +10,7 @@ from analysis.spatial import (create_spatial_grid,
 
 from plotting.spatial import plot_shapely_geos
 from plotting.utils import colour_mapper
-from data.models import DataArray, NetworkSpaceTimeData, NetworkData, NetPoint
+from data.models import DataArray, NetworkSpaceTimeData, NetworkData, NetPoint, CartesianData
 from shapely.geometry import Point, Polygon
 import matplotlib as mpl
 from matplotlib import pyplot as plt
@@ -587,6 +587,62 @@ class NetworkRocSegments(SpatialRoc):
     def in_sample_unit(self, sample_unit):
         """ Return bool array, one entry per data point. True indicates that the datum is within the sample unit. """
         return np.array([t.edge == sample_unit for t in self.data.toarray(0)])
+
+
+class RocGridByNetworkLengthMean(RocGridMean):
+    """
+    Planar ROC class used for comparison with network predictions. This class generates a grid AND requires a reference
+    to a network object. Predictions are carried out just as in the standard RocGrid fashion, BUT the cumulative_area
+    becomes cumulative length of network segments within the grid squares.
+    """
+    data_class = CartesianData
+
+    def __init__(self,
+                 data=None,
+                 poly=None,
+                 data_index=None,
+                 graph=None,
+                 **kwargs):
+        if graph is None:
+            raise AttributeError("Must specify a graph object.")
+        self.graph = graph
+        self.network_length_in_grid = None
+        super(RocGrid, self).__init__(data=data,
+                                      poly=poly,
+                                      data_index=data_index,
+                                      **kwargs)
+        self.grid_polys = None
+        self.full_grid_square = None
+        self.side_length = None
+
+    def set_sample_units(self, side_length, *args, **kwargs):
+        """
+        Set the ROC grid.
+        :param side_length: side length of grid squares
+        :param args: Passed to set_sample_points
+        :param kwargs: Passed to set_sample_points.
+        :return: None
+        """
+        # define the grid as usual
+        super(RocGridByNetworkLengthMean, self).set_sample_units(side_length, *args, **kwargs)
+
+        # compute intersection with net
+        self.set_network_grid_intersection_lengths()
+
+    def set_network_grid_intersection_lengths(self):
+        # segment the network into edges intersecting grid squares
+        lines = list(self.graph.lines_iter())
+        self.network_length_in_grid = []
+        for t in self.sample_units:
+            sq = shapely_rectangle_from_vertices(*t)
+            this_int = [sq.intersection(t) for t in lines if sq.intersects(t)]
+            this_length = sum([t.length for t in this_int])
+            self.network_length_in_grid.append(this_length)
+        self.network_length_in_grid = np.array(self.network_length_in_grid)
+
+    @property
+    def sample_unit_size(self):
+        return self.network_length_in_grid
 
 
 class NetworkRocSegmentsMean(NetworkRocSegments):

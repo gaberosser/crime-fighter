@@ -67,12 +67,14 @@ class STKernelBase(object):
 
 class STLinearSpaceExponentialTime(STKernelBase):
 
+    data_class = CartesianSpaceTimeData
+
     def __init__(self, radius, mean_time, tol=1e-3):
         """
         tol is the value below which links are cut (only applies to time dimension here as linear kernel cuts anyway
         """
-        self.radius = radius
-        self.mean_time = mean_time
+        self.radius = float(radius)
+        self.mean_time = float(mean_time)
         self.tol = tol
         # cutoff time
         self.dt_max = -mean_time * (np.log(mean_time) + np.log(tol))
@@ -88,14 +90,25 @@ class STLinearSpaceExponentialTime(STKernelBase):
     def predict(self, time, space_array):
         data_array = self.prediction_array(time, space_array)
         link_i, link_j = self.get_linkages(data_array)
-        dt = (data_array.time.getrows(link_j) - data_array.time.getrows(link_i))
+        if not len(link_i):
+            return np.zeros(space_array.ndata)
+        dt = (data_array.time.getrows(link_j) - self.data.time.getrows(link_i))
         dt = dt.toarray()
-        dd = data_array.space.getrows(link_j).distance(data_array.space.getrows(link_i))
+        dd = data_array.space.getrows(link_j).distance(self.data.space.getrows(link_i))
         dd = dd.toarray()
         a = np.exp(-dt / self.mean_time) / self.mean_time
-        b = 1.
-        # TODO: finish!
-        import ipdb; ipdb.set_trace()
+        b = (self.radius - dd) / self.radius ** 2
+        # import ipdb; ipdb.set_trace()
+        m = sparse.lil_matrix((self.data.ndata, data_array.ndata))
+
+        m[link_i, link_j] = a * b
+
+        res = np.array(m.sum(axis=0).flat)
+
+        # reshape if necessary
+        if data_array.original_shape is not None:
+            res = res.reshape(data_array.original_shape)
+        return res
 
 
 class STKernelBowers(STKernelBase):

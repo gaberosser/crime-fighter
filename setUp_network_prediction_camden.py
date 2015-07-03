@@ -121,4 +121,27 @@ if __name__ == "__main__":
     print toc - tic
 
     # compare with grid-based method with same parameters
+    cb_poly = camden_boundary()
+    data_txy = all_data.time.adddim(all_data.space.to_cartesian(), type=models.CartesianSpaceTimeData)
+    sk_planar = hotspot.STLinearSpaceExponentialTime(radius=400, mean_time=30.)
+    vb_planar = validation.ValidationIntegration(data_txy, sk_planar, spatial_domain=cb_poly, include_predictions=True)
+    vb_planar.set_t_cutoff(211)
+    vb_planar.set_sample_units(250, 10)
 
+    tic = time.time()
+    vb_res_planar = vb_planar.run(1, n_iter=100)
+    toc = time.time()
+    print toc - tic
+
+
+    # compare with grid-based method using intersecting network segments to measure sample unit size
+    vb_planar_segment = validation.ValidationIntegrationByNetworkSegment(
+        data_txy, sk_planar, spatial_domain=cb_poly, graph=itn_net
+    )
+    vb_planar_segment.set_t_cutoff(211)
+    vb_planar_segment.set_sample_units(250, 10)
+
+    tic = time.time()
+    vb_res_planar_segment = vb_planar_segment.run(1, n_iter=100)
+    toc = time.time()
+    print toc - tic

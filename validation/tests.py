@@ -79,13 +79,14 @@ class TestRoc(unittest.TestCase):
         # RocGridMonteCarloIntegration
         r = roc.RocGridMean(data=self.data)
         r.set_sample_units(0.05, 10)  # 10 sample points per grid square
+        self.assertTrue(np.all(r.n_sample_point_per_unit == 10))
 
         for i in range(r.n_sample_units):
             xmin, ymin, xmax, ymax = r.sample_units[i]
-            self.assertTrue(np.all(r.sample_points.toarray(0)[:, i] > xmin))
-            self.assertTrue(np.all(r.sample_points.toarray(0)[:, i] < xmax))
-            self.assertTrue(np.all(r.sample_points.toarray(1)[:, i] > ymin))
-            self.assertTrue(np.all(r.sample_points.toarray(1)[:, i] < ymax))
+            self.assertTrue(np.all(r.sample_points.toarray(0)[10 * i:10 * (i + 1)] > xmin))
+            self.assertTrue(np.all(r.sample_points.toarray(0)[10 * i:10 * (i + 1)] < xmax))
+            self.assertTrue(np.all(r.sample_points.toarray(1)[10 * i:10 * (i + 1)] > ymin))
+            self.assertTrue(np.all(r.sample_points.toarray(1)[10 * i:10 * (i + 1)] < ymax))
 
     def test_true_count(self):
         r = roc.RocGrid(data=self.data)
@@ -504,7 +505,7 @@ class TestValidation(unittest.TestCase):
         vb = validation.ValidationBase(self.data, stk)
         t0 = vb.cutoff_t
         # no grid specified raises error
-        with self.assertRaises(AttributeError):
+        with self.assertRaises(AssertionError):
             res = vb.run(time_step=0.1)
         vb.set_sample_units(0.1)
         res = vb.run(time_step=0.1)
