@@ -1,6 +1,6 @@
 __author__ = 'gabriel'
 import numpy as np
-from network.geos import NetworkPoint
+from network.streetnet import NetPoint, StreetNet
 from warnings import warn
 
 
@@ -23,45 +23,26 @@ def exp(data_array):
     return res
 
 
-class Data(object):
+class DataArray(object):
 
-    @property
-    def nd(self):
-        raise NotImplementedError()
+    datatype = float
+    combination_output_class = None
 
-
-class NetworkData(Data):
-
-    def __init__(self, graph, network_points):
-        self.graph = graph
-        self.data = [x if isinstance(x, NetworkPoint) else NetworkPoint(self.graph, **x) for x in network_points]
-
-    @property
-    def ndata(self):
-        return len(self.data)
-
-    def distance(self, other):
-        # distance between self and other
-        if not isinstance(other, NetworkData):
-            raise AttributeError("Cannot find distance between type %s and type %s" % (self.__class__, other.__class))
-        return [x.network_distance(y) for (x, y) in zip(self.data, other.data)]
-
-
-class DataArray(Data):
-
-    def __init__(self, obj):
+    def __init__(self, obj, **kwargs):
         self.original_shape = None
 
-        if isinstance(obj, DataArray):
+        # if a dtype kwarg has been supplied, use that
+        dtype = kwargs.get('dtype', None) or self.datatype
+
+        if isinstance(obj, self.__class__):
             self.data = obj.data.copy()
             self.original_shape = obj.original_shape
             return
 
-
         if not isinstance(obj, np.ndarray):
-            obj = np.array(obj, dtype=float)
+            obj = np.array(obj, dtype=dtype)
         else:
-            obj = obj.astype(float)
+            obj = obj.astype(dtype)
 
         # check dimensions
         if obj.ndim == 0:
@@ -106,11 +87,13 @@ class DataArray(Data):
     def __repr__(self):
         return "{0}({1})".format(self.__class__.__name__, self.data.__str__())
 
-    def __builtin_combine__(self, other, func):
+    def __builtin_combine__(self, other, func, dtype=None):
+        cls = self.combination_output_class or self.__class__
+
         if isinstance(other, DataArray):
-            res = self.__class__(func(other.data))
+            res = cls(func(other.data), dtype=dtype)
         else:
-            res = self.__class__(func(other))
+            res = cls(func(other), dtype=dtype)
         res.original_shape = self.original_shape
         return res
 
@@ -125,26 +108,38 @@ class DataArray(Data):
     def __add__(self, other):
         return self.__builtin_combine__(other, self.data.__add__)
 
+    def __radd__(self, other):
+        return self.__builtin_combine__(other, self.data.__radd__)
+
     def __sub__(self, other):
         return self.__builtin_combine__(other, self.data.__sub__)
+
+    def __rsub__(self, other):
+        return self.__builtin_combine__(other, self.data.__rsub__)
 
     def __div__(self, other):
         return self.__builtin_combine__(other, self.data.__div__)
 
+    def __rdiv__(self, other):
+        return self.__builtin_combine__(other, self.data.__rdiv__)
+
     def __mul__(self, other):
         return self.__builtin_combine__(other, self.data.__mul__)
 
+    def __and__(self, other):
+        return self.__builtin_combine__(other, self.data.__and__, dtype=bool)
+
     def __gt__(self, other):
-        return self.__builtin_combine__(other, self.data.__gt__)
+        return self.__builtin_combine__(other, self.data.__gt__, dtype=bool)
 
     def __lt__(self, other):
-        return self.__builtin_combine__(other, self.data.__lt__)
+        return self.__builtin_combine__(other, self.data.__lt__, dtype=bool)
 
     def __ge__(self, other):
-        return self.__builtin_combine__(other, self.data.__ge__)
+        return self.__builtin_combine__(other, self.data.__ge__, dtype=bool)
 
     def __le__(self, other):
-        return self.__builtin_combine__(other, self.data.__le__)
+        return self.__builtin_combine__(other, self.data.__le__, dtype=bool)
 
     def __neg__(self):
         return self.__builtin_unary__(self.data.__neg__)
@@ -164,6 +159,10 @@ class DataArray(Data):
     def __setitem__(self, i, value):
         self.data.__setitem__(i, value)
 
+    ## TODO: check this doesn't break things
+    def __iter__(self):
+        return self.data.__iter__()
+
     def sumdim(self):
         # sums over dimensions, returning a class type with a single dimension and same original_shape
         res = self.__class__(self.data.sum(axis=1))
@@ -177,7 +176,8 @@ class DataArray(Data):
         obj.original_shape = self.original_shape
         return obj
 
-    def adddim(self, obj, strict=True):
+    def adddim(self, obj, strict=True, type=None):
+        dest_cls = type or DataArray
         obj = DataArray(obj)
         if obj.ndata != self.ndata:
             raise AttributeError("Cannot add dimension because ndata does not match")
@@ -187,7 +187,7 @@ class DataArray(Data):
                 warn("Adding data with no original shape - it will be coerced into the existing shape")
             if obj.original_shape != self.original_shape and self.original_shape is not None:
                 raise AttributeError("Attempting to add data with incompatible original shape.  Set strict=False to bypass this check.")
-        new_obj = DataArray(np.hstack((self.data, obj)))
+        new_obj = dest_cls(np.hstack((self.data, obj)))
         new_obj.original_shape = self.original_shape
         return new_obj
 
@@ -221,7 +221,7 @@ class DataArray(Data):
         if self.original_shape:
             return self.data[:, dim].reshape(self.original_shape)
         else:
-            return self.data[:, dim].squeeze()
+            return self.data[:, dim]
 
 
 class SpaceTimeDataArray(DataArray):
@@ -231,8 +231,8 @@ class SpaceTimeDataArray(DataArray):
     time_class = DataArray
     space_class = DataArray
 
-    def __init__(self, obj):
-        super(SpaceTimeDataArray, self).__init__(obj)
+    # def __init__(self, obj):
+    #     super(SpaceTimeDataArray, self).__init__(obj)
         # if self.nd < 2:
         #     raise AttributeError("Must have >= 2 dimensions for ST data")
 
@@ -245,7 +245,7 @@ class SpaceTimeDataArray(DataArray):
 
     @time.setter
     def time(self, time):
-        self.data[:, 0:1] = DataArray(time).data
+        self.data[:, 0:1] = self.time_class(time).data
 
     @property
     def space(self):
@@ -256,7 +256,7 @@ class SpaceTimeDataArray(DataArray):
 
     @space.setter
     def space(self, space):
-        self.data[:, 1:] = DataArray(space).data
+        self.data[:, 1:] = self.space_class(space).data
 
 
 class CartesianData(DataArray):
@@ -299,4 +299,95 @@ class CartesianSpaceTimeData(SpaceTimeDataArray, CartesianData):
     space_class = CartesianData
 
 
+class NetworkData(DataArray):
 
+    datatype = object
+    combination_output_class = DataArray
+
+    def __init__(self, network_points, **kwargs):
+        """
+        Create a 1D NetworkData array of network points.
+        :param network_points: iterable containing instances of NetPoint
+        :param kwargs: May contain the optional 'strict' attribute (default True): If True, all points are checked upon
+        instantiation to ensure they have the same network object. This should be very fast.
+        :return:
+        """
+        super(NetworkData, self).__init__(network_points, **kwargs)
+        if self.nd != 1:
+            raise AttributeError("NetworkData must be one-dimensional.")
+        if kwargs.pop('strict', True):
+            for x in self.data.flat:
+                if x.graph is not self.graph:
+                    raise AttributeError("All network points must be defined on the same graph")
+
+    @property
+    def graph(self):
+        if self.ndata:
+            return self.data[0, 0].graph
+        else:
+            return None
+
+    @classmethod
+    def from_cartesian(cls, net, data, grid_size=50):
+        """
+        Generate a NetworkData object for the (x, y) coordinates in data.
+        :param net: The StreetNet object that will be used to snap network points.
+        :param data: Either a 2D DataArray object or data that can be used to instantiate one.
+        :param grid_size: The size of the grid used to index the network. This is used to speed up snapping.
+        :return: NetworkData object
+        """
+        data = DataArray(data)
+        if data.nd != 2:
+            raise AttributeError("Input data must be 2D")
+        grid_edge_index = net.build_grid_edge_index(grid_size)
+        net_points = []
+        for x, y in data:
+            net_points.append(NetPoint.from_cartesian(net, x, y, grid_edge_index=grid_edge_index))
+        return cls(net_points)
+
+    def to_cartesian(self):
+        """
+        Convert all network points into Cartesian coordinates using linear interpolation of the edge LineStrings
+        :return: CartesianData
+        """
+        res = CartesianData([t.cartesian_coords for t in self.data.flat])
+        res.original_shape = self.original_shape
+        return res
+
+    @property
+    def ndata(self):
+        return len(self.data)
+
+    def distance_function(self, x, y):
+        return (x - y).length
+
+    def distance(self, other, directed=False):
+        # distance between self and other
+        if not isinstance(other, self.__class__):
+            raise AttributeError("Cannot find distance between type %s and type %s" % (
+                self.__class__.__name__,
+                other.__class__.__name__))
+        if not self.ndata == other.ndata:
+            raise AttributeError("Lengths of the two data arrays are incompatible")
+
+        return DataArray([self.distance_function(x, y) for (x, y) in zip(self.data.flat, other.data.flat)])
+
+    def euclidean_distance(self, other):
+        """ Euclidean distance between the data """
+        return DataArray([x.euclidean_distance(y) for (x, y) in zip(self.data.flat, other.data.flat)])
+
+
+class DirectedNetworkData(NetworkData):
+
+    def distance_function(self, x, y):
+        return self.graph.path_directed(x, y).length
+
+
+class NetworkSpaceTimeData(SpaceTimeDataArray):
+
+    datatype = object
+    space_class = NetworkData
+
+    @property
+    def graph(self):
+        return self.space.graph

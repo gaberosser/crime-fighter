@@ -20,8 +20,11 @@ import networkx as nx
 from collections import defaultdict
 import bisect as bs
 from network import itn
-from kernels import LinearKernel
-from network.geos import NetworkPoint
+from kde.kernels import LinearKernel
+from network.streetnet import NetPoint, Edge
+from shapely import geometry
+from data.models import NetworkData
+import numpy as np
 
 
 #A helper function to do network searching from within the class
@@ -33,18 +36,21 @@ def all_paths_source_targets(G, source, targets, cutoff=None, weight='length'):
     '''
 
     paths=defaultdict(list)
-
-    #Bail out in the trivial case
-    if cutoff == 0:
-        return paths
-
+    
     #Set up three structures to monitor the state of the search
 
     #A list which monitors the current state of the path
     current_path = [source]
 
     #A list whih records the distance to each step on the current path
-    dist = [0]
+    dist = [0.]
+    
+    if source in targets:
+        paths[source].append((list(current_path), dist[-1]))
+    
+    #Bail out in the trivial case
+    if cutoff == 0:
+        return paths
 
     #A stack which records the next nodes to be searched. Each item in the stack
     #is a generator over the neighbours of a searched node. At each iteration it
@@ -77,15 +83,14 @@ def all_paths_source_targets(G, source, targets, cutoff=None, weight='length'):
         elif dist[-1]+edge_weight <= cutoff:
 
             #If condition passed, we have a viable node
-
-            if successor in targets:
-
-                #If the viable node is one of the targets, record the path that we
-                #took to reach it, together with its length, in a tuple. Add it
-                #to the relevant entry in the paths dictionary
-                paths[successor].append((current_path+[successor], dist[-1]+edge_weight))
-
-            if successor not in current_path:
+            #TODO: Need to handle 'reflection' at nodes of degree 1
+            predecessor = current_path[-2] if len(current_path)>1 else None
+            if successor is not predecessor:
+                if successor in targets:
+                    #If the viable node is one of the targets, record the path that we
+                    #took to reach it, together with its length, in a tuple. Add it
+                    #to the relevant entry in the paths dictionary
+                    paths[successor].append((current_path+[successor], dist[-1]+edge_weight))
 
                 #We also want to continue the search down this path. As long as
                 #it does not cause a loop (hence the check for presence in current_path)
@@ -175,47 +180,45 @@ class EqualSplitKernel():
         #about the kernel centres on that edge
         edge_points=defaultdict(list)
 
-
-        for point_id in self.points:
-
-            edge,dist_along=self.points[point_id]
+        for net_point in self.points:
 
             #Make a unique ID triplet for the edge - it needs all this, rather than
             #just the FID, for later operations
-            edge_id=(edge[2]['orientation_neg'],edge[2]['orientation_pos'],edge[2]['fid'])
+            edge_id = (
+                net_point.edge.orientation_neg,
+                net_point.edge.orientation_pos,
+                net_point.edge.fid
+            )
 
             #Add to the list of the relevant edge both the point_id and its distance
             #from each of the end-points of the edge
-            edge_points[edge_id].append((point_id,dist_along))
-
+            edge_points[edge_id].append(net_point)
 
         #Now, for each edge that has points on it, we order the points in sequence,
         #from the negative end to the positive end, then make a new series of edges
         #linking each successive point. As part of this process a new node is implicitly
         #created for each point. Finally destroy the original edge
-        for edge_id in edge_points:
-
-            points_sequence=edge_points[edge_id]
+        for (orientation_neg, orientation_pos, fid), points_sequence in edge_points.iteritems():
 
             #Order the points according to how far they are from the negative end (edge_id[0])
-            points_sequence.sort(key=lambda x: x[1][edge_id[0]])
+            points_sequence.sort(key=lambda x: x.node_dist[orientation_neg])
 
             #Join the negative end of the original edge to the first point in the sequence
-            g_aug.add_edge(edge_id[0],points_sequence[0][0],length=points_sequence[0][1][edge_id[0]])
+            g_aug.add_edge(orientation_neg,points_sequence[0],length=points_sequence[0].node_dist[orientation_neg])
 
             #Join the positive end of the original edge to the last point in the sequence
-            g_aug.add_edge(edge_id[1],points_sequence[-1][0],length=points_sequence[-1][1][edge_id[1]])
+            g_aug.add_edge(orientation_pos,points_sequence[-1],length=points_sequence[-1].node_dist[orientation_pos])
 
             #Go through every intermediate pair of points (maybe zero)
-            for i in range(len(points_sequence)-1):
+            for i in xrange(len(points_sequence)-1):
 
-                dist_between=points_sequence[i+1][1][edge_id[0]]-points_sequence[i][1][edge_id[0]]
+                dist_between=points_sequence[i+1].node_dist[orientation_neg]-points_sequence[i].node_dist[orientation_neg]
 
                 #Add a new edge with the correct length
-                g_aug.add_edge(points_sequence[i][0],points_sequence[i+1][0],length=dist_between)
+                g_aug.add_edge(points_sequence[i],points_sequence[i+1],length=dist_between)
 
             #Destroy the original edge
-            g_aug.remove_edge(edge_id[0],edge_id[1],key=edge_id[2])
+            g_aug.remove_edge(orientation_neg, orientation_pos, key=fid)
 
         self.g_aug=g_aug
 
@@ -233,17 +236,9 @@ class EqualSplitKernel():
 
         paths = all_paths_source_targets(self.g_aug, eval_node, self.points, cutoff=self.h, weight='length')
 
-        point_paths={k: v for k, v in paths.iteritems() if k!=eval_node}
+#        point_paths={k: v for k, v in paths.iteritems() if k!=eval_node}
 
-#        #Do a standard Dijkstra shortest path
-#        distance,path=nx.single_source_dijkstra(self.g_aug,eval_node,cutoff=self.h,weight='length')
-#
-#        #Filter this so that we only retain information about nodes which represent
-#        #points. Also ignore the source node.
-#        point_distance={k: v for k, v in distance.iteritems() if k in self.points and k!=eval_node}
-#        point_path={k: v for k, v in path.iteritems() if k in self.points and k!=eval_node}
-
-        return point_paths
+        return paths
 
 
 
@@ -255,49 +250,66 @@ class EqualSplitKernel():
         '''
 
         #First work out where it is
-        edge,dist_along=eval_point
-        edge_id=(edge[2]['orientation_neg'],edge[2]['orientation_pos'],edge[2]['fid'])
+        orientation_neg=eval_point.edge.orientation_neg
+        orientation_pos=eval_point.edge.orientation_pos
+        fid=eval_point.edge.fid
+        
 
         #Task is different depending on whether existing points already on that edge
-        if edge_id in self.edge_points:
+        if (orientation_neg, orientation_pos, fid) in self.edge_points:
 
             #If they are, we need to find where the new one should be inserted
             #So take the sequence which have already been inserted on this edge
-            points_sequence=self.edge_points[edge_id]
+            points_sequence=self.edge_points[(orientation_neg, orientation_pos, fid)]
 
             #Make a list for how long each is along the edge (plus end points)
-            dist_sequence=[0]+[x[1][edge_id[0]] for x in points_sequence]+[edge[2]['length']]
+            dist_sequence=[x.node_dist[orientation_neg] for x in points_sequence]+[eval_point.edge['length']]
 
             #Make corresponding sequence of nodes in the augmented graph
-            node_sequence=[edge_id[0]]+[x[0] for x in points_sequence]+[edge_id[1]]
+            node_sequence=points_sequence+[orientation_pos]
 
             #Locate the insertion point, given that evaluation point is dist_along[edge_id[0]]
             #along the original edge
-            sequence_pos=bs.bisect_left(dist_sequence,dist_along[edge_id[0]])
-
-            #Make a new pair of edges
-            self.g_aug.add_edge(node_sequence[sequence_pos-1],'EVAL_POINT_NODE',length=dist_along[edge_id[0]]-dist_sequence[sequence_pos-1])
-            self.g_aug.add_edge(node_sequence[sequence_pos],'EVAL_POINT_NODE',length=dist_sequence[sequence_pos]-dist_along[edge_id[0]])
-
-            #Take note of all details of the edge to be removed, which will be needed
-            #when it is eventually restored
-            removed_edge=(node_sequence[sequence_pos-1],node_sequence[sequence_pos],0)
-            removed_edge_atts=self.g_aug[node_sequence[sequence_pos-1]][node_sequence[sequence_pos]][0]
-
-            #Remove the original edge
-            self.g_aug.remove_edge(node_sequence[sequence_pos-1],node_sequence[sequence_pos],0)
+            eval_point_dist=eval_point.node_dist[orientation_neg]
+            eval_point_pos=bs.bisect_left(dist_sequence,eval_point_dist)
+            
+            if eval_point_pos==0:
+                #Make a new pair of edges
+                self.g_aug.add_edge(orientation_neg,'EVAL_POINT_NODE',length=eval_point_dist)
+                self.g_aug.add_edge(node_sequence[eval_point_pos],'EVAL_POINT_NODE',length=dist_sequence[eval_point_pos]-eval_point_dist)
+                
+                #Take note of all details of the edge to be removed, which will be needed
+                #when it is eventually restored
+                removed_edge=(orientation_neg,node_sequence[eval_point_pos],0)
+                removed_edge_atts=self.g_aug[orientation_neg][node_sequence[eval_point_pos]][0]
+                
+                #Remove the original edge
+                self.g_aug.remove_edge(orientation_neg,node_sequence[eval_point_pos],0)
+            
+            else:
+                #Make a new pair of edges
+                self.g_aug.add_edge(node_sequence[eval_point_pos-1],'EVAL_POINT_NODE',length=eval_point_dist-dist_sequence[eval_point_pos-1])
+                self.g_aug.add_edge(node_sequence[eval_point_pos],'EVAL_POINT_NODE',length=dist_sequence[eval_point_pos]-eval_point_dist)
+    
+                #Take note of all details of the edge to be removed, which will be needed
+                #when it is eventually restored
+                removed_edge=(node_sequence[eval_point_pos-1],node_sequence[eval_point_pos],0)
+                removed_edge_atts=self.g_aug[node_sequence[eval_point_pos-1]][node_sequence[eval_point_pos]][0]
+    
+                #Remove the original edge
+                self.g_aug.remove_edge(node_sequence[eval_point_pos-1],node_sequence[eval_point_pos],0)
 
         else:
 
             #If the edge does not have any points on it, the task is easy
-            self.g_aug.add_edge(edge_id[0],'EVAL_POINT_NODE',length=dist_along[edge_id[0]])
-            self.g_aug.add_edge(edge_id[1],'EVAL_POINT_NODE',length=dist_along[edge_id[1]])
+            self.g_aug.add_edge(orientation_neg,'EVAL_POINT_NODE',length=eval_point.node_dist[orientation_neg])
+            self.g_aug.add_edge(orientation_pos,'EVAL_POINT_NODE',length=eval_point.node_dist[orientation_pos])
 
             #As above, store edge data before removal
-            removed_edge=(edge_id[0],edge_id[1],edge_id[2])
-            removed_edge_atts=self.g_aug[edge_id[0]][edge_id[1]][edge_id[2]]
+            removed_edge=(orientation_neg, orientation_pos, fid)
+            removed_edge_atts=self.g_aug[orientation_neg][orientation_pos][fid]
 
-            self.g_aug.remove_edge(edge_id[0],edge_id[1],edge_id[2])
+            self.g_aug.remove_edge(orientation_neg, orientation_pos, fid)
 
         #Return the details of the edge which has been removed, so it can be restored
         return removed_edge, removed_edge_atts
@@ -323,6 +335,7 @@ class EqualSplitKernel():
         Evaluate the KDE at a non-kernel centre. The argument eval_point is given
         as (closest_edge,dist_along)
         '''
+        #TODO: This should raise an exception if the point is already in the graph
 
         #Add a temporary node for the evaluation point
         removed_edge, removed_edge_atts = self.add_eval_point_node(eval_point)
@@ -341,7 +354,7 @@ class EqualSplitKernel():
 
                 #Get the value of the univariate kernel
                 kernel_value = self.kernel_univ.pdf(path_distance)
-
+                
                 #Go through every intermediate node, dividing the kernel value
                 for path_node in path:
 
@@ -381,11 +394,6 @@ class EqualSplitKernel():
 
                 total_value += kernel_value
 
-        ## FIXME: this is a hack for now.  We've not included the contribution from the source itself
-        ## Things that break this: (1) if there are two coincident sources, this will only grab one of them.
-        ## (2) it doesn't find loops back to itself, so underestimates the density
-        total_value += self.kernel_univ.pdf(0.)
-
         return total_value
 
 
@@ -394,23 +402,27 @@ if __name__ == '__main__':
     from settings import DATA_DIR
     import os
     from network.plotting import network_point_coverage
+    from network.utils import network_walker_uniform_sample_points
     import numpy as np
 
-    ITNFILE = os.path.join(DATA_DIR, 'network_data/itn_sample', 'mastermap-itn_417209_0_brixton_sample.gml')
+
+    cur_dir = os.getcwd()
+    ITNFILE = os.path.join(cur_dir, 'network', 'test_data', 'mastermap-itn_417209_0_brixton_sample.gml')
+    ITNFILE = os.path.relpath(ITNFILE)
 
     # A little demo
 
     #Just build the network as usual
     itndata = itn.read_gml(ITNFILE)
-    CurrentNet = itn.ITNStreetNet()
-    CurrentNet.load_from_data(itndata)
+    current_net = itn.ITNStreetNet.from_data_structure(itndata)
 
-    xmin, ymin, xmax, ymax = CurrentNet.extent
-    x_grid,y_grid,edge_locator=CurrentNet.bin_edges(xmin, xmax, ymin, ymax, 50)
+    xmin, ymin, xmax, ymax = current_net.extent
+    grid_edge_index = current_net.build_grid_edge_index(50)
 
 
     #Four test points - 1 and 3 on same segment, 2 on neighbouring segment, 4 long way away.
     test_points = [
+        [531291, 175044],
         [531291, 175044],
         [531293, 175054],
         [531209, 175211],
@@ -419,41 +431,40 @@ if __name__ == '__main__':
         [531724, 174826],
         [531013, 175294]
     ]
-    closest_edge = []
-    dist_along = []
-    network_points = []
-    kde_source_points={}
+    source_points = []
 
     # Add these points as the kernel sources
     for i, t in enumerate(test_points):
-        c, d, _ = CurrentNet.closest_segments_euclidean(t[0], t[1], x_grid, y_grid, edge_locator)
-        closest_edge.append(c)
-        dist_along.append(d)
-        network_points.append(NetworkPoint(CurrentNet.g, **d))
-        kde_source_points['point%d' % i] = (c, d)
+        net_point, snap_distance = current_net.closest_edges_euclidean(t[0], t[1], grid_edge_index)
+        source_points.append(net_point)
 
 
     #Initialise the kernel
-    TestKernel = EqualSplitKernel(CurrentNet, kde_source_points, 100)
+    TestKernel = EqualSplitKernel(current_net, source_points, 100)
 
     #Both evaluation methods
-    ## TODO: see comments in evaluate_point for why these differ
-    print TestKernel.evaluate_non_point((closest_edge[1], dist_along[1]))
-    print TestKernel.evaluate_point('point1')
+    #Define a new test_point which is at the same location as network_points[0], but is a different point
+    test_point, snap_distance = current_net.closest_edges_euclidean(531291, 175044, grid_edge_index)
+    print TestKernel.evaluate_non_point(test_point)
+    print TestKernel.evaluate_non_point(source_points[0])
+    print TestKernel.evaluate_point(source_points[0])
 
-    # define a whole load of points on the network for plotting
-    xy, cd = network_point_coverage(CurrentNet.g, dx=10)
+    net_points, n_per_segment = network_walker_uniform_sample_points(current_net, 10.)
 
-    # evaluate KDE at those points
     res = []
     failed = []
-    for arr in cd:
-        this_res = []
-        for t in arr:
-            try:
-                this_res.append(TestKernel.evaluate_non_point(t))
-            except KeyError as exc:
-                this_res.append(np.nan)
-                failed.append(repr(exc))
-        res.append(this_res)
+    for pt in net_points.toarray(0):
+        try:
+            res.append(TestKernel.evaluate_non_point(pt))
+        except KeyError as exc:
+            res.append(np.nan)
+            failed.append(repr(exc))
 
+    # optionally plot them
+    from network.plotting import colorline
+    from matplotlib import pyplot as plt
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    for n in n_per_segment:
+        # get x,y coords
+        pass

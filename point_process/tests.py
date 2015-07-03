@@ -10,7 +10,7 @@ from mock import patch
 from scipy.spatial import KDTree
 import os
 from time import time
-from data.models import CartesianSpaceTimeData, CartesianData
+from data.models import DataArray, CartesianSpaceTimeData, CartesianData
 
 cd = os.path.dirname(os.path.realpath(__file__))
 DATA_DIR = os.path.join(cd, 'test_data')
@@ -30,13 +30,29 @@ class TestSimulation(unittest.TestCase):
         shocks = c.append_triggers(bg)
 
 
-
 class TestUtils(unittest.TestCase):
+
+    def test_linkage_function(self):
+        lf = utils.linkage_func_separable(5., 10.)
+        self.assertTrue(lf(4, 9))
+        self.assertFalse(lf(5.01, 9))
+        self.assertFalse(lf(4, 10.01))
+        dt = DataArray(np.random.rand(10))
+        dd = DataArray(np.random.rand(10))
+        b_in = lf(dt, dd)
+        b_expct = (dt <= 5.) & (dd <= 10.)
+        self.assertTrue(np.all(b_in == b_expct))
+
+        lf = lambda dt, dd: (dt ** 2 + dd ** 2) ** 0.5 < 0.5
+        b_in = lf(dt, dd)
+        b_expct = (dt ** 2 + dd ** 2) ** 0.5 < 0.5
+        self.assertTrue(np.all(b_in == b_expct))
 
     def test_self_linkage(self):
         data1 = CartesianSpaceTimeData(np.random.randn(5000, 3))
         max_t = max_d = 0.5
-        i, j = utils.linkages(data1, max_d=max_d, max_t=max_t)
+        linkage_fun_sep = utils.linkage_func_separable(max_t, max_d)
+        i, j = utils.linkages(data1, linkage_fun_sep)
         # manually test restrictions
         # all time differences positive
         self.assertTrue(np.all(data1[j, 0] > data1[i, 0]))
@@ -50,7 +66,8 @@ class TestUtils(unittest.TestCase):
         data_source = CartesianSpaceTimeData(np.random.randn(5000, 3))
         data_target = CartesianSpaceTimeData(np.random.randn(1000, 3))
         max_t = max_d = 0.5
-        i, j = utils.linkages(data_source=data_source, max_d=max_d, max_t=max_t, data_target=data_target)
+        linkage_fun_sep = utils.linkage_func_separable(max_t, max_d)
+        i, j = utils.linkages(data_source, linkage_fun_sep, data_target=data_target)
         self.assertTrue(np.all(i < 5000))
         self.assertTrue(np.all(j < 1000))
         # manually test restrictions
@@ -324,23 +341,18 @@ class TestValidate(unittest.TestCase):
         ))
         num_validation = 5
 
-        vb = validate.SeppValidationFixedModel(
-            data,
-            model_kwargs={
-                'max_delta_t': 0.1,
-                'max_delta_d': 0.1,
-                'estimation_function': lambda x, y: estimation.estimator_bowers(x, y, ct=10, cd=10),
+        sepp = models.SeppStochasticStationaryBg(max_delta_t=0.1,
+                                                 max_delta_d=0.1,
+                                                 estimation_function=lambda x, y: estimation.estimator_bowers(x, y, ct=10, cd=10))
 
-            },
-            pp_class=models.SeppStochasticStationaryBg)
+        vb = validate.SeppValidationFixedModel(data, sepp)
         vb.model.set_seed(42)
-        vb.set_grid(0.05)
+        vb.set_sample_units(0.05)
         vb.set_t_cutoff(0.5, b_train=False)
         res = vb.run(time_step=0.05, n_iter=num_validation, train_kwargs={'niter': 5}, verbose=True)
 
-
-        vb2 = validate.SeppValidationPredefinedModel(data, model=vb.model)
-        vb2.set_grid(0.05)
+        vb2 = validate.SeppValidationPreTrainedModel(data, vb.model)
+        vb2.set_sample_units(0.05)
         vb2.set_t_cutoff(0.5)
         res2 = vb2.run(time_step=0.05, n_iter=num_validation, verbose=True)
 

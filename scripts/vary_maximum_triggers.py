@@ -109,7 +109,7 @@ def run_me(location_dir, location_poly, max_delta_t, max_delta_d, crime_type):
     )
 
     logger.info("Setting validation grid")
-    vb.set_grid(grid_size, num_sample_points)
+    vb.set_sample_units(grid_size, num_sample_points)
     file_stem = os.path.join(out_dir, crime_type + '_' + '%d-%d' % (max_delta_t, max_delta_d))
     try:
         logger.info("Starting validation run.")

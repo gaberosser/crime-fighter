@@ -65,7 +65,7 @@ vb_centroid_500 = validate.SeppValidationPredefinedModel(data=res,
                                             model=r,
                                             spatial_domain=south,
                                             cutoff_t=training_size)
-vb_centroid_500.set_grid(500)
+vb_centroid_500.set_sample_units(500)
 res_centroid[500] = vb_centroid_500.run(time_step=1, n_iter=num_validation, verbose=True)
 vb_centroid[500] = vb_centroid_500
 
@@ -73,7 +73,7 @@ vb_centroid_250 = validate.SeppValidationPredefinedModel(data=res,
                                             model=r,
                                             spatial_domain=south,
                                             cutoff_t=training_size)
-vb_centroid_250.set_grid(250)
+vb_centroid_250.set_sample_units(250)
 res_centroid[250] = vb_centroid_250.run(time_step=1, n_iter=num_validation, verbose=True)
 vb_centroid[250] = vb_centroid_250
 
@@ -94,7 +94,7 @@ for t in params:
                                                            model=r,
                                                            spatial_domain=south,
                                                            cutoff_t=training_size)
-    vb_sample_points[t].set_grid(t[0], t[1], respect_boundary=False)
+    vb_sample_points[t].set_sample_units(t[0], t[1], respect_boundary=False)
     res_sample_points[t] = vb_sample_points[t].run(time_step=1, n_iter=num_validation, verbose=True)
 
 # sample point method with edge correction
@@ -107,7 +107,7 @@ for t in params:
                                                            model=r,
                                                            spatial_domain=south,
                                                            cutoff_t=120)
-    vb_sample_points_ec[t].set_grid(t[0], t[1], respect_boundary=True)
+    vb_sample_points_ec[t].set_sample_units(t[0], t[1], respect_boundary=True)
     res_sample_points_ec[t] = vb_sample_points_ec[t].run(time_step=1, n_iter=30, verbose=True)
 
 

@@ -9,7 +9,6 @@ class TestDataArray(SimpleTestCase):
 
     def test_instantiation_1d(self):
         data = models.DataArray([1])
-        self.assertTrue(isinstance(data, models.Data))
         self.assertEqual(data.nd, 1)
         self.assertEqual(data.ndata, 1)
 
@@ -27,7 +26,6 @@ class TestDataArray(SimpleTestCase):
 
     def test_instantiation_2d(self):
         data = models.DataArray([[1, 2], [3, 4], [5, 6]])
-        self.assertTrue(isinstance(data, models.Data))
         self.assertEqual(data.nd, 2)
         self.assertEqual(data.ndata, 3)
         self.assertTrue(np.all(data[:, 0] == np.array([1, 3, 5])))
@@ -43,7 +41,6 @@ class TestDataArray(SimpleTestCase):
         # 3D
         x = np.meshgrid(np.linspace(0, 1, 10), np.linspace(1, 2, 10), np.linspace(2, 3, 10))
         data = models.DataArray(np.concatenate([t[..., np.newaxis] for t in x], axis=3))
-        self.assertTrue(isinstance(data, models.Data))
         self.assertEqual(data.nd, 3)
         self.assertEqual(data.ndata, 1000)
         self.assertTrue(np.all(data[:, 2] == x[2].flat))
@@ -51,7 +48,6 @@ class TestDataArray(SimpleTestCase):
         # 5D
         x = np.linspace(0, 1, 500).reshape(10, 10, 5)
         data = models.DataArray(x)
-        self.assertTrue(isinstance(data, models.Data))
         self.assertEqual(data.nd, 5)
         self.assertEqual(data.ndata, 100)
         self.assertTrue(np.all(data[:, 3] == x[..., 3].flat))
@@ -66,7 +62,7 @@ class TestDataArray(SimpleTestCase):
         # a and b should be an np.ndarray instance
         self.assertIsInstance(a, np.ndarray)
         # ... and NOT a datatype any more
-        self.assertFalse(isinstance(a, models.Data))
+        self.assertFalse(isinstance(a, models.DataArray))
         self.assertTrue(np.all(a == x[:, 0]))
         self.assertTrue(np.all(b == x[:, 1]))
 
@@ -88,7 +84,7 @@ class TestDataArray(SimpleTestCase):
         for i in range(3):
             self.assertTrue(np.all(res[i] == x[i]))
             self.assertIsInstance(res[i], np.ndarray)
-            self.assertFalse(isinstance(res[i], models.Data))
+            self.assertFalse(isinstance(res[i], models.DataArray))
 
     def test_instantiate_from_meshgrid(self):
         mg = np.meshgrid(np.linspace(0, 1, 5), np.linspace(2, 3, 10), np.linspace(4, 5, 15))
@@ -141,7 +137,6 @@ class TestSpaceTimeDataArray(SimpleTestCase):
 
     def test_instantiation(self):
         data = models.SpaceTimeDataArray([[1, 2], [3, 4], [5, 6]])
-        self.assertTrue(isinstance(data, models.Data))
         self.assertEqual(data.nd, 2)
         self.assertEqual(data.ndata, 3)
 

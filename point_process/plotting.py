@@ -440,7 +440,7 @@ def prediction_heatmap(sepp, t, poly=None, kind=None, **kwargs):
         _poly = poly.simplify(1)
     else:
         # use basic bounding rectangle
-        r = roc.RocSpatialGrid(sepp.data[:, 1:])
+        r = roc.RocGrid(sepp.data[:, 1:])
         _poly = r.generate_bounding_poly()
 
     arr_fun = lambda x, y: txy_to_cartesian_data_array(np.ones_like(x) * t, x, y)

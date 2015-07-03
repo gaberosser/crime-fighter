@@ -8,12 +8,13 @@ import multiprocessing as mp
 from kde import kernels
 from stats.logic import weighted_stdev
 from sklearn.neighbors import NearestNeighbors
-from data.models import Data, DataArray, SpaceTimeDataArray, CartesianSpaceTimeData, negative_time_dimension
+from data.models import DataArray, SpaceTimeDataArray, CartesianSpaceTimeData, negative_time_dimension, NetworkSpaceTimeData
 import warnings
 import logging
 
 
 logger = logging.getLogger(__name__)
+logger.handlers = []
 # default: output all logs to console
 ch = logging.StreamHandler()
 logger.setLevel(logging.DEBUG)
@@ -177,7 +178,7 @@ class KernelCluster(object):
 
     @property
     def _kernels(self):
-        return [self.ktype(self.data[i], self.bandwidths[i]**2) for i in range(self.ndata)]
+        return [self.ktype(self.data[i], self.bandwidths[i]) for i in range(self.ndata)]
 
     def iter_operate(self, funcstr, data, **kwargs):
         """
@@ -855,3 +856,8 @@ class VariableBandwidthRadialKde(FixedBandwidthRadialKde, VariableBandwidthKde):
 
 class VariableBandwidthNnRadialKde(FixedBandwidthRadialKde, VariableBandwidthNnKde):
     pass
+
+
+class NetworkFixedBandwidthKde(FixedBandwidthKde):
+    kernel_class = kernels.NetworkTemporalKernelEqualSplit
+    data_class = NetworkSpaceTimeData

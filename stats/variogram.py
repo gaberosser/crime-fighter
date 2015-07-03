@@ -2,7 +2,7 @@ __author__ = 'gabriel'
 from django.contrib.gis import geos
 import numpy as np
 from analysis import cad
-from point_process.utils import linkages
+from point_process.utils import linkages, linkage_func_separable
 from point_process import simulate
 from data.models import CartesianSpaceTimeData, DataArray
 from kde import models as kde_models
@@ -81,7 +81,8 @@ k = kde_models.FixedBandwidthKdeSeparable(res_all, bandwidths=list(scott_spatial
 
 t1 = max(res_all.time)
 
-idx_source, idx_target = linkages(res_all, max_t, max_d)
+linkage_fun = linkage_func_separable(max_t, max_d)
+idx_source, idx_target = linkages(res_all, linkage_fun)
 
 # remove self-matches
 idx = cid_all[idx_target] != cid_all[idx_source]

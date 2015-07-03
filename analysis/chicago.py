@@ -273,7 +273,7 @@ def validate_point_process(
         domain=domain,
     )
     vb = validate.SeppValidationFixedModelIntegration(res, spatial_domain=domain, model_kwargs=model_kwargs)
-    vb.set_grid(grid, n_sample_per_grid=n_sample_per_grid)
+    vb.set_sample_units(grid, n_sample_per_grid=n_sample_per_grid)
     vb.set_t_cutoff(training_size, b_train=False)
 
     ## TODO: check the number of iterations reported is as expected here
@@ -354,7 +354,7 @@ May be useful for pickling output incrementally.
     #         'max_trigger_d': 200,
     #         'estimator': lambda x: estimation.initial_guess_educated(x, ct=1, cd=0.02),
     #     })
-    #     vb.set_grid(grid_size)
+    #     vb.set_sample_units(grid_size)
     #     vb.set_t_cutoff(training_size + tn)
     #     res.append(vb.run(dt=1, t_upper=training_size + num_validation + tn, niter=num_pp_iter))
     #     pps.append(vb.model)
@@ -379,8 +379,8 @@ def validate_historic_kernel(start_date=datetime.datetime(2001, 3, 1, 0),
 
     # use basic historic data spatial hotspot
     sk = hotspot.SKernelHistoric(previous_n_days)
-    vb = validation.ValidationBase(res, hotspot.Hotspot, poly, model_args=(sk,))
-    vb.set_grid(grid_length=grid_size)
+    vb = validation.ValidationBase(res, sk, poly)
+    vb.set_sample_units(grid_length=grid_size)
     vb.set_t_cutoff(previous_n_days)
     ranks, carea, cfrac, pai = vb.run(dt=1, t_upper=previous_n_days + n_iter)
 
@@ -403,8 +403,8 @@ def validate_historic_kernel_multi(start_date=datetime.datetime(2001, 3, 1, 0),
     )
     nslices = int(max(res[:, 0]) / dt)
     sk = hotspot.SKernelHistoric(previous_n_days)
-    vb = validation.ValidationBase(res, hotspot.Hotspot, poly, model_args=(sk,))
-    vb.set_grid(grid_length=grid_size)
+    vb = validation.ValidationBase(res, sk, poly)
+    vb.set_sample_units(grid_length=grid_size)
     vb.set_t_cutoff(previous_n_days)
 
     res = []
@@ -453,9 +453,9 @@ def implement_delta_effect(outfile, test_domain=None):
                 )
                 # disable parallel execution as it seems to slow things down here
                 r.set_parallel(False)
-                vb = validate.SeppValidationPredefinedModel(data, copy.deepcopy(r), spatial_domain=test_domain)
+                vb = validate.SeppValidationPreTrainedModel(data, copy.deepcopy(r), spatial_domain=test_domain)
                 vb.set_t_cutoff(0)
-                vb.set_grid(150)
+                vb.set_sample_units(150)
                 vres = vb.run(1)
 
                 # only keep the first saved model for memory saving purposes
@@ -547,7 +547,7 @@ if __name__ == '__main__':
         'max_trigger_d': 200,
         'estimator': lambda x, y: estimation.estimator_bowers(x, y, ct=1, cd=0.02),
     })
-    vb.set_grid(250)
+    vb.set_sample_units(250)
     vb.set_t_cutoff(first_training_size, b_train=False)
 
     sepp_res = vb.run(time_step=1, t_upper=first_training_size + 1,
@@ -556,8 +556,8 @@ if __name__ == '__main__':
 
     # use basic historic data spatial hotspot
     sk = hotspot.SKernelHistoric(first_training_size) # use heatmap from same period
-    vb_sk = validation.ValidationBase(res, hotspot.Hotspot, poly, model_args=(sk,))
-    vb_sk.roc.copy_grid(vb.roc)
+    vb_sk = validation.ValidationBase(res, sk, poly)
+    vb_sk.roc.copy_sample_units(vb.roc)
     # vb_sk._grid = vb._grid
     # vb_sk.centroids = vb.centroids
     # vb_sk.a = vb.a
@@ -567,8 +567,8 @@ if __name__ == '__main__':
 
     # use variable bandwidth KDE
     skvb = hotspot.SKernelHistoricVariableBandwidthNn(first_training_size)
-    vb_skvb = validation.ValidationBase(res, hotspot.Hotspot, poly, model_args=(skvb,))
-    vb_skvb.roc.copy_grid(vb.roc)
+    vb_skvb = validation.ValidationBase(res, skvb, poly)
+    vb_skvb.roc.copy_sample_units(vb.roc)
     # vb_skvb._grid = vb._grid
     # vb_skvb.centroids = vb.centroids
     # vb_skvb.a = vb.a

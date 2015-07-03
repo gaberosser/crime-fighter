@@ -104,7 +104,7 @@ def run_me(location_dir, location_poly, min_bandwidth, crime_type, bjiggle=False
     )
 
     logger.info("Setting validation grid")
-    vb.set_grid(250, num_sample_points)
+    vb.set_sample_units(250, num_sample_points)
     file_stem = os.path.join(out_dir, crime_type + '_' + '-'.join(['%.2f' % t for t in min_bandwidth]))
     try:
         logger.info("Starting validation run.")
@@ -191,7 +191,7 @@ def camden(min_bandwidth, crime_type, bjiggle):
 #     )
 #
 #     logger.info("Setting validation grid")
-#     vb.set_grid(250, num_sample_points)
+#     vb.set_sample_units(250, num_sample_points)
 #     try:
 #         logger.info("Starting validation run.")
 #         res = vb.run(time_step=1, n_iter=this_num_validation, verbose=True, train_kwargs={'niter': niter})
@@ -260,7 +260,7 @@ def camden(min_bandwidth, crime_type, bjiggle):
 #     )
 #
 #     logger.info("Setting validation grid")
-#     vb.set_grid(250, num_sample_points)
+#     vb.set_sample_units(250, num_sample_points)
 #     try:
 #         logger.info("Starting validation run.")
 #         res = vb.run(time_step=1, n_iter=this_num_validation, verbose=True, train_kwargs={'niter': niter})

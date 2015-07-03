@@ -93,7 +93,7 @@ def plot_shapely_geos(shapes, ax=None, **kwargs):
 
     if issubclass(shapes.__class__, shapely_geometry.base.BaseGeometry):
         # single GEOS geometry supplied
-        return plotters[shapes.__class__](shapes)
+        return plotters[shapes.__class__](shapes, ax, **kwargs)
 
     ## TODO: may wish to combine plotting of points for efficiency?
     return [plotters[t.__class__](t, ax, **kwargs) for t in shapes]

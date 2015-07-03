@@ -69,7 +69,7 @@ for k in kinds:
                                            cutoff_t=211,
                                            model_kwargs=model_kwargs,
                                            )
-    vb.set_grid(grid_squares)
+    vb.set_sample_units(grid_squares)
 
     ### SeppValidationFixedModel with integration ROC sampling
 
@@ -82,7 +82,7 @@ for k in kinds:
     #                                        model_kwargs=model_kwargs,
     #                                        )
     #
-    # vb.set_grid(grid_squares, num_sample_points)
+    # vb.set_sample_units(grid_squares, num_sample_points)
     # res[k] = vb.run(time_step=1, n_iter=num_validation, verbose=True,
     #                 train_kwargs={'niter': niter})
     #
@@ -106,7 +106,7 @@ for k in kinds:
     #                                             data_index=cid,
     #                                             spatial_domain=poly,
     #                                             cutoff_t=211)
-    # vb.set_grid(grid_squares)
+    # vb.set_sample_units(grid_squares)
     # res[k] = vb.run(time_step=1, n_iter=num_validation, verbose=True)
 
     ### Historic spatial KDE (Scott bandwidth) with integration sampling
@@ -118,7 +118,7 @@ for k in kinds:
     #                                       spatial_domain=poly,
     #                                       model_args=(sk,),
     #                                       cutoff_t=211)
-    # vb.set_grid(grid_squares, num_sample_points)
+    # vb.set_sample_units(grid_squares, num_sample_points)
     # res[k] = vb.run(time_step=1, n_iter=num_validation, verbose=True,
     #                 train_kwargs={'niter': niter})
     # model_objs[k] = vb.model
@@ -132,7 +132,7 @@ for k in kinds:
     #                                       spatial_domain=poly,
     #                                       model_args=(sk,),
     #                                       cutoff_t=211)
-    # vb.set_grid(grid_squares, num_sample_points)
+    # vb.set_sample_units(grid_squares, num_sample_points)
 
     res[k] = vb.run(time_step=1, n_iter=num_validation, verbose=True,
                     train_kwargs={'niter': niter})

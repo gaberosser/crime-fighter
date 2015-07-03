@@ -150,20 +150,3 @@ class TestHotspot(unittest.TestCase):
         zd_expct = 1. / (1. + b * np.sqrt(2) * np.arange(1, 11))
         z_expct = sum(zt_expct * zd_expct)
         self.assertAlmostEqual(z, z_expct)
-
-    def test_hotspot(self):
-        stk = mock.create_autospec(hotspot.STKernelBowers)
-
-        data = np.tile(np.arange(10), (3, 1)).transpose()
-        h = hotspot.Hotspot(stk, data=data)
-        self.assertEqual(stk.train.call_count, 1)
-        self.assertListEqual(list(stk.train.call_args[0][0].flat), list(data.flat))
-
-        a = 2
-        b = 10
-        stk = hotspot.STKernelBowers(a, b)
-        h = hotspot.Hotspot(stk, data=data)
-        self.assertEqual(h.predict([[1.3, 4.6, 7.8]]), stk.predict([[1.3, 4.6, 7.8]]))
-
-
-
