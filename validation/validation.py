@@ -115,7 +115,8 @@ class ValidationBase(object):
 
     @property
     def training(self):
-        return self.data.getrows(self.t <= self.cutoff_t)
+        # return self.data.getrows(self.t <= self.cutoff_t)
+        return self.data.getrows(self.t < self.cutoff_t)
 
     def testing_index(self, dt_plus=None, dt_minus=0.):
         """
@@ -129,9 +130,11 @@ class ValidationBase(object):
         bottom = self.cutoff_t + dt_minus
         if dt_plus:
             assert dt_plus >= 0., "dt_plus must be positive"
-            ind = (self.t > bottom) & (self.t <= (self.cutoff_t + dt_plus))
+            # ind = (self.t > bottom) & (self.t <= (self.cutoff_t + dt_plus))
+            ind = (self.t >= bottom) & (self.t < (self.cutoff_t + dt_plus))
         else:
-            ind = self.t > bottom
+            # ind = self.t > bottom
+            ind = self.t >= bottom
 
         return np.where(ind)[0]
 

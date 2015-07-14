@@ -1,6 +1,6 @@
 __author__ = 'gabriel'
 
-from point_process import models, estimation, simulate, plotting
+from point_process import models, estimation, simulate, plots
 from matplotlib import pyplot as plt
 import numpy as np
 from scipy import sparse
@@ -190,9 +190,9 @@ if __name__ == '__main__':
 
     # c = simulate.MohlerSimulation()
 
-    c = simulate.LocalTriggeringSplitByQuartiles()
-    c.t_total = 1500
-    c.num_to_prune = 2000
+    # c = simulate.LocalTriggeringSplitByQuartiles()
+    # c.t_total = 1500
+    # c.num_to_prune = 2000
 
 
     # c = simulate.HomogPoissonBackgroundSimulation()
@@ -201,16 +201,18 @@ if __name__ == '__main__':
     # c.bg_params['ymin'] = -20
     # c.bg_params['ymax'] = 20
 
-    # c = simulate.PatchyGaussianSumBackground()
-    # c.bg_params[0]['location'] = [-5, -5]
-    # c.bg_params[1]['location'] = [-5, 5]
-    # c.bg_params[2]['location'] = [5, -5]
-    # c.bg_params[3]['location'] = [5, 5]
-    # c.bg_params[0]['sigma'] = [.5, .5]
-    # c.bg_params[1]['sigma'] = [.5, .5]
-    # c.bg_params[2]['sigma'] = [.5, .5]
-    # c.bg_params[3]['sigma'] = [.5, .5]
-    # c.t_total = 1500
+    c = simulate.PatchyGaussianSumBackground()
+    c.bg_params[0]['location'] = [-2, -2]
+    c.bg_params[1]['location'] = [-2, 2]
+    c.bg_params[2]['location'] = [2, -2]
+    c.bg_params[3]['location'] = [2, 2]
+    c.bg_params[0]['sigma'] = [.2, 1.]
+    c.bg_params[1]['sigma'] = [.5, .5]
+    c.bg_params[2]['sigma'] = [1., .2]
+    c.bg_params[3]['sigma'] = [.5, .5]
+    c.trigger_params['sigma'] = [0.01, 0.02]
+    c.t_total = 1500
+    c.num_to_prune = 2000
 
     c.run()
     data = c.data[:, :3]
@@ -279,4 +281,4 @@ if __name__ == '__main__':
     # num_iter = len(r.num_bg)
 
     # plots
-    plotting.multiplots(r, c)
+    plots.multiplots(r, c)

@@ -10,6 +10,7 @@ import datetime
 import os
 from point_process import utils
 from plotting.spatial import plot_surface_function_on_polygon, plot_shapely_geos
+from analysis.spatial import shapely_rectangle_from_vertices
 from data.models import CartesianSpaceTimeData, DataArray
 from django.contrib.gis import geos
 import collections
@@ -714,3 +715,37 @@ def lineage_map(p, linkage_cols, data, boundary=None):
         # except Exception:
         #     pass
     ax.set_aspect('equal')
+
+
+def plot_sepp_bg_surface(sepp_obj,
+                         domain=None,
+                         **kwargs
+                         ):
+    k = sepp_obj.bg_kde
+    # if x_range is None:
+    #     x_range = [min(sepp_obj.data.toarray(1)), max(sepp_obj.data.toarray(1))]
+    #     y_range = [min(sepp_obj.data.toarray(2)), max(sepp_obj.data.toarray(2))]
+    # loc = DataArray.from_meshgrid(*np.meshgrid(
+    #     np.linspace(x_range[0], x_range[1], npt),
+    #     np.linspace(y_range[0], y_range[1], npt),
+    #     ))
+    # z = k.partial_marginal_pdf(loc)
+
+    # if ax is None:
+    #     fig = plt.figure()
+    #     ax = fig.add_subplot(111)
+
+    # ax.contourf(loc.toarray(0), loc.toarray(1), z, 50)
+    # ax.set_aspect('equal')
+    # if domain is not None:
+    func = lambda x, y: k.partial_marginal_pdf(
+        DataArray.from_meshgrid(x, y)
+    )
+    if domain is None:
+        xmin, xmax = min(sepp_obj.data.toarray(1)), max(sepp_obj.data.toarray(1))
+        ymin, ymax = min(sepp_obj.data.toarray(2)), max(sepp_obj.data.toarray(2))
+        domain = shapely_rectangle_from_vertices(xmin, ymin, xmax, ymax)
+    plot_surface_function_on_polygon(domain, func=func, **kwargs)
+    plt.axis('equal')
+
+

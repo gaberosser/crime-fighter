@@ -100,6 +100,7 @@ def compute_cross_validation_bandwidth(data, fold, hmin=None, hmax=None):
 
     # select xvfold validation sets
     validation_sets = [idx[i::fold] for i in range(fold)]
+
     def training_idx_gen():
         # yields (testing idx, training idx) tuples
         for i in range(fold):

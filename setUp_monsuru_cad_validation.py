@@ -8,12 +8,17 @@ import numpy as np
 from rpy2 import robjects, rinterface
 import csv
 
+INITIAL_CUTOFF = 212
 
-def get_chicago_polys():
+
+def get_chicago_polys(as_shapely=True):
     sides = models.ChicagoDivision.objects.filter(type='chicago_side')
     res = {}
     for s in sides:
-        res[s.name] = spatial.geodjango_to_shapely(s.mpoly.simplify())
+        if as_shapely:
+            res[s.name] = spatial.geodjango_to_shapely(s.mpoly.simplify())
+        else:
+            res[s.name] = s.mpoly.simplify()
     return res
 
 
@@ -32,10 +37,11 @@ def create_chicago_grid_squares_shapefile(outfile):
                                         id=id)
 
 
-def get_chicago_data(primary_types=None):
+def get_chicago_data(primary_types=None, domain=None):
     start_date = datetime.date(2011, 3, 1)
     end_date = datetime.date(2012, 1, 6)
-    domain = models.ChicagoDivision.objects.get(name='South').mpoly.simplify()
+    if domain is None:
+        domain = models.ChicagoDivision.objects.get(name='South').mpoly.simplify()
     if primary_types is None:
         primary_types = (
             'burglary',
@@ -45,10 +51,11 @@ def get_chicago_data(primary_types=None):
 
     data = {}
     for pt in primary_types:
-        data[pt] = chicago.get_crimes_by_type(pt, start_date=start_date,
-                                              end_date=end_date,
-                                              domain=domain,
-                                              convert_dates=True)
+        key = pt.replace(' ', '_')
+        data[key] = chicago.get_crimes_by_type(pt, start_date=start_date,
+                                               end_date=end_date,
+                                               domain=domain,
+                                               convert_dates=True)
     return data
 
 
@@ -78,7 +85,7 @@ def apply_historic_kde(data,
                                           model=sk,
                                           data_index=data_index,
                                           spatial_domain=domain,
-                                          cutoff_t=211)
+                                          cutoff_t=INITIAL_CUTOFF)
     if grid_squares:
         vb.roc.set_sample_units_predefined(grid_squares, num_sample_points)
     else:
@@ -99,7 +106,7 @@ def apply_historic_kde_variable_bandwidth(data,
                                           model=sk,
                                           data_index=data_index,
                                           spatial_domain=domain,
-                                          cutoff_t=211)
+                                          cutoff_t=INITIAL_CUTOFF)
     if grid_squares:
         vb.roc.set_sample_units_predefined(grid_squares, num_sample_points)
     else:
@@ -119,17 +126,22 @@ def apply_sepp_stochastic_nn(data,
                              seed=43):
 
     est_fun = lambda x, y: estimation.estimator_bowers_fixed_proportion_bg(x, y, ct=1, cd=10, frac_bg=0.5)
+    trigger_kde_kwargs = {'strict': False}
+    bg_kde_kwargs = dict(trigger_kde_kwargs)
+
     sepp = pp_models.SeppStochasticNn(data=data,
                                       max_delta_t=max_t,
                                       max_delta_d=max_d,
                                       seed=seed,
-                                      estimation_function=est_fun)
+                                      estimation_function=est_fun,
+                                      trigger_kde_kwargs=trigger_kde_kwargs,
+                                      bg_kde_kwargs=bg_kde_kwargs)
 
     vb = validate.SeppValidationFixedModelIntegration(data=data,
                                                       model=sepp,
                                                       data_index=data_index,
                                                       spatial_domain=domain,
-                                                      cutoff_t=211)
+                                                      cutoff_t=INITIAL_CUTOFF)
 
     if grid_squares:
         vb.roc.set_sample_units_predefined(grid_squares, num_sample_points)
@@ -249,134 +261,3 @@ if __name__ == '__main__':
                                suffix='_ss', **res_kde)
     dump_results_to_rdata_file('chicago_south_side_sepp_stochastic_nn.Rdata', b_sepp=True,
                                suffix='_ss', **res_sepp)
-
-    # b_save_to_r = True
-    # output_file = 'kde_variable_bandwidth_nn_assess.Rdata'
-    #
-    # # start_date is the FIRST DAY OF THE PREDICTION
-    # start_date = datetime.datetime(2011, 9, 28)
-    # estimate_kwargs = {
-    #     'ct': 1,
-    #     'cd': 0.02
-    # }
-    # model_kwargs = {
-    #     'max_delta_t': 60,
-    #     'max_delta_d': 300,
-    #     'bg_kde_kwargs': {'number_nn': [101, 16], 'strict': False},
-    #     'trigger_kde_kwargs': {'number_nn': 15,
-    #                            'min_bandwidth': [0.5, 30, 30],
-    #                            'strict': False},
-    #     'estimation_function': lambda x, y: estimation.estimator_bowers(x, y, **estimate_kwargs)
-    # }
-    # niter = 50
-    # # niter = 20
-    #
-    # poly = cad.get_camden_region()
-    #
-    # # load grid and create ROC for use in predictions
-    # qset = models.Division.objects.filter(type='monsuru_250m_grid')
-    # qset = sorted(qset, key=lambda x:int(x.name))
-    # grid_squares = [t.mpoly[0] for t in qset]
-
-    # num_validation = 100
-    # coverage_20_idx = 81  # this is the closest match to 20pct coverage for the given CAD grid squares
-    # num_sample_points = 50
-
-    # end date is the last date retrieved from the database of crimes
-    # have to cast this to a date since the addition operation automatically produces a datetime
-    # end_date = (start_date + datetime.timedelta(days=num_validation - 1)).date()
-
-    # kinds = ['burglary', 'shoplifting', 'violence']
-
-    # sepp_objs = {}
-    # model_objs = {}
-    # res = {}
-    # vb_objs = {}
-    # data_dict = {}
-    # cid_dict = {}
-
-    # for k in kinds:
-
-        # data, t0, cid = cad.get_crimes_from_dump('monsuru_cad_%s' % k)
-        # filter: day 210 is 27/9/2011, so use everything LESS THAN 211
-
-        ### SeppValidationFixedModel with centroid ROC sampling
-
-        # b_sepp = True
-        # vb = validate.SeppValidationFixedModel(data=data,
-        #                                        pp_class=pp_models.SeppStochasticNn,
-        #                                        data_index=cid,
-        #                                        spatial_domain=poly,
-        #                                        cutoff_t=211,
-        #                                        model_kwargs=model_kwargs,
-        #                                        )
-        # vb.set_sample_units(grid_squares)
-
-        ### SeppValidationFixedModel with integration ROC sampling
-
-        # b_sepp = True
-        # vb = validate.SeppValidationFixedModelIntegration(data=data,
-        #                                        pp_class=pp_models.SeppStochasticNn,
-        #                                        data_index=cid,
-        #                                        spatial_domain=poly,
-        #                                        cutoff_t=211,
-        #                                        model_kwargs=model_kwargs,
-        #                                        )
-        #
-        # vb.set_sample_units(grid_squares, num_sample_points)
-        # res[k] = vb.run(time_step=1, n_iter=num_validation, verbose=True,
-        #                 train_kwargs={'niter': niter})
-        #
-        #
-        # sepp_objs[k] = vb.model
-
-        ### SeppValidationPredefinedModel with centroid ROC sampling
-
-        # b_sepp = True
-        # training_data = data[data[:, 0] < 211.]
-        #
-        # # train a model
-        # r = pp_models.SeppStochasticNn(data=training_data, **model_kwargs)
-        # r.set_seed(42)
-        # r.train(niter=niter)
-        #
-        # sepp_objs[k] = r
-        # # disable data sorting (it's already sorted anyway) so that we can lookup cid later
-        # vb = validate.SeppValidationPredefinedModel(data=data,
-        #                                             model=r,
-        #                                             data_index=cid,
-        #                                             spatial_domain=poly,
-        #                                             cutoff_t=211)
-        # vb.set_sample_units(grid_squares)
-        # res[k] = vb.run(time_step=1, n_iter=num_validation, verbose=True)
-
-        ### Historic spatial KDE (Scott bandwidth) with integration sampling
-        # time_window = 60
-        # b_sepp = False
-        # sk = hotspot.SKernelHistoric(60)
-        # vb = validation.ValidationIntegration(data,
-        #                                       model_class=hotspot.Hotspot,
-        #                                       spatial_domain=poly,
-        #                                       model_args=(sk,),
-        #                                       cutoff_t=211)
-        # vb.set_sample_units(grid_squares, num_sample_points)
-        # res[k] = vb.run(time_step=1, n_iter=num_validation, verbose=True,
-        #                 train_kwargs={'niter': niter})
-        # model_objs[k] = vb.model
-
-        ### Historic spatial KDE (NN bandwidth, 20 NNs) with integration sampling
-        # time_window = 60
-        # b_sepp = False
-        # sk = hotspot.SKernelHistoricVariableBandwidthNn(dt=60, nn=20)
-        # vb = validation.ValidationIntegration(data,
-        #                                       model_class=hotspot.Hotspot,
-        #                                       spatial_domain=poly,
-        #                                       model_args=(sk,),
-        #                                       cutoff_t=211)
-        # vb.set_sample_units(grid_squares, num_sample_points)
-        # res[k] = vb.run(time_step=1, n_iter=num_validation, verbose=True,
-        #                 train_kwargs={'niter': niter})
-        # model_objs[k] = vb.model
-        # vb_objs[k] = vb
-        # data_dict[k] = data
-        # cid_dict[k] = cid

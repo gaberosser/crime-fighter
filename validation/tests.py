@@ -309,12 +309,14 @@ class TestValidation(unittest.TestCase):
         self.assertEqual(vb.cutoff_t, cutoff_te)
 
         # training set
-        training_expctd = self.data[self.data[:, 0] <= cutoff_te]
+        # training_expctd = self.data[self.data[:, 0] <= cutoff_te]
+        training_expctd = self.data[self.data[:, 0] < cutoff_te]
         self.assertEqual(vb.training.ndata, len(training_expctd))
         self.assertTrue(np.all(vb.training == training_expctd))
 
         # testing set
-        testing_expctd = self.data[self.data[:, 0] > cutoff_te]
+        # testing_expctd = self.data[self.data[:, 0] > cutoff_te]
+        testing_expctd = self.data[self.data[:, 0] >= cutoff_te]
         self.assertEqual(vb.testing().ndata, len(testing_expctd))
         self.assertTrue(np.all(vb.testing() == testing_expctd))
 
@@ -329,20 +331,23 @@ class TestValidation(unittest.TestCase):
         # change cutoff_t
         cutoff_te = 0.3
         vb.set_t_cutoff(cutoff_te)
-        testing_expctd = self.data[self.data[:, 0] > cutoff_te]
+        # testing_expctd = self.data[self.data[:, 0] > cutoff_te]
+        testing_expctd = self.data[self.data[:, 0] >= cutoff_te]
         self.assertEqual(vb.testing().ndata, len(testing_expctd))
         self.assertTrue(np.all(vb.testing() == testing_expctd))
 
         # testing dataset with dt_plus specified
         dt_plus = testing_expctd[2, 0] - cutoff_te
-        testing_expctd = testing_expctd[:3]  # three results
+        # testing_expctd = testing_expctd[:3]  # three results
+        testing_expctd = testing_expctd[:2]  # two results
         self.assertEqual(vb.testing(dt_plus=dt_plus).ndata, len(testing_expctd))
         self.assertTrue(np.all(vb.testing(dt_plus=dt_plus) == testing_expctd))
 
         # testing dataset with dt_plus and dt_minus
         dt_plus = self.data[self.data[:, 0] > cutoff_te][17, 0] - cutoff_te
         dt_minus = self.data[self.data[:, 0] > cutoff_te][10, 0] - cutoff_te
-        testing_expctd = self.data[(self.data[:, 0] > (cutoff_te + dt_minus)) & (self.data[:, 0] <= (cutoff_te + dt_plus))]
+        # testing_expctd = self.data[(self.data[:, 0] > (cutoff_te + dt_minus)) & (self.data[:, 0] <= (cutoff_te + dt_plus))]
+        testing_expctd = self.data[(self.data[:, 0] >= (cutoff_te + dt_minus)) & (self.data[:, 0] < (cutoff_te + dt_plus))]
         self.assertEqual(vb.testing(dt_plus=dt_plus, dt_minus=dt_minus).ndata, 7)
         self.assertEqual(vb.testing(dt_plus=dt_plus, dt_minus=dt_minus).ndata, len(testing_expctd))
         self.assertTrue(np.all(vb.testing(dt_plus=dt_plus, dt_minus=dt_minus) == testing_expctd))
