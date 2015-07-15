@@ -87,6 +87,17 @@ class SeppSimulation(object):
     def seed(self, seed=None):
         self.prng.seed(seed)
 
+
+    def bg_pdf(self, targets):
+        shp = targets.original_shape if targets.original_shape is not None else (targets.ndata,)
+        z = np.zeros(shp)
+        for t in self.bg_params:
+            cov = np.array(t['sigma']) ** 2
+            this_z = t['intensity'] * stats.multivariate_normal.pdf(targets.data, mean=t['location'], cov=cov)
+            z += this_z.reshape(shp)
+        return z
+
+
     @property
     def trigger_cov(self):
         trigger_var = np.array(self.trigger_params['sigma']) ** 2

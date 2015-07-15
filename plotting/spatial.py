@@ -128,8 +128,20 @@ def plot_shapely_geos(shapes, ax=None, **kwargs):
     return [plotters[t.__class__](t, ax, **kwargs) for t in shapes]
 
 
-def plot_surface_function_on_polygon(poly, func, ax=None, dx=None, offset_coords=None, cmap=cm.jet, nlevels=50,
-                            vmin=None, vmax=None, fmax=None, colorbar=False, **kwargs):
+def plot_surface_function_on_polygon(poly,
+                                     func,
+                                     ax=None,
+                                     dx=None,
+                                     offset_coords=None,
+                                     cmap=cm.jet,
+                                     nlevels=50,
+                                     vmin=None,
+                                     vmax=None,
+                                     fmax=None,
+                                     colorbar=False,
+                                     show_domain=True,
+                                     mask=True,
+                                     **kwargs):
     """
     :param poly: geos Polygon or Multipolygon defining region OR Shapely equivalents
     :param func: function accepting two vectorized input arrays returning the values to be plotted
@@ -140,6 +152,8 @@ def plot_surface_function_on_polygon(poly, func, ax=None, dx=None, offset_coords
     :param vmin: minimum value to plot. Values below this are left unfilled
     :param vmax: maximum value to assign on colourmap - values beyond this are clipped
     :param fmax: maximum value on CDF at which to clip z values
+    :param show_domain: If True, the domain polygon is plotted
+    :param mask: If True, the surface is masked using the domain polygon
     :param kwargs: any other kwargs are passed to the plt.contourf call
     :return:
     """
@@ -186,15 +200,17 @@ def plot_surface_function_on_polygon(poly, func, ax=None, dx=None, offset_coords
     if colorbar:
         plt.colorbar(cont, shrink=0.9)
 
-    poly_verts = list(poly.exterior.coords)
-    # check handedness of poly
-    if is_clockwise(poly):
-        poly_verts = poly_verts[::-1]
+    if mask:
+        poly_verts = list(poly.exterior.coords)
+        # check handedness of poly
+        if is_clockwise(poly):
+            poly_verts = poly_verts[::-1]
 
-    # mask_outside_polygon(poly_verts, ax=ax)
-    mask_contour(cont, poly_verts, ax=ax, show_clip_path=True)
+        # mask_outside_polygon(poly_verts, ax=ax)
+        mask_contour(cont, poly_verts, ax=ax, show_clip_path=show_domain)
 
-    # plot_geodjango_shapes(poly, ax=ax, facecolor='none')
+    elif show_domain:
+        plot_shapely_geos(poly, ax=ax)
 
     plt.draw()
 

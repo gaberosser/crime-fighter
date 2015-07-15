@@ -703,3 +703,43 @@ def import_monsuru_cad_data():
             )
             cur.execute(insert_sql)
         print "Done."
+
+
+def san_francisco(verbose=True, chunksize=50000, limit=None):
+    obj = models.SanFrancisco()
+    obj.rewrite_table()
+
+    ## FIXME: it's slow looking up ids in a list. Instead, use a dictionary with id as key then convert via values() when required.
+    ## This will auto-ignore duplicate IDs.
+
+    DATADIR = os.path.join(settings.DATA_DIR, 'san_francisco')
+    count = 1
+    with open(os.path.join(DATADIR, 'san_fran_crime_from_1_jan_2003.csv'), 'r') as f:
+        c = csv.DictReader(f)
+        res = []
+        ids = []
+        for row in c:
+            if limit and count > limit:
+                break
+            if row['IncidntNum'] in ids:
+                continue
+            ids.append(row['IncidntNum'])
+            t = {
+                'id': row['IncidntNum'],
+                'datetime': "to_timestamp('{0} {1}', 'MM/DD/YYYY HH24:MI')".format(
+                    row['Date'].split(' ')[0],
+                    row['Time']
+                ),
+                'location': "ST_Transform(ST_SetSRID(ST_Point({0}, {1}), 4326), 26943)".format(
+                    float(row['X']),
+                    float(row['Y'])
+                ),
+                'category': "'%s'" % row['Category'],
+            }
+            res.append(t)
+            count += 1
+            if (count % chunksize) == 0 and count:
+                obj.insert_many(res)
+                res = []
+    obj.insert_many(res)
+    print len(ids)

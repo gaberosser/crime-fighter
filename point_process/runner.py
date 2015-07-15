@@ -179,8 +179,8 @@ if __name__ == '__main__':
 
     logger = logging.getLogger('kde.models')
 
-    # num_iter = 100
-    num_iter = 30
+    num_iter = 50
+    # num_iter = 30
     parallel = True
     t_total = None
 
@@ -202,15 +202,15 @@ if __name__ == '__main__':
     # c.bg_params['ymax'] = 20
 
     c = simulate.PatchyGaussianSumBackground()
-    c.bg_params[0]['location'] = [-2, -2]
-    c.bg_params[1]['location'] = [-2, 2]
-    c.bg_params[2]['location'] = [2, -2]
-    c.bg_params[3]['location'] = [2, 2]
-    c.bg_params[0]['sigma'] = [.2, 1.]
+    c.bg_params[0]['location'] = [-1, -1]
+    c.bg_params[1]['location'] = [-1, 1]
+    c.bg_params[2]['location'] = [1, -1]
+    c.bg_params[3]['location'] = [1, 1]
+    c.bg_params[0]['sigma'] = [.1, .5]
     c.bg_params[1]['sigma'] = [.5, .5]
-    c.bg_params[2]['sigma'] = [1., .2]
-    c.bg_params[3]['sigma'] = [.5, .5]
-    c.trigger_params['sigma'] = [0.01, 0.02]
+    c.bg_params[2]['sigma'] = [.5, .5]
+    c.bg_params[3]['sigma'] = [.5, .1]
+    c.trigger_params['sigma'] = [0.1, 0.1]
     c.t_total = 1500
     c.num_to_prune = 2000
 
@@ -282,3 +282,9 @@ if __name__ == '__main__':
 
     # plots
     plots.multiplots(r, c)
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    plots.plot_sepp_bg_surface(r, cmap=plt.get_cmap('Reds'), ax=ax, show_domain=False, mask=False, fmax=0.95, dx=.02)
+    ax.axis('auto')
+    ax.set_xlim([-2, 2])
+    ax.set_ylim([-2, 2])
