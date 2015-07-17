@@ -56,8 +56,8 @@ def marginal_icdf_optimise(k, y, dim=0, tol=1e-8):
 
 def set_nn_bandwidths(normed_data, raw_stdevs, num_nn, **kwargs):
 
-    tol = kwargs.get('tol', 1e-12)
     min_bandwidth = kwargs.get('min_bandwidth', None)
+    strict = kwargs.get('strict', True)
 
     # compute nn distances on normed data
 
@@ -71,6 +71,26 @@ def set_nn_bandwidths(normed_data, raw_stdevs, num_nn, **kwargs):
         warnings.warn("Insufficient data, reducing number of nns to %d" % normed_data.ndata)
         nn_obj = NearestNeighbors(normed_data.ndata).fit(normed_data)
         dist, _ = nn_obj.kneighbors(normed_data)
+
+    # look for zero nn distances; these indicate that there are more exact repeats than the number of NNs being used
+    if np.any(dist[:, -1] == 0):
+        if strict:
+            raise ValueError("Encountered zero nearest neighbour distance(s) and strict=True")
+        else:
+            # attempt to fix it by increasing the number of nns
+            logger.warn("Zero nearest neighbour distance(s) encountered, attempting fix...")
+            idx = np.where(dist[:, -1] == 0)[0]
+            attempt_count = 0
+            while len(idx):
+                if attempt_count == 5:
+                    import ipdb; ipdb.set_trace()
+                    raise ValueError("Encountered zero nearest neighbour distance(s). Attempted fix but it failed after %d attempts", attempt_count)
+                num_nn += 10
+                logger.warn("Temporarily increasing number of NNs to %d", num_nn)
+                nn_obj = NearestNeighbors(num_nn).fit(normed_data)
+                dist, _ = nn_obj.kneighbors(normed_data)
+                idx = np.where(dist[:, -1] == 0)[0]
+                attempt_count += 1
 
     nn_distances = dist[:, -1].reshape((normed_data.ndata, 1))
 
@@ -534,7 +554,7 @@ class VariableBandwidthNnKde(VariableBandwidthKde):
             raise AttributeError("The number of nearest neighbours for variable KDE must be >=1")
 
         # toggle controlling whether too little data for supplied NN results in an error or a silent change of NN
-        self.strict = kwargs.pop('strict', True)
+        self.strict = kwargs.get('strict', True)
 
         self.nn_distances = []
 
@@ -697,7 +717,7 @@ class VariableBandwidthNnKdeSeparable(FixedBandwidthKde, KdeBaseSeparable):
         self.nn_distances_s = []
 
         # toggle controlling whether too little data for supplied NN results in an error or a silent change of NN
-        self.strict = kwargs.pop('strict', True)
+        self.strict = kwargs.get('strict', True)
 
         if len(self.nn) != 2:
             raise AttributeError("Separable KDE accepts TWO nearest neighbour numbers")

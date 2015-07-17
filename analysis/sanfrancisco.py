@@ -54,7 +54,7 @@ def get_crimes_by_type(crime_type='burglary',
         where_dict['datetime'] = "*>= '{0}'".format(start_date.strftime('%Y-%m-%d %H:%M:%S'))
         # sql += """AND datetime >= '{0}' """.format(start_date.strftime('%Y-%m-%d %H:%M:%S'))
     if end_date:
-        where_dict['"datetime"'] = "*<= '{0}'".format(start_date.strftime('%Y-%m-%d %H:%M:%S'))
+        where_dict['"datetime"'] = "*<= '{0}'".format(end_date.strftime('%Y-%m-%d %H:%M:%S'))
         # sql += """AND datetime <= '{0}' """.format(end_date.strftime('%Y-%m-%d %H:%M:%S'))
     if domain:
         s = "ST_Intersects(location, ST_GeomFromText('{0}', {1}))".format(domain.wkt, SRID)
@@ -64,11 +64,16 @@ def get_crimes_by_type(crime_type='burglary',
     where_dict.update(where_kwargs)
     # for x in where_strs.values():
     #     sql += """AND {0}""".format(x)
-    res = obj.select(where_dict, fields=('id', 'datetime', 'ST_X(location)', 'ST_Y(location)'))
+    res = obj.select(where_dict, fields=('incident_number', 'datetime', 'ST_X(location)', 'ST_Y(location)'))
 
     # cursor.execute(sql)
     # res = cursor.fetchall()
-    cid = np.array([x['id'] for x in res])
+    cid = np.array([x['incident_number'] for x in res])
+
+    # identify any repeated incident numbers and choose one (doesn't matter which, space and time components are copied)
+    cid, idx = np.unique(cid, return_index=True)
+    res = [res[i] for i in idx]
+
     t0 = min([x['datetime'] for x in res])
     xy = np.array([(res[i]['ST_X(location)'], res[i]['ST_Y(location)']) for i in range(len(res))])
     if convert_dates:
@@ -83,3 +88,36 @@ def get_crimes_by_type(crime_type='burglary',
     cid = cid[sort_idx]
 
     return res, t0, cid
+
+
+if __name__ == "__main__":
+    start_date = datetime.date(2011, 3, 1)
+    end_date = datetime.date(2012, 3, 1)
+    data, t0, cid = get_crimes_by_type('burglary', start_date=start_date, end_date=end_date)
+
+    max_t=90
+    max_d=500,
+    seed=43
+
+    est_fun = lambda x, y: estimation.estimator_bowers_fixed_proportion_bg(x, y, ct=1, cd=10, frac_bg=0.5)
+    # trigger_kde_kwargs = {'strict': False}
+    trigger_kde_kwargs = {'bandwidths': [10, 40, 40]}
+    bg_kde_kwargs = {'strict': False}
+
+    sepp = pp_models.SeppStochasticNnBgFixedTrigger(data=data,
+                                                    max_delta_t=max_t,
+                                                    max_delta_d=max_d,
+                                                    seed=seed,
+                                                    estimation_function=est_fun,
+                                                    trigger_kde_kwargs=trigger_kde_kwargs,
+                                                    bg_kde_kwargs=bg_kde_kwargs)
+
+    # sepp = pp_models.SeppStochasticNn(data=data,
+    #                                   max_delta_t=max_t,
+    #                                   max_delta_d=max_d,
+    #                                   seed=seed,
+    #                                   estimation_function=est_fun,
+    #                                   trigger_kde_kwargs=trigger_kde_kwargs,
+    #                                   bg_kde_kwargs=bg_kde_kwargs)
+
+    ps = sepp.train(niter=50)

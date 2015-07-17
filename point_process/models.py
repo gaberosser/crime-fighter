@@ -548,6 +548,25 @@ class SeppStochasticNn(SeppStochastic):
                 raise AttributeError("Kwarg 'number_nn' in bg_kde_kwargs must have length 2")
 
 
+class SeppStochasticNnBgFixedTrigger(SeppStochastic):
+    bg_kde_class = pp_kde.VariableBandwidthNnKdeSeparable
+    trigger_kde_class = pp_kde.FixedBandwidthKde
+
+    def __init_extra__(self, **kwargs):
+        """
+        Check whether number_nn has been supplied in the KDE kwargs and add default values if not.
+        The defaults should depend upon the number of dimensions, but we can't guarantee that data are defined at this
+        stage, so just use sensible values. This may break if ndim == 1, but when is that ever the case?
+        """
+        super(SeppStochasticNnBgFixedTrigger, self).__init_extra__(**kwargs)
+        if 'number_nn' not in self.bg_kde_kwargs:
+            self.bg_kde_kwargs['number_nn'] = [100, 15]
+        if 'bandwidths' not in self.trigger_kde_kwargs:
+            self.trigger_kde_class = pp_kde.FixedBandwidthKdeScott
+        else:
+            if len(self.bg_kde_kwargs['number_nn']) != 2:
+                raise AttributeError("Kwarg 'number_nn' in bg_kde_kwargs must have length 2")
+
 class SeppStochasticNnIsotropicTrigger(SeppStochasticNn):
 
     trigger_kde_class = pp_kde.VariableBandwidthNnRadialKde

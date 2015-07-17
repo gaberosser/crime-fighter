@@ -717,15 +717,11 @@ def san_francisco(verbose=True, chunksize=50000, limit=None):
     with open(os.path.join(DATADIR, 'san_fran_crime_from_1_jan_2003.csv'), 'r') as f:
         c = csv.DictReader(f)
         res = []
-        ids = []
         for row in c:
             if limit and count > limit:
                 break
-            if row['IncidntNum'] in ids:
-                continue
-            ids.append(row['IncidntNum'])
             t = {
-                'id': row['IncidntNum'],
+                'incident_number': row['IncidntNum'],
                 'datetime': "to_timestamp('{0} {1}', 'MM/DD/YYYY HH24:MI')".format(
                     row['Date'].split(' ')[0],
                     row['Time']
@@ -742,4 +738,4 @@ def san_francisco(verbose=True, chunksize=50000, limit=None):
                 obj.insert_many(res)
                 res = []
     obj.insert_many(res)
-    print len(ids)
+    print count

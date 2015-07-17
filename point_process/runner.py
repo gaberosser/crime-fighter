@@ -211,8 +211,10 @@ if __name__ == '__main__':
     c.bg_params[2]['sigma'] = [.5, .5]
     c.bg_params[3]['sigma'] = [.5, .1]
     c.trigger_params['sigma'] = [0.1, 0.1]
+    # c.trigger_params['intensity'] = 0.5
     c.t_total = 1500
     c.num_to_prune = 2000
+    # c.num_to_prune = 4000
 
     c.run()
     data = c.data[:, :3]

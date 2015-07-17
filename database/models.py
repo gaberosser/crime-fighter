@@ -367,14 +367,14 @@ class GeosTable(object):
 class SanFrancisco(GeosTable):
     table_name = 'sanfrancisco'
     schema = (
-        'id VARCHAR(9) PRIMARY KEY',
+        'id SERIAL PRIMARY KEY',
+        'incident_number VARCHAR(9)',
         'datetime TIMESTAMP',
         'location GEOMETRY(POINT, 26943)',  # US NAD 83 zone 3
         'category VARCHAR(32) NOT NULL',
     )
 
     spatial_indices = {
-
         'gix': 'location'
     }
 
