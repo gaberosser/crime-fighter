@@ -237,7 +237,10 @@ class SeppValidation(validation.ValidationBase):
                 if k == 'cumulative_crime_max':
                     pass
                 else:
-                    val = np.array([res[m][i][k] for i in range(len(res[m]))])
+                    # fix errors upon finding missing data by providing default NaN get argument
+                    val = np.array(
+                        [res[m][i].get(k, np.zeros(self.roc.n_sample_units) * np.nan) for i in range(len(res[m]))]
+                    )
                     this_res[k] = val
             # overwrite with new restructured results
             res[m] = this_res

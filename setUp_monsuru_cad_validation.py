@@ -7,9 +7,12 @@ from validation import hotspot, validation
 import numpy as np
 from rpy2 import robjects, rinterface
 import csv
+import os
+import settings
 
+T0 = 40603
 INITIAL_CUTOFF = 212
-
+DATA_CSV_DIR = os.path.join(settings.DATA_DIR, 'chicago', 'monsuru_data')
 
 def get_chicago_polys(as_shapely=True):
     sides = models.ChicagoDivision.objects.filter(type='chicago_side')
@@ -59,6 +62,29 @@ def get_chicago_data(primary_types=None, domain=None):
     return data
 
 
+def load_chicago_data_from_csv(indir=DATA_CSV_DIR):
+    filenames = {
+        'burglary': 'burglary_Crimes_SS.csv',
+        'assault': 'assault_Crimes_SS.csv',
+        'motor_vehicle_theft': 'motorVeh_Crimes_SS.csv',
+    }
+    data = {}
+    for k, v in filenames.items():
+        with open(os.path.join(indir, v), 'r') as f:
+            c = csv.DictReader(f)
+            this_cid = []
+            this_data = []
+            for row in c:
+                this_cid.append(int(row['SN']))
+                this_data.append([
+                    float(row['T']), float(row['X']), float(row['Y'])
+                ])
+            this_cid = np.array(this_cid)
+            this_data = np.array(this_data)
+            data[k] = this_data, min(this_data[:, 0]), this_cid
+    return data
+
+
 def create_chicago_data_csv_file(filestem='chicago_data'):
     data = get_chicago_data()
     for pt, (res, t0, cid) in data.items():
@@ -85,7 +111,7 @@ def apply_historic_kde(data,
                                           model=sk,
                                           data_index=data_index,
                                           spatial_domain=domain,
-                                          cutoff_t=INITIAL_CUTOFF)
+                                          cutoff_t=INITIAL_CUTOFF + T0)
     if grid_squares:
         vb.roc.set_sample_units_predefined(grid_squares, num_sample_points)
     else:
@@ -106,7 +132,8 @@ def apply_historic_kde_variable_bandwidth(data,
                                           model=sk,
                                           data_index=data_index,
                                           spatial_domain=domain,
-                                          cutoff_t=INITIAL_CUTOFF)
+                                          cutoff_t=INITIAL_CUTOFF + T0)
+
     if grid_squares:
         vb.roc.set_sample_units_predefined(grid_squares, num_sample_points)
     else:
@@ -141,7 +168,7 @@ def apply_sepp_stochastic_nn(data,
                                                       model=sepp,
                                                       data_index=data_index,
                                                       spatial_domain=domain,
-                                                      cutoff_t=INITIAL_CUTOFF)
+                                                      cutoff_t=INITIAL_CUTOFF + T0)
 
     if grid_squares:
         vb.roc.set_sample_units_predefined(grid_squares, num_sample_points)
@@ -222,6 +249,7 @@ def dump_results_to_rdata_file(output_file, b_sepp=False, suffix='', **component
     robjects.r.save(*var_names, file=output_file)
     return captured_crimes_dict
 
+
 if __name__ == '__main__':
 
     res_sepp = {}
@@ -230,17 +258,20 @@ if __name__ == '__main__':
     vb_kde = {}
 
     # chicago South side validation
-    south = get_chicago_polys()['South']
-    grid_squares = get_chicago_grid(south)
-    data = get_chicago_data()
+    domain = get_chicago_polys()['South']
+    # domain = get_chicago_polys()['North']
+    grid_squares = get_chicago_grid(domain)
+    # data = get_chicago_data(domain=domain)
+    data = load_chicago_data_from_csv()
 
     for k in data.keys():
+    # for k in ['assault', ]:
         this_data = data[k][0]
         this_data_index = data[k][-1]
         try:
             this_res_kde = apply_historic_kde_variable_bandwidth(this_data,
                                                                  this_data_index,
-                                                                 south,
+                                                                 domain,
                                                                  grid_squares=grid_squares)
             res_kde[k] = this_res_kde
         except Exception as exc:
@@ -249,7 +280,7 @@ if __name__ == '__main__':
         try:
             this_res_sepp = apply_sepp_stochastic_nn(this_data,
                                                      this_data_index,
-                                                     south,
+                                                     domain,
                                                      grid_squares=grid_squares,
                                                      max_t=90,
                                                      max_d=500)

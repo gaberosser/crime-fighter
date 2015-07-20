@@ -165,7 +165,7 @@ def estimator_exp_gaussian(data, linkage, ct, cd, frac_bg=0.5):
     a constant.
     :param data:
     :param linkage:
-    :param ct:
+    :param ct: Time decay constant, (per day, hour, etc.)
     :param cd: Standard deviation of Gaussian distance dependence.
     :param frac_bg: The proportion of events that are BG.
     :return:

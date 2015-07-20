@@ -49,7 +49,7 @@ class SeppSimulation(object):
         self.t_total = kwargs.pop('t_total', None)  # to be set now or at runtime
 
         self.num_to_prune = 0  # to be set at runtime if required
-        self.data = None  # set by run() method
+        self._data = None  # set by run() method
 
         # BG process(es): array of dictionaries, one per BG hotspot
         bg_params = kwargs.pop('bg_params', None)
@@ -67,6 +67,10 @@ class SeppSimulation(object):
             self.trigger_params = self.default_trigger_params
 
         self.prng = np.random.RandomState()
+
+    @property
+    def data(self):
+        return self._data[:, 1:]
 
     @property
     def default_bg_params(self):
@@ -185,46 +189,46 @@ class SeppSimulation(object):
             Then relabel the data to correct lineage IDs. """
 
         # assume data are in a sorted np array
-        self.data = self.data[n_prune:-n_prune, :]
+        self._data = self._data[n_prune:-n_prune, :]
         # relocate time so that first event occurs at t=0
-        t0 = self.data[0, 1]
-        self.data[:, 1] -= t0
+        t0 = self._data[0, 1]
+        self._data[:, 1] -= t0
 
         # relabel triggered events after pruning
         # parent index is set to -1 if parent is no longer in the dataset
 
-        parent_ids = self.data[:, 0].astype(int)
-        trigger_idx = np.where(~np.isnan(self.data[:, 4]))[0]
-        link_ids = self.data[trigger_idx, 4].astype(int)
+        parent_ids = self._data[:, 0].astype(int)
+        trigger_idx = np.where(~np.isnan(self._data[:, 4]))[0]
+        link_ids = self._data[trigger_idx, 4].astype(int)
 
         for i in range(link_ids.size):
             this_link_id = link_ids[i]
             # search for corresponding parent
             if not np.any(parent_ids == this_link_id):
                 # parent no longer present in dataset
-                self.data[trigger_idx[i], 4] = -1.
+                self._data[trigger_idx[i], 4] = -1.
             else:
                 # parent is present, update index
                 new_idx = np.where(parent_ids == this_link_id)[0]
                 if len(new_idx) != 1:
                     raise ValueError("Duplicate ID found")
-                self.data[trigger_idx[i], 4] = new_idx[0]
+                self._data[trigger_idx[i], 4] = new_idx[0]
 
     @property
     def ndata(self):
-        return self.data.shape[0]
+        return self._data.shape[0]
 
     @property
     def number_bg(self):
-        if self.data is None:
+        if self._data is None:
             raise AttributeError("Data have not been set.  Call run().")
-        return np.isnan(self.data[:, -1]).sum()
+        return np.isnan(self._data[:, -1]).sum()
 
     @property
     def number_trigger(self):
-        if self.data is None:
+        if self._data is None:
             raise AttributeError("Data have not been set.  Call run().")
-        return sum(~np.isnan(self.data[:, -1]))
+        return sum(~np.isnan(self._data[:, -1]))
 
     @property
     def linkages(self):
@@ -232,11 +236,11 @@ class SeppSimulation(object):
         :return: bg_idx, cause_idx, effect_idx. True linkages in simulation.
         """
         # find trigger events with parents still in the dataset
-        linked_map = (~np.isnan(self.data[:, -1])) & (self.data[:, -1] != -1)
+        linked_map = (~np.isnan(self._data[:, -1])) & (self._data[:, -1] != -1)
 
         # extract indices
         effect_idx = np.where(linked_map)[0]
-        cause_idx = self.data[effect_idx, -1]
+        cause_idx = self._data[effect_idx, -1]
         bg_idx = np.where(~linked_map)[0]
 
         return bg_idx, cause_idx, effect_idx
@@ -267,11 +271,11 @@ class SeppSimulation(object):
         # sort by time and reindex
         sort_idx = data[:, 1].argsort()
 
-        self.data = data[sort_idx]
+        self._data = data[sort_idx]
         if self.num_to_prune:
             self.prune_and_relabel(self.num_to_prune)
 
-        self.data = self.data[:, 1:]
+        # self._data = self._data[:, 1:]
 
 
 
@@ -441,7 +445,7 @@ class SenpSimulation(object):
         self.t_total = kwargs.pop('t_total', None)  # to be set now or at runtime
         self.num_to_prune = kwargs.pop('num_to_prune', 0)  # to be set at runtime if required
 
-        self.data = None  # set by run() method
+        self._data = None  # set by run() method
 
         # BG process(es): array of dictionaries, one per BG hotspot
         bg_params = kwargs.pop('bg_params', None)
@@ -585,46 +589,46 @@ class SenpSimulation(object):
             Then relabel the data to correct lineage IDs. """
 
         # assume data are in a sorted np array
-        self.data = self.data[n_prune:-n_prune, :]
+        self._data = self._data[n_prune:-n_prune, :]
         # relocate time so that first event occurs at t=0
-        t0 = self.data[0, 1]
-        self.data[:, 1] -= t0
+        t0 = self._data[0, 1]
+        self._data[:, 1] -= t0
 
         # relabel triggered events after pruning
         # parent index is set to -1 if parent is no longer in the dataset
 
-        parent_ids = self.data[:, 0].astype(int)
-        trigger_idx = np.where(~np.isnan(self.data[:, 4]))[0]
-        link_ids = self.data[trigger_idx, 4].astype(int)
+        parent_ids = self._data[:, 0].astype(int)
+        trigger_idx = np.where(~np.isnan(self._data[:, 4]))[0]
+        link_ids = self._data[trigger_idx, 4].astype(int)
 
         for i in range(link_ids.size):
             this_link_id = link_ids[i]
             # search for corresponding parent
             if not np.any(parent_ids == this_link_id):
                 # parent no longer present in dataset
-                self.data[trigger_idx[i], 4] = -1.
+                self._data[trigger_idx[i], 4] = -1.
             else:
                 # parent is present, update index
                 new_idx = np.where(parent_ids == this_link_id)[0]
                 if len(new_idx) != 1:
                     raise ValueError("Duplicate ID found")
-                self.data[trigger_idx[i], 4] = new_idx[0]
+                self._data[trigger_idx[i], 4] = new_idx[0]
 
     @property
     def ndata(self):
-        return self.data.shape[0]
+        return self._data.shape[0]
 
     @property
     def number_bg(self):
-        if self.data is None:
+        if self._data is None:
             raise AttributeError("Data have not been set.  Call run().")
-        return np.isnan(self.data[:, -1]).sum()
+        return np.isnan(self._data[:, -1]).sum()
 
     @property
     def number_trigger(self):
-        if self.data is None:
+        if self._data is None:
             raise AttributeError("Data have not been set.  Call run().")
-        return sum(~np.isnan(self.data[:, -1]))
+        return sum(~np.isnan(self._data[:, -1]))
 
     @property
     def linkages(self):
@@ -632,11 +636,11 @@ class SenpSimulation(object):
         :return: bg_idx, cause_idx, effect_idx. True linkages in simulation.
         """
         # find trigger events with parents still in the dataset
-        linked_map = (~np.isnan(self.data[:, -1])) & (self.data[:, -1] != -1)
+        linked_map = (~np.isnan(self._data[:, -1])) & (self._data[:, -1] != -1)
 
         # extract indices
         effect_idx = np.where(linked_map)[0]
-        cause_idx = self.data[effect_idx, -1]
+        cause_idx = self._data[effect_idx, -1]
         bg_idx = np.where(~linked_map)[0]
 
         return bg_idx, cause_idx, effect_idx
@@ -667,8 +671,8 @@ class SenpSimulation(object):
         # sort by time and reindex
         sort_idx = data[:, 1].argsort()
 
-        self.data = data[sort_idx]
+        self._data = data[sort_idx]
         if self.num_to_prune:
             self.prune_and_relabel(self.num_to_prune)
 
-        self.data = self.data[:, 1:]
+        self._data = self._data[:, 1:]
