@@ -489,6 +489,11 @@ class SeppStochastic(Sepp):
     ## TODO: think about adding method for weighted_trigger_density, weighted_trigger_density_in_place, weighted_background_density
 
 
+class SeppStochasticPluginBandwidth(SeppStochastic):
+    bg_kde_class = pp_kde.FixedBandwidthKdeScottSeparable
+    trigger_kde_class = pp_kde.FixedBandwidthKdeScott
+
+
 class SeppStochasticStationaryBg(SeppStochastic):
     """
     Stationary background (2D).

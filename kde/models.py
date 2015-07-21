@@ -104,6 +104,53 @@ def set_nn_bandwidths(normed_data, raw_stdevs, num_nn, **kwargs):
     return nn_distances, bandwidths
 
 
+def j_xv(data, h):
+
+    nd = len(h) if hasattr(h, '__iter__') else 1
+    n = len(data)
+    d_mins = data.min(axis=0)
+    d_maxs = data.max(axis=0)
+
+    # def limits(n):
+    #     mul = 1.1
+    #     if n == 1:
+    #         return -mul * d_mins[0], mul * d_maxs[0]
+    #     if n == 2:
+    #         return limits(1) + (lambda x: -mul * d_mins[1], lambda x: mul * d_maxs[1])
+    #     if n == 3:
+    #         return limits(2) + (lambda x, y: -mul * d_mins[2], lambda x, y: mul * d_maxs[2])
+
+    from scipy import integrate
+    k = FixedBandwidthKde(data, bandwidths=h)
+
+    # if nd == 1:
+    #     quadfun = integrate.quad
+    #     intfun = lambda t: k.pdf(t) **2
+    # elif nd == 2:
+    #     quadfun = integrate.dblquad
+    #     intfun = lambda x, t: k.pdf([[t, x]]) ** 2
+    # elif nd == 3:
+    #     quadfun = integrate.tplquad
+    #     intfun = lambda y, x, t: k.pdf([[t, x, y]]) ** 2
+    # else:
+    #     raise AttributeError("Only support 1-3 dimensions")
+    # j1 = quadfun(intfun, *limits(nd))[0]
+
+    j1 = 0.
+    for i in range(nd):
+        integrate.quad(lambda t: k.marginal_pdf(t, dim=i, normed=False),
+                       d_mins[i] - 0.1 * (d_maxs[i] - d_mins[i]),
+                       d_maxs[i] + 0.1 * (d_maxs[i] - d_mins[i]))
+
+    j2 = 0.
+    for i in range(len(data)):
+        d = np.vstack((data[:i], data[i+1:]))
+        k = FixedBandwidthKde(d, bandwidths=h)
+        j2 += k.pdf(data[i])
+    return j1 - 2 * j2 / float(n)
+
+
+
 def compute_cross_validation_bandwidth(data, fold, hmin=None, hmax=None):
     from scipy import optimize
 
@@ -521,6 +568,10 @@ class FixedBandwidthKdeScott(FixedBandwidthKde):
             raise ValueError("Zero values for standard deviation")
         bandwidths = self.raw_std_devs * self.ndata ** (-1. / float(self.ndim + 4))
         self.bandwidths = np.tile(bandwidths, (self.ndata, 1))
+
+
+class FixedBandwidthKdeScottSeparable(FixedBandwidthKdeScott, KdeBaseSeparable):
+    pass
 
 
 class VariableBandwidthKde(FixedBandwidthKde):

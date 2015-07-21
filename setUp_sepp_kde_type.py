@@ -41,16 +41,6 @@ def simulate_data(bg_intensity=10., trigger_intensity=0.2, num_results=4000):
 
     c = simulate.PatchyGaussianSumBackground()
 
-    # c.bg_params[0]['location'] = [-1, -1]
-    # c.bg_params[1]['location'] = [-1, 1]
-    # c.bg_params[2]['location'] = [1, -1]
-    # c.bg_params[3]['location'] = [1, 1]
-    # c.bg_params[0]['sigma'] = [.1, .5]
-    # c.bg_params[1]['sigma'] = [.5, .5]
-    # c.bg_params[2]['sigma'] = [.5, .5]
-    # c.bg_params[3]['sigma'] = [.5, .1]
-    # c.trigger_params['sigma'] = [0.02, 0.01]
-
     c.bg_params[0]['location'] = [-1000., -1000.]
     c.bg_params[1]['location'] = [-1000., 1000.]
     c.bg_params[2]['location'] = [1000., -1000.]
@@ -81,11 +71,49 @@ def simulate_data(bg_intensity=10., trigger_intensity=0.2, num_results=4000):
     return c, data
 
 
+def simulate_data_symm(bg_intensity=10., trigger_intensity=0.2, num_results=4000):
+    n_prune_min = 1000
+
+    # estimate run time
+    t = 1.1 * float(num_results + 2 * n_prune_min) / bg_intensity * (1 - trigger_intensity)
+
+    c = simulate.PatchyGaussianSumBackground()
+
+    c.bg_params[0]['location'] = [-1000., -1000.]
+    c.bg_params[1]['location'] = [-1000., 1000.]
+    c.bg_params[2]['location'] = [1000., -1000.]
+    c.bg_params[3]['location'] = [1000., 1000.]
+    c.bg_params[0]['sigma'] = [500, 500]
+    c.bg_params[1]['sigma'] = [500, 500]
+    c.bg_params[2]['sigma'] = [500, 500]
+    c.bg_params[3]['sigma'] = [500, 500]
+    for i in range(4):
+        c.bg_params[i]['intensity'] = bg_intensity / 4.
+
+    c.trigger_params['sigma'] = [10, 10]
+    c.trigger_params['intensity'] = trigger_intensity
+    c.t_total = t
+    c.num_to_prune = n_prune_min
+    c.run()
+
+    while c.ndata < num_results:
+        print "Too few results, increasing total time..."
+        t *= 1.1
+        c.run()
+
+    # prune final results
+    n_prune = int((c.ndata - num_results) / 2)
+    c.prune_and_relabel(n_prune)
+
+    data = c.data[:num_results, :3]
+    return c, data
+
+
 def get_chicago_data(primary_types=None, domain=None):
     start_date = datetime.date(2011, 3, 1)
     end_date = datetime.date(2012, 1, 6)
-    if domain is None:
-        domain = models.ChicagoDivision.objects.get(name='South').mpoly.simplify()
+    # if domain is None:
+    #     domain = models.ChicagoDivision.objects.get(name='South').mpoly.simplify()
     if primary_types is None:
         primary_types = (
             'burglary',
@@ -192,19 +220,28 @@ def apply_sepp_stochastic_nn(data,
 
 if __name__ == '__main__':
 
+    niter = 50
+
     ## (1) Simulated data
     res_sepp = {}
     res_kde = {}
 
-    c, data = simulate_data(num_results=1500)
+    c, data = simulate_data_symm(num_results=1500)
     nns = (
+        [100, 10],
         [100, 15],
+        [100, 20],
+        [100, 30],
+        [100, 40],
         [100, 50],
         [100, 100],
         [50, 15],
+        [40, 15],
+        [30, 15],
+        [20, 15],
         [15, 15],
     )
-    est_fun = lambda x, y: estimation.estimator_exp_gaussian(x, y, ct=1, cd=50, frac_bg=0.5)
+    est_fun = lambda x, y: estimation.estimator_exp_gaussian(x, y, ct=0.1, cd=50, frac_bg=0.5)
     # est_fun = lambda x, y: estimation.estimator_exp_gaussian(x, y, ct=10, cd=0.05, frac_bg=0.5)
 
     for num_nn in nns:
@@ -214,15 +251,61 @@ if __name__ == '__main__':
         }
         bg_kde_kwargs = {
             'strict': False,
-            'number_nn': num_nn
+            'number_nn': list(num_nn)
         }
 
         sepp = pp_models.SeppStochasticNn(data=data,
                                           max_delta_t=50,
-                                          max_delta_d=1000,
+                                          max_delta_d=500,
                                           seed=42,
                                           estimation_function=est_fun,
                                           trigger_kde_kwargs=trigger_kde_kwargs,
                                           bg_kde_kwargs=bg_kde_kwargs)
-        sepp.train(niter=50)
+        sepp.train(niter=niter)
         res_sepp[tuple(num_nn)] = copy.deepcopy(sepp)
+
+    sepp = pp_models.SeppStochasticPluginBandwidth(
+        data = data,
+        max_delta_t=50,
+        max_delta_d=500,
+        seed=42,
+        estimation_function=est_fun,
+    )
+    sepp.train(niter=niter)
+    res_sepp['plugin'] = copy.deepcopy(sepp)
+
+    # trigger_kde_kwargs = {
+    #     'bandwidths': [10., 20., 10.],
+    # }
+    # bg_kde_kwargs = {
+    #     'bandwidths': [],
+    # }
+    # sepp = pp_models.SeppStochastic(
+    #     data = data,
+    #     max_delta_t=50,
+    #     max_delta_d=500,
+    #     seed=42,
+    #     estimation_function=est_fun,
+    #
+    # )
+
+    ## (2) Real data, Chicago North
+
+    domain = get_chicago_polys()['North']
+    tmp = get_chicago_data()
+    data, t0, cid = tmp['burglary']
+
+    est_fun = lambda x, y: estimation.estimator_exp_gaussian(x, y, ct=0.1, cd=50, frac_bg=0.8)
+    trigger_kde_kwargs = {
+        'strict': False,
+    }
+    bg_kde_kwargs = {
+        'strict': True,
+    }
+    sepp = pp_models.SeppStochasticNn(data=data,
+                                      max_delta_t=90,
+                                      max_delta_d=500,
+                                      seed=42,
+                                      estimation_function=est_fun,
+                                      trigger_kde_kwargs=trigger_kde_kwargs,
+                                      bg_kde_kwargs=bg_kde_kwargs)
