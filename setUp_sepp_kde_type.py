@@ -220,7 +220,7 @@ def apply_sepp_stochastic_nn(data,
 
 if __name__ == '__main__':
 
-    niter = 50
+    niter = 100
 
     ## (1) Simulated data
     res_sepp = {}
@@ -291,11 +291,34 @@ if __name__ == '__main__':
 
     ## (2) Real data, Chicago North
 
-    domain = get_chicago_polys()['North']
-    tmp = get_chicago_data()
+    res_chic_n = {}
+
+    domain = get_chicago_polys()['South']
+    tmp = get_chicago_data(domain=domain)
     data, t0, cid = tmp['burglary']
 
     est_fun = lambda x, y: estimation.estimator_exp_gaussian(x, y, ct=0.1, cd=50, frac_bg=0.8)
+
+    for num_nn in nns:
+        trigger_kde_kwargs = {
+            'strict': False,
+            'number_nn': num_nn[-1]
+        }
+        bg_kde_kwargs = {
+            'strict': False,
+            'number_nn': list(num_nn)
+        }
+
+        sepp = pp_models.SeppStochasticNn(data=data,
+                                          max_delta_t=90,
+                                          max_delta_d=500,
+                                          seed=42,
+                                          estimation_function=est_fun,
+                                          trigger_kde_kwargs=trigger_kde_kwargs,
+                                          bg_kde_kwargs=bg_kde_kwargs)
+        sepp.train(niter=niter)
+        res_chic_n[tuple(num_nn)] = copy.deepcopy(sepp)
+
     trigger_kde_kwargs = {
         'strict': False,
     }
@@ -309,3 +332,5 @@ if __name__ == '__main__':
                                       estimation_function=est_fun,
                                       trigger_kde_kwargs=trigger_kde_kwargs,
                                       bg_kde_kwargs=bg_kde_kwargs)
+    sepp.train(niter=niter)
+    res_chic_n['plugin'] = copy.deepcopy(sepp)

@@ -29,7 +29,7 @@ class SepBase(object):
                  bg_kde_kwargs=None,
                  trigger_kde_kwargs=None,
                  parallel=True,
-                 remove_coincident_points=True,
+                 remove_coincident_pairs=True,
                  **kwargs):
 
         self.p = p
@@ -41,7 +41,7 @@ class SepBase(object):
         self.max_delta_d = None
         self.set_max_delta_t(max_delta_t)
         self.set_max_delta_d(max_delta_d)
-        self.remove_coincident_points = remove_coincident_points
+        self.remove_coincident_pairs = remove_coincident_pairs
 
         self.interpoint_data = None
         self.linkage = None
@@ -312,7 +312,7 @@ class Sepp(SepBase):
         linkage_fun = linkage_func_separable(self.max_delta_t, self.max_delta_d)
         self.linkage = linkages(self.data,
                                 linkage_fun,
-                                remove_coincident_pairs=self.remove_coincident_points)
+                                remove_coincident_pairs=self.remove_coincident_pairs)
         self.interpoint_data = self.data.getrows(self.linkage[1]) - self.data.getrows(self.linkage[0])
         self.linkage_cols = dict(
             [(i, np.concatenate((self.linkage[0][self.linkage[1] == i], [i,]))) for i in range(self.ndata)]

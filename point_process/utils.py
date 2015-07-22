@@ -73,7 +73,7 @@ def linkages(data_source, threshold_fun, data_target=None, chunksize=2**18, remo
         dd = (data_target.space.getrows(j).distance(data_source.space.getrows(i)))
         mask = threshold_fun(dt, dd) & (dt > 0)
         if remove_coincident_pairs:
-            mask &= (dd != 0)
+            mask[dd.toarray() == 0] = False
         mask = mask.toarray(0)
         link_i.extend(i[mask])
         link_j.extend(j[mask])
