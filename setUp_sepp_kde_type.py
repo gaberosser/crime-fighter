@@ -6,6 +6,7 @@ from point_process import simulate
 from database import models
 from validation import hotspot, validation
 import copy
+from matplotlib import pyplot as plt
 import numpy as np
 from rpy2 import robjects, rinterface
 import csv
@@ -221,6 +222,8 @@ def apply_sepp_stochastic_nn(data,
 if __name__ == '__main__':
 
     niter = 100
+    max_t = 150
+    max_d = 500
 
     ## (1) Simulated data
     res_sepp = {}
@@ -297,7 +300,15 @@ if __name__ == '__main__':
     tmp = get_chicago_data(domain=domain)
     data, t0, cid = tmp['burglary']
 
-    est_fun = lambda x, y: estimation.estimator_exp_gaussian(x, y, ct=0.1, cd=50, frac_bg=0.8)
+    # normalise spatial component of data
+    # data[:, 1] -= data[:, 1].min()
+    # data[:, 2] -= data[:, 2].min()
+    # scaling = np.mean(np.std(data[:, 1:], axis=0, ddof=1))
+    # data[:, 1:] /= scaling
+    scaling = 1.
+
+    # est_fun = lambda x, y: estimation.estimator_exp_gaussian(x, y, ct=0.1, cd=50, frac_bg=0.8)
+    est_fun = lambda x, y: estimation.estimator_exp_gaussian(x, y, ct=0.1, cd=50 / scaling, frac_bg=None)
 
     for num_nn in nns:
         trigger_kde_kwargs = {
@@ -310,12 +321,13 @@ if __name__ == '__main__':
         }
 
         sepp = pp_models.SeppStochasticNn(data=data,
-                                          max_delta_t=90,
-                                          max_delta_d=500,
+                                          max_delta_t=max_t,
+                                          max_delta_d=max_d / scaling,
                                           seed=42,
                                           estimation_function=est_fun,
                                           trigger_kde_kwargs=trigger_kde_kwargs,
-                                          bg_kde_kwargs=bg_kde_kwargs)
+                                          bg_kde_kwargs=bg_kde_kwargs,
+                                          remove_coincident_pairs=False)
         sepp.train(niter=niter)
         res_chic_n[tuple(num_nn)] = copy.deepcopy(sepp)
 

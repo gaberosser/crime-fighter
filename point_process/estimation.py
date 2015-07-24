@@ -166,7 +166,7 @@ def estimator_exp_gaussian(data, linkage, ct, cd, frac_bg=0.5):
     :param data:
     :param linkage:
     :param ct: Time decay constant, (per day, hour, etc.)
-    :param cd: Standard deviation of Gaussian distance dependence.
+    :param cd: Standard deviation of Gaussian distance dependence in either axis.
     :param frac_bg: The proportion of events that are BG.
     :return:
     """
@@ -176,13 +176,24 @@ def estimator_exp_gaussian(data, linkage, ct, cd, frac_bg=0.5):
 
     # triggering
     tt = ct * np.exp(-ct * (data[linkage[1], 0] - data[linkage[0], 0])) + eps
-    dd_k = np.sqrt(2 / (np.pi * cd))
+    dd_k = 1 / (2 * np.pi * cd ** 2)
+    # dd_k = np.sqrt(2 / (np.pi * cd))
     dd_sq = (data[linkage[1], 1] - data[linkage[0], 1]) ** 2 + (data[linkage[1], 2] - data[linkage[0], 2]) ** 2
     dd = dd_k * np.exp(-dd_sq / (2 * cd ** 2)) + eps
 
     P_trig = sparse.csr_matrix((tt * dd, linkage), shape=(n, n))
-    return generate_p_from_trig_fixed_proportion_bg(P_trig, linkage, frac_bg)
-
+    if frac_bg is not None:
+        return generate_p_from_trig_fixed_proportion_bg(P_trig, linkage, frac_bg)
+    else:
+        diag_linkage = (np.arange(n), np.arange(n))
+        bg = np.ones(n) * ct * dd_k
+        P_bg = sparse.csr_matrix((bg, diag_linkage), shape=(n, n))
+        P = P_trig + P_bg
+        colsums = P.sum(axis=0).flat
+        P_trig[linkage] = P_trig[linkage] / colsums[linkage[1]]
+        P_bg[diag_linkage] = P_bg[diag_linkage] / colsums[diag_linkage[1]]
+        P = P_trig + P_bg
+        return P
 
 def initial_guess_educated(data, ct=None, cd=None):
 
