@@ -244,38 +244,38 @@ if __name__ == '__main__':
         [20, 15],
         [15, 15],
     )
-    est_fun = lambda x, y: estimation.estimator_exp_gaussian(x, y, ct=0.1, cd=50, frac_bg=0.5)
-    # est_fun = lambda x, y: estimation.estimator_exp_gaussian(x, y, ct=10, cd=0.05, frac_bg=0.5)
-
-    for num_nn in nns:
-        trigger_kde_kwargs = {
-            'strict': False,
-            'number_nn': num_nn[-1]
-        }
-        bg_kde_kwargs = {
-            'strict': False,
-            'number_nn': list(num_nn)
-        }
-
-        sepp = pp_models.SeppStochasticNn(data=data,
-                                          max_delta_t=50,
-                                          max_delta_d=500,
-                                          seed=42,
-                                          estimation_function=est_fun,
-                                          trigger_kde_kwargs=trigger_kde_kwargs,
-                                          bg_kde_kwargs=bg_kde_kwargs)
-        sepp.train(niter=niter)
-        res_sepp[tuple(num_nn)] = copy.deepcopy(sepp)
-
-    sepp = pp_models.SeppStochasticPluginBandwidth(
-        data = data,
-        max_delta_t=50,
-        max_delta_d=500,
-        seed=42,
-        estimation_function=est_fun,
-    )
-    sepp.train(niter=niter)
-    res_sepp['plugin'] = copy.deepcopy(sepp)
+    # est_fun = lambda x, y: estimation.estimator_exp_gaussian(x, y, ct=0.1, cd=50, frac_bg=0.5)
+    # # est_fun = lambda x, y: estimation.estimator_exp_gaussian(x, y, ct=10, cd=0.05, frac_bg=0.5)
+    #
+    # for num_nn in nns:
+    #     trigger_kde_kwargs = {
+    #         'strict': False,
+    #         'number_nn': num_nn[-1]
+    #     }
+    #     bg_kde_kwargs = {
+    #         'strict': False,
+    #         'number_nn': list(num_nn)
+    #     }
+    #
+    #     sepp = pp_models.SeppStochasticNn(data=data,
+    #                                       max_delta_t=50,
+    #                                       max_delta_d=500,
+    #                                       seed=42,
+    #                                       estimation_function=est_fun,
+    #                                       trigger_kde_kwargs=trigger_kde_kwargs,
+    #                                       bg_kde_kwargs=bg_kde_kwargs)
+    #     sepp.train(niter=niter)
+    #     res_sepp[tuple(num_nn)] = copy.deepcopy(sepp)
+    #
+    # sepp = pp_models.SeppStochasticPluginBandwidth(
+    #     data = data,
+    #     max_delta_t=50,
+    #     max_delta_d=500,
+    #     seed=42,
+    #     estimation_function=est_fun,
+    # )
+    # sepp.train(niter=niter)
+    # res_sepp['plugin'] = copy.deepcopy(sepp)
 
     # trigger_kde_kwargs = {
     #     'bandwidths': [10., 20., 10.],
@@ -337,12 +337,12 @@ if __name__ == '__main__':
     bg_kde_kwargs = {
         'strict': True,
     }
-    sepp = pp_models.SeppStochasticNn(data=data,
-                                      max_delta_t=90,
-                                      max_delta_d=500,
-                                      seed=42,
-                                      estimation_function=est_fun,
-                                      trigger_kde_kwargs=trigger_kde_kwargs,
-                                      bg_kde_kwargs=bg_kde_kwargs)
+    sepp = pp_models.SeppStochasticPluginBandwidth(data=data,
+                                                   max_delta_t=max_t,
+                                                   max_delta_d=max_d / scaling,
+                                                   seed=42,
+                                                   estimation_function=est_fun,
+                                                   trigger_kde_kwargs=trigger_kde_kwargs,
+                                                   bg_kde_kwargs=bg_kde_kwargs)
     sepp.train(niter=niter)
     res_chic_n['plugin'] = copy.deepcopy(sepp)

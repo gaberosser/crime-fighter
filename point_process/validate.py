@@ -6,6 +6,9 @@ from utils import augmented_matrix
 import models
 from scipy import sparse
 import copy
+import pickle
+import re
+import importlib
 from data.models import CartesianSpaceTimeData
 
 
@@ -296,6 +299,10 @@ class mock_pp_class():
 
 
 class SeppValidationPreTrainedModel(SeppValidationFixedModel):
+    """
+    As for parent class, except that the model is supplied already trained, so that the validation can
+    commence immediately with the predict-assess run.
+    """
 
     def _initial_setup(self, **train_kwargs):
         """
@@ -313,6 +320,43 @@ class SeppValidationPreTrainedModel(SeppValidationFixedModel):
 
 class SeppValidationPreTrainedModelIntegration(validation.ValidationIntegration, SeppValidationPreTrainedModel):
     pass
+
+
+def validate_pickled_model(filename,
+                           sample_unit_size,
+                           n_sample_per_grid=20,
+                           time_step=1,
+                           n_iter=100,
+                           validation_class=SeppValidationPreTrainedModelIntegration,
+                           domain=None,
+                           cutoff_t=None,
+                           include_predictions=False,
+                           pred_kwargs=None,
+                           train_kwargs=None):
+    # load and instantiate
+    with open(filename, 'r') as f:
+        obj = pickle.load(f)
+        cls = re.sub(r"^<class '(.*)'>$", r"\1", obj['class'])
+        module = '.'.join(cls.split('.')[:-1])
+        cls = cls.split('.')[-1]
+    if module == '':
+        module = importlib.import_module('models', package='.')
+    else:
+        module = importlib.import_module(module)
+    cls = getattr(module, cls)
+
+    obj = cls.from_pickle(filename)
+    vb = validation_class(data=obj.data,
+                          model=obj,
+                          spatial_domain=domain,
+                          cutoff_t=cutoff_t,
+                          include_predictions=include_predictions)
+    vb.set_sample_units(sample_unit_size, n_sample_per_grid=n_sample_per_grid)
+    res = vb.run(time_step,
+                 n_iter=n_iter,
+                 pred_kwargs=pred_kwargs,
+                 train_kwargs=train_kwargs)
+    return vb, res
 
 
 if __name__ == "__main__":

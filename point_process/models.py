@@ -4,7 +4,8 @@ from utils import linkage_func_separable, linkages, random_sample_from_p
 from kde import models as pp_kde
 import numpy as np
 from time import time
-import warnings
+import dill
+import pickle
 from scipy import sparse, special
 import math
 from data import models as data_models
@@ -97,6 +98,73 @@ class SepBase(object):
     @property
     def data_space(self):
         raise NotImplementedError
+
+    def set_parallel(self, b_parallel):
+        """
+        Toggles parallel processing. If KDEs are defined, they are modified accordingly.
+        """
+        self.parallel = b_parallel
+        if self.trigger_kde is not None:
+            self.trigger_kde.set_parallel(self.parallel)
+        if self.bg_kde is not None:
+            self.bg_kde.set_parallel(self.parallel)
+        if 'parallel' in self.trigger_kde_kwargs:
+            self.trigger_kde_kwargs['parallel'] = self.parallel
+        if 'parallel' in self.bg_kde_kwargs:
+            self.bg_kde_kwargs['parallel'] = self.parallel
+
+    @classmethod
+    def fields_to_pickle(cls):
+        """
+        Two lists of names of fields that must be pickled and set manually upon reloading.
+        The first is passed as kwargs directly to the class constructor
+        The second set of variables are set separately after instantiation.
+        """
+        kwargs = (
+            'data',
+            'p',
+            'parallel',
+            'remove_coincident_pairs',
+            'max_delta_t',
+            'max_delta_d',
+            'trigger_kde_kwargs',
+            'bg_kde_kwargs',
+        )
+        post = (
+            'linkage',
+            'linkage_cols',
+            'interpoint_data',
+            'num_bg',
+            'num_trig',
+            'log_likelihoods',
+            'run_times',
+        )
+        return kwargs, post
+
+    def pickle(self, filename):
+        save_obj = {'class': repr(self.__class__)}
+        kwargs, post = self.fields_to_pickle()
+        for k in kwargs + post:
+            save_obj[k] = getattr(self, k)
+        with open(filename, 'w') as f:
+            dill.dump(save_obj, f)
+
+    @classmethod
+    def from_pickle(cls, filename):
+        kwargs, post = cls.fields_to_pickle()
+        with open(filename, 'r') as f:
+            # FIXME: dill.load() raises an error here, where pickle.load works.
+            load_obj = pickle.load(f)
+        kwargs = dict([(k, load_obj.pop(k)) for k in kwargs])
+        new_obj = cls(**kwargs)
+        for k in post:
+            setattr(new_obj, k, load_obj.pop(k))
+
+        # finally, recreate the KDEs
+        # stochastic algorithms will regenerate this differently
+        new_obj.set_kdes()
+
+        return new_obj
 
     def initial_estimate(self):
         if self.estimation_function is None:
@@ -434,20 +502,20 @@ class SeppStochastic(Sepp):
     def set_seed(self, seed):
         self.rng.seed(seed)
 
-    def set_parallel(self, state):
-        if state is True:
-            self.parallel = True
-        elif state is False:
-            self.parallel = False
-        else:
-            raise AttributeError("input argument must be either True or False")
-
-        if self.bg_kde:
-            self.bg_kde.parallel = self.parallel
-        if self.trigger_kde:
-            self.trigger_kde.parallel = self.parallel
-        self.bg_kde_kwargs['parallel'] = self.parallel
-        self.trigger_kde_kwargs['parallel'] = self.parallel
+    # def set_parallel(self, state):
+    #     if state is True:
+    #         self.parallel = True
+    #     elif state is False:
+    #         self.parallel = False
+    #     else:
+    #         raise AttributeError("input argument must be either True or False")
+    #
+    #     if self.bg_kde:
+    #         self.bg_kde.parallel = self.parallel
+    #     if self.trigger_kde:
+    #         self.trigger_kde.parallel = self.parallel
+    #     self.bg_kde_kwargs['parallel'] = self.parallel
+    #     self.trigger_kde_kwargs['parallel'] = self.parallel
 
     def sample_data(self):
         return random_sample_from_p(self.p, self.linkage_cols, rng=self.rng)
