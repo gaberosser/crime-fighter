@@ -332,7 +332,8 @@ def validate_pickled_model(filename,
                            cutoff_t=None,
                            include_predictions=False,
                            pred_kwargs=None,
-                           train_kwargs=None):
+                           train_kwargs=None,
+                           parallel=True):
     # load and instantiate
     with open(filename, 'r') as f:
         obj = pickle.load(f)
@@ -346,6 +347,7 @@ def validate_pickled_model(filename,
     cls = getattr(module, cls)
 
     obj = cls.from_pickle(filename)
+    obj.set_parallel(b_parallel=parallel)
     vb = validation_class(data=obj.data,
                           model=obj,
                           spatial_domain=domain,

@@ -14,19 +14,16 @@ MODULE=scripts.vary_num_nn_validation
 #$ -S /bin/bash
 
 # 2. Request wallclock time (format hours:minutes:seconds).
-#$ -l h_rt=1:0:0
+#$ -l h_rt=3:0:0
 
 # 3. Request RAM.
-#$ -l mem=8G
-
-# 3.5 Request multiprocessors
-#$ -l thr=8
+#$ -l mem=4G
 
 # 4. Request 15 gigabyte of TMPDIR space (default is 10 GB)
 #$ -l tmpfs=10G
 
 # 5. Set up the job array.
-#$ -t 1-24
+#$ -t 1-12
 
 # 6. Set the name of the job.
 #$ -N vary_num_nn

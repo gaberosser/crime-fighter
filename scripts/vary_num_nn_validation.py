@@ -57,7 +57,8 @@ if __name__ == '__main__':
                                                         n_sample_per_grid=num_sample_points_per_unit,
                                                         domain=domain,
                                                         cutoff_t=INITIAL_CUTOFF,
-                                                        n_iter=100)
+                                                        n_iter=100,
+                                                        parallel=False)
 
     logger.info("Saving results.")
     outfile = os.path.join(out_dir, filename)
