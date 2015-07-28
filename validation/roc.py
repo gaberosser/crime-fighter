@@ -7,15 +7,21 @@ from analysis.spatial import (create_spatial_grid,
                               shapely_rectangle_from_vertices,
                               geodjango_rectangle_from_vertices,
                               HAS_GEODJANGO)
-
-from plotting.spatial import plot_shapely_geos
-from plotting.utils import colour_mapper
 from data.models import DataArray, NetworkSpaceTimeData, NetworkData, NetPoint, CartesianData
 from shapely.geometry import Point, Polygon
-import matplotlib as mpl
-from matplotlib import pyplot as plt
-from matplotlib import cm
 from network.utils import network_walker_uniform_sample_points
+
+# optional failure upon importing plotting routines for headless operation
+try:
+    import matplotlib as mpl
+    from matplotlib import pyplot as plt
+    from matplotlib import cm
+    from plotting.spatial import plot_shapely_geos
+    from plotting.utils import colour_mapper
+    MPL = True
+except ImportError:
+    MPL = False
+
 
 if HAS_GEODJANGO:
     from django.contrib.gis import geos
