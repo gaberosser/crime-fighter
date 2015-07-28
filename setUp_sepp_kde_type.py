@@ -231,18 +231,18 @@ if __name__ == '__main__':
 
     c, data = simulate_data_symm(num_results=1500)
     nns = (
-        [100, 10],
-        [100, 15],
-        [100, 20],
-        [100, 30],
-        [100, 40],
-        [100, 50],
-        [100, 100],
-        [50, 15],
-        [40, 15],
-        [30, 15],
-        [20, 15],
-        [15, 15],
+        (100, 10),
+        (100, 15),
+        (100, 20),
+        (100, 30),
+        (100, 40),
+        (100, 50),
+        (100, 100),
+        (50, 15),
+        (40, 15),
+        (30, 15),
+        (20, 15),
+        (15, 15),
     )
     # est_fun = lambda x, y: estimation.estimator_exp_gaussian(x, y, ct=0.1, cd=50, frac_bg=0.5)
     # # est_fun = lambda x, y: estimation.estimator_exp_gaussian(x, y, ct=10, cd=0.05, frac_bg=0.5)
@@ -265,7 +265,7 @@ if __name__ == '__main__':
     #                                       trigger_kde_kwargs=trigger_kde_kwargs,
     #                                       bg_kde_kwargs=bg_kde_kwargs)
     #     sepp.train(niter=niter)
-    #     res_sepp[tuple(num_nn)] = copy.deepcopy(sepp)
+    #     res_sepp[num_nn] = copy.deepcopy(sepp)
     #
     # sepp = pp_models.SeppStochasticPluginBandwidth(
     #     data = data,
@@ -293,11 +293,15 @@ if __name__ == '__main__':
     # )
 
     ## (2) Real data, Chicago North
-
+    outdir = '/home/gabriel/data/chicago_northwest/burglary/vary_num_nn'
     res_chic_n = {}
 
-    domain = get_chicago_polys()['South']
-    tmp = get_chicago_data(domain=domain)
+    polys = get_chicago_polys()
+
+    domain_nw = polys['Northwest']
+    domain_s = polys['South']
+    # domain = get_chicago_polys()['Northwest']
+    tmp = get_chicago_data(domain=domain_nw)
     data, t0, cid = tmp['burglary']
 
     # normalise spatial component of data
@@ -329,7 +333,9 @@ if __name__ == '__main__':
                                           bg_kde_kwargs=bg_kde_kwargs,
                                           remove_coincident_pairs=False)
         sepp.train(niter=niter)
-        res_chic_n[tuple(num_nn)] = copy.deepcopy(sepp)
+        filename = 'nn_%d_%d.pickle' % num_nn
+        sepp.pickle(os.path.join(outdir, filename))
+        res_chic_n[num_nn] = copy.deepcopy(sepp)
 
     trigger_kde_kwargs = {
         'strict': False,
@@ -345,4 +351,71 @@ if __name__ == '__main__':
                                                    trigger_kde_kwargs=trigger_kde_kwargs,
                                                    bg_kde_kwargs=bg_kde_kwargs)
     sepp.train(niter=niter)
+    sepp.pickle(os.path.join(outdir, 'scott_plugin_bandwidth.pickle'))
     res_chic_n['plugin'] = copy.deepcopy(sepp)
+
+    # validation en masse
+    num_sample_points_per_unit = 20
+    sample_unit_length = 250
+    res_validate_s = {}
+    obj_validate_s = {}
+
+    indir = '/home/gabriel/data/chicago_south/burglary/vary_num_nn'
+    for num_nn in nns:
+        filename = 'nn_%d_%d.pickle' % num_nn
+        fullfile = os.path.join(indir, filename)
+        try:
+            this_vb, this_res = validate.validate_pickled_model(fullfile,
+                                                                sample_unit_length,
+                                                                n_sample_per_grid=num_sample_points_per_unit,
+                                                                domain=domain_s,
+                                                                cutoff_t=INITIAL_CUTOFF)
+            res_validate_s[num_nn] = copy.deepcopy(this_res)
+            obj_validate_s[num_nn] = copy.deepcopy(this_vb)
+        except Exception:
+            pass
+
+    fullfile = os.path.join(indir, 'scott_plugin_bandwidth.pickle')
+    try:
+        this_vb, this_res = validate.validate_pickled_model(fullfile,
+                                                            sample_unit_length,
+                                                            n_sample_per_grid=num_sample_points_per_unit,
+                                                            domain=domain_s,
+                                                            cutoff_t=INITIAL_CUTOFF)
+        res_validate_s['plugin'] = copy.deepcopy(this_res)
+        obj_validate_s['plugin'] = copy.deepcopy(this_vb)
+    except Exception:
+        pass
+
+    # validation en masse
+    num_sample_points_per_unit = 20
+    sample_unit_length = 250
+    res_validate_nw = {}
+    obj_validate_nw = {}
+
+    indir = '/home/gabriel/data/chicago_northwest/burglary/vary_num_nn'
+    for num_nn in nns:
+        filename = 'nn_%d_%d.pickle' % num_nn
+        fullfile = os.path.join(indir, filename)
+        try:
+            this_vb, this_res = validate.validate_pickled_model(fullfile,
+                                                                sample_unit_length,
+                                                                n_sample_per_grid=num_sample_points_per_unit,
+                                                                domain=domain_nw,
+                                                                cutoff_t=INITIAL_CUTOFF)
+            res_validate_nw[num_nn] = copy.deepcopy(this_res)
+            obj_validate_nw[num_nn] = copy.deepcopy(this_vb)
+        except Exception:
+            pass
+
+    fullfile = os.path.join(indir, 'scott_plugin_bandwidth.pickle')
+    try:
+        this_vb, this_res = validate.validate_pickled_model(fullfile,
+                                                            sample_unit_length,
+                                                            n_sample_per_grid=num_sample_points_per_unit,
+                                                            domain=domain_nw,
+                                                            cutoff_t=INITIAL_CUTOFF)
+        res_validate_nw['plugin'] = copy.deepcopy(this_res)
+        obj_validate_nw['plugin'] = copy.deepcopy(this_vb)
+    except Exception:
+        pass
