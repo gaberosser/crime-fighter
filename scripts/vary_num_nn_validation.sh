@@ -41,8 +41,9 @@ MODULE=scripts.vary_num_nn_validation
 number=$SGE_TASK_ID
 paramfile=$HOME/Scratch/crime-fighter/scripts/parameters/vary_num_nn_validation.txt
 
-parama=`sed -n ${number}p $paramfile | awk '{print $1}'`
-paramb=`sed -n ${number}p $paramfile | awk '{print $2}'`
+paramloc=`sed -n ${number}p $paramfile | awk '{print $1}'`
+parama=`sed -n ${number}p $paramfile | awk '{print $2}'`
+paramb=`sed -n ${number}p $paramfile | awk '{print $3}'`
 
 # 9. Run the program (replace echo with your binary and options).
 # cd $HOME

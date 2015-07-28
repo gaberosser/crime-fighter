@@ -1,6 +1,6 @@
 __author__ = 'gabriel'
 import datetime
-from analysis import cad, spatial, chicago
+from analysis import cad, spatial, chicago, sanfrancisco
 from point_process import models as pp_models, estimation, validate, plots as pp_plotting
 from point_process import simulate
 from database import models
@@ -126,6 +126,28 @@ def get_chicago_data(primary_types=None, domain=None):
     for pt in primary_types:
         key = pt.replace(' ', '_')
         data[key] = chicago.get_crimes_by_type(pt, start_date=start_date,
+                                               end_date=end_date,
+                                               domain=domain,
+                                               convert_dates=True)
+    return data
+
+
+def get_sanfran_data(primary_types=None, domain=None):
+    start_date = datetime.date(2011, 3, 1)
+    end_date = datetime.date(2012, 1, 6)
+    # if domain is None:
+    #     domain = models.ChicagoDivision.objects.get(name='South').mpoly.simplify()
+    if primary_types is None:
+        primary_types = (
+            'burglary',
+            'assault',
+            'vehicle theft'
+        )
+
+    data = {}
+    for pt in primary_types:
+        key = pt.replace(' ', '_')
+        data[key] = sanfrancisco.get_crimes_by_type(pt, start_date=start_date,
                                                end_date=end_date,
                                                domain=domain,
                                                convert_dates=True)

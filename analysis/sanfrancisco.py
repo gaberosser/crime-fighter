@@ -41,7 +41,6 @@ def get_crimes_by_type(crime_type='burglary',
         end_date = datetime.datetime.combine(end_date, datetime.time(0)) - datetime.timedelta(seconds=1)
 
     obj = models.SanFrancisco()
-    obj.select()
 
     where_dict = {
         'LOWER(category)': "*LIKE '{0}'".format(crime_type.lower())
@@ -66,6 +65,9 @@ def get_crimes_by_type(crime_type='burglary',
     #     sql += """AND {0}""".format(x)
     res = obj.select(where_dict, fields=('incident_number', 'datetime', 'ST_X(location)', 'ST_Y(location)'))
 
+    if len(res) == 0:
+        return
+
     # cursor.execute(sql)
     # res = cursor.fetchall()
     cid = np.array([x['incident_number'] for x in res])
@@ -73,6 +75,7 @@ def get_crimes_by_type(crime_type='burglary',
     # identify any repeated incident numbers and choose one (doesn't matter which, space and time components are copied)
     cid, idx = np.unique(cid, return_index=True)
     res = [res[i] for i in idx]
+
 
     t0 = min([x['datetime'] for x in res])
     xy = np.array([(res[i]['ST_X(location)'], res[i]['ST_Y(location)']) for i in range(len(res))])
