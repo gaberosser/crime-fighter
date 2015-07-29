@@ -46,4 +46,4 @@ paramb=`sed -n ${number}p $paramfile | awk '{print $3}'`
 # cd $HOME
 # source .bashrc
 cd $HOME/Scratch/crime-fighter
-python -m $MODULE $LOCATION $parama $paramb
+python -m $MODULE $paramloc $parama $paramb
