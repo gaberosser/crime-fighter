@@ -12,7 +12,7 @@ import logging
 import dill as pickle
 INITIAL_CUTOFF = 212
 num_sample_points_per_unit = 20
-sample_unit_length = 250
+sample_unit_length = 100
 
 if __name__ == '__main__':
     assert len(sys.argv) == 4, "Three input arguments required"

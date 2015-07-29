@@ -1,9 +1,5 @@
 #!/bin/bash -l
 
-# set the location
-# LOCATION=chicago_northwest
-LOCATION=chicago_south
-
 # set the run type
 MODULE=scripts.vary_num_nn_validation
 
