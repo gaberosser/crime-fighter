@@ -379,6 +379,22 @@ class SanFrancisco(GeosTable):
     }
 
 
+class LosAngeles(GeosTable):
+    table_name = 'losangeles'
+    schema = (
+        'id SERIAL PRIMARY KEY',
+        'incident_number VARCHAR(9)',
+        'datetime TIMESTAMP',
+        'location GEOMETRY(POINT, 26945)',  # US NAD 83 zone 5
+        'category VARCHAR(64) NOT NULL',
+    )
+
+    spatial_indices = {
+        'gix': 'location'
+    }
+
+
+
 class Ocu(models.Model):
     code = models.CharField(help_text='OCU code', max_length=3, primary_key=True)
     description = models.CharField(help_text='OCU interpretation', max_length=128)

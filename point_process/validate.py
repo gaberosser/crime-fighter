@@ -324,6 +324,7 @@ class SeppValidationPreTrainedModelIntegration(validation.ValidationIntegration,
 
 def validate_pickled_model(filename,
                            sample_unit_size,
+                           data=None,
                            n_sample_per_grid=20,
                            time_step=1,
                            n_iter=100,
@@ -348,7 +349,11 @@ def validate_pickled_model(filename,
 
     obj = cls.from_pickle(filename)
     obj.set_parallel(b_parallel=parallel)
-    vb = validation_class(data=obj.data,
+
+    if data is None:
+        data = obj.data
+
+    vb = validation_class(data=data,
                           model=obj,
                           spatial_domain=domain,
                           cutoff_t=cutoff_t,

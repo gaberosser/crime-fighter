@@ -333,15 +333,18 @@ class RocGrid(SpatialRoc):
         )
 
     def plot(self,
-             show_sample_units=False,
+             show_sample_units=True,
+             show_sample_points=False,
              show_prediction=True,
              fmax=0.9,
              cmap='Reds',
+             ax=None,
              **kwargs
     ):
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
-        ax.set_aspect('equal')
+        if ax is None:
+            fig = plt.figure()
+            ax = fig.add_subplot(111)
+            ax.set_aspect('equal')
         plot_shapely_geos(self.poly, facecolor='none', edgecolor='k', ax=ax)
 
         if show_prediction:
@@ -353,12 +356,13 @@ class RocGrid(SpatialRoc):
                 plot_shapely_geos(sq, ax=ax, facecolor=cmapper.to_rgba(pv), edgecolor='none',
                                   alpha=kwargs.pop('alpha', 0.4))
 
-
         if show_sample_units:
             plot_shapely_geos([shapely_rectangle_from_vertices(*grid) for grid in self.sample_units],
                               ax=ax,
                               facecolor='none')
-            plt.scatter(*self.sample_points.separate, c='k', marker='o')
+
+        if show_sample_points:
+            plt.scatter(*self.sample_points.separate, s=10, c='k', marker='o')
 
         # remove x and y ticks as these rarely add anything
         ax.set_xticks([])

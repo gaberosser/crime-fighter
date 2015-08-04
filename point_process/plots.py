@@ -357,7 +357,10 @@ def multiplots(ppobj, simobj=None, maxes=None):
     ax.set_ylim([0, 1.05 * ymax])
     ax.set_xlabel('Number iterations')
     ax.set_ylabel('Number events')
-    ax.legend([t[0] for t in h], ('B/g, inferred', 'Trig, inferred', 'B/g, true', 'Trig, true'), 'right')
+    if simobj:
+        ax.legend([t[0] for t in h], ('B/g, inferred', 'Trig, inferred', 'B/g, true', 'Trig, true'), 'right')
+    else:
+        ax.legend([t[0] for t in h], ('B/G', 'Trigger'), 'right')
 
     # fig A2
     t_max = t_max or ppobj.trigger_kde.marginal_icdf(ci, dim=0)
@@ -399,10 +402,10 @@ def multiplots(ppobj, simobj=None, maxes=None):
             plt.plot(y, zy, 'k--')
             zmax_theor = th/(np.sqrt(2 * np.pi) * sy)
             ax.set_ylim([0, 1.05 * max(zmax_infer, zmax_theor)])
+            ax.legend(ax.get_lines(), ('Inferred', 'True'), 'upper right')
         else:
             ax.set_ylim([0, 1.05 * zmax_infer])
         ax.set_xlim([-y_max, y_max])
-        ax.legend(ax.get_lines(), ('Inferred', 'True'), 'upper right')
 
 
 def plot_trigger_marginals(trigger_kde, percentile=0.01):

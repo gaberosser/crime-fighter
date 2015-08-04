@@ -144,9 +144,12 @@ def dump_crimes_to_table(table_name,
         cur.execute(insert_sql)
 
 
-def get_camden_region():
-    camden = models.Division.objects.get(type='borough', name__iexact='camden')
-    return camden.mpoly.simplify()  # type Polygon
+def get_camden_region(as_shapely=False):
+    poly = models.Division.objects.get(type='borough', name__iexact='camden')
+    poly = poly.mpoly.simplify()  # type Polygon
+    if as_shapely:
+        poly = geodjango_to_shapely(poly)
+    return poly
 
 
 class CadAggregate(object):
@@ -344,6 +347,7 @@ def cad_spatial_repeat_analysis(nicl_type=3):
     ax.set_xlim(np.array([-150, 150]) + np.array([x_min, x_max]))
     ax.set_ylim(np.array([-150, 150]) + np.array([y_min, y_max]))
     ax.set_aspect('equal')
+    ax.axis('off')
 
     plt.draw()
 
@@ -399,27 +403,6 @@ def jiggle_all_points_on_grid(x, y):
     return np.array(res)
 
 
-def apply_sepp_to_data(data,
-                       max_delta_t,
-                       max_delta_d,
-                       estimation_function,
-                       niter=50,
-                       bg_kde_kwargs=None,
-                       trigger_kde_kwargs=None,
-                       sepp_class=pp_models.SeppStochasticNnReflected,
-                       rng_seed=42,
-                       ):
-    bg_kde_kwargs = bg_kde_kwargs or {}
-    trigger_kde_kwargs = trigger_kde_kwargs or {}
-    r = sepp_class(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
-                   bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs,
-                   estimation_function=estimation_function)
-    if rng_seed:
-        r.set_seed(rng_seed)
-    r.train(niter=niter)
-    return r
-
-
 def apply_point_process(nicl_type=3,
                         only_new=False,
                         start_date=None,
@@ -434,6 +417,8 @@ def apply_point_process(nicl_type=3,
                         tol_p=None,
                         data=None,
                         rng_seed=42,
+                        initial_est=None,
+                        remove_coincident_pairs=False,
                         ):
 
     # suggested value:
@@ -446,8 +431,9 @@ def apply_point_process(nicl_type=3,
         res, t0, cid = get_crimes_by_type(nicl_type=nicl_type, only_new=only_new, jiggle_scale=jiggle_scale,
                                           start_date=start_date, end_date=end_date)
 
-    # define initial estimator
-    est = lambda x, y: estimation.estimator_bowers(x, y, ct=1, cd=0.02)
+    if initial_est is None:
+        # define initial estimator
+        initial_est = lambda x, y: estimation.estimator_exp_gaussian(x, y, ct=0.1, cd=50)
 
     if num_nn is not None:
         if len(num_nn) != 2:
@@ -473,12 +459,13 @@ def apply_point_process(nicl_type=3,
         res,
         max_delta_t=max_delta_t,
         max_delta_d=max_delta_d,
-        estimation_function=est,
+        estimation_function=initial_est,
         niter=niter,
         bg_kde_kwargs=bg_kde_kwargs,
         trigger_kde_kwargs=trigger_kde_kwargs,
         sepp_class=sepp_class,
-        rng_seed=rng_seed
+        rng_seed=rng_seed,
+        remove_coincident_pairs=remove_coincident_pairs,
     )
 
     # r = sepp_class(data=res, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
@@ -489,6 +476,29 @@ def apply_point_process(nicl_type=3,
     # # train on all data
     # ps = r.train(niter=niter, tol_p=tol_p)
     # return r, ps
+
+
+def apply_sepp_to_data(data,
+                       max_delta_t,
+                       max_delta_d,
+                       estimation_function,
+                       niter=50,
+                       bg_kde_kwargs=None,
+                       trigger_kde_kwargs=None,
+                       sepp_class=pp_models.SeppStochasticNnReflected,
+                       rng_seed=42,
+                       remove_coincident_pairs=False,
+                       ):
+    bg_kde_kwargs = bg_kde_kwargs or {}
+    trigger_kde_kwargs = trigger_kde_kwargs or {}
+    r = sepp_class(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
+                   bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs,
+                   estimation_function=estimation_function,
+                   remove_coincident_pairs=remove_coincident_pairs)
+    if rng_seed:
+        r.set_seed(rng_seed)
+    r.train(niter=niter)
+    return r
 
 
 def apply_sepp_to_tabular_data(table_name):

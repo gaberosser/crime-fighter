@@ -535,13 +535,19 @@ class SeppStochastic(Sepp):
             else:
                 # override the KDE
                 self.bg_kde = None
+        except AttributeError as exc:
+            logger.error("Error while setting BG KDE.")
+            logger.error("Unable to set_kdes. Num BG: %d, num trigger %d" % (self.num_bg[-1], self.num_trig[-1]))
+            raise exc
+
+        try:
             if len(interpoint) > 1:
                 self.trigger_kde = self.trigger_kde_class(interpoint, **self.trigger_kde_kwargs)
             else:
                 # override the KDE
                 self.trigger_kde = None
-
         except AttributeError as exc:
+            logger.error("Error while setting trigger KDE.")
             logger.error("Unable to set_kdes. Num BG: %d, num trigger %d" % (self.num_bg[-1], self.num_trig[-1]))
             raise exc
 

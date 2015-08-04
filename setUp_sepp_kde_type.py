@@ -12,6 +12,7 @@ from rpy2 import robjects, rinterface
 import csv
 import os
 import settings
+import pickle
 
 # T0 = 40603
 T0 = 0
@@ -353,7 +354,7 @@ if __name__ == '__main__':
                                           estimation_function=est_fun,
                                           trigger_kde_kwargs=trigger_kde_kwargs,
                                           bg_kde_kwargs=bg_kde_kwargs,
-                                          remove_coincident_pairs=False)
+                                          remove_coincident_pairs=True)
         sepp.train(niter=niter)
         filename = 'nn_%d_%d.pickle' % num_nn
         sepp.pickle(os.path.join(outdir, filename))
@@ -441,3 +442,37 @@ if __name__ == '__main__':
         obj_validate_nw['plugin'] = copy.deepcopy(this_vb)
     except Exception:
         pass
+
+
+    ## loading validation results
+    indir = '/home/gabriel/pickled_results/vary_num_nn/burglary'
+    locs = (
+        'chicago_south',
+        'chicago_northwest'
+    )
+    pai = {}
+    cov = {}
+    hr = {}
+    for l in locs:
+        this_dir = os.path.join(indir, l)
+        pai[l] = {}
+        cov[l] = {}
+        hr[l] = {}
+        for n in nns:
+            filename = 'nn_%d_%d.pickle' % n
+            fullfile = os.path.join(this_dir, filename)
+            if not os.path.isfile(fullfile):
+                continue
+            with open(fullfile, 'r') as f:
+                tmp = pickle.load(f)
+            this_vb_res = tmp['results']['full_static']
+            cov[l][n] = this_vb_res['cumulative_area']
+            pai[l][n] = this_vb_res['pai']
+            hr[l][n] = this_vb_res['cumulative_crime']
+
+
+    ## plotting
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    for n in nns:
+        ax.plot(cov['chicago_south'][n].mean(axis=0), hr['chicago_south'][n].mean(axis=0))

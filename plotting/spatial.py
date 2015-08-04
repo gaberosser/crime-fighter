@@ -118,6 +118,8 @@ def plot_shapely_geos(shapes, ax=None, **kwargs):
         shapely_geometry.LinearRing: plot_shapely_line,
         shapely_geometry.Polygon: plot_shapely_polygon,
         shapely_geometry.MultiPolygon: plot_shapely_multipolygon,
+        shapely_geometry.GeometryCollection:
+            lambda s, ax, **kwargs: [plot_shapely_geos(t, ax, **kwargs) for t in s],
     }
 
     if issubclass(shapes.__class__, shapely_geometry.base.BaseGeometry):
@@ -212,6 +214,7 @@ def plot_surface_function_on_polygon(poly,
     elif show_domain:
         plot_shapely_geos(poly, ax=ax)
 
+    plt.axis('equal')
     plt.draw()
 
     return xx, yy, zz

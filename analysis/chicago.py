@@ -9,6 +9,7 @@ import datetime
 from time import time
 from database import models
 from point_process import estimation, models as pp_models, validate
+from analysis import spatial
 import settings
 import os
 from django.db import connection
@@ -32,6 +33,17 @@ def compute_chicago_region(fill_in=True):
         x += (x[0],)
         return Polygon(x)
     return mpoly
+
+
+def get_chicago_polys(as_shapely=True):
+    sides = models.ChicagoDivision.objects.filter(type='chicago_side')
+    res = {}
+    for s in sides:
+        if as_shapely:
+            res[s.name] = spatial.geodjango_to_shapely(s.mpoly.simplify())
+        else:
+            res[s.name] = s.mpoly.simplify()
+    return res
 
 
 def compute_chicago_marine_section():

@@ -739,3 +739,47 @@ def san_francisco(verbose=True, chunksize=50000, limit=None):
                 res = []
     obj.insert_many(res)
     print count
+
+
+def los_angeles(verbose=True, chunksize=50000, limit=None):
+    obj = models.LosAngeles()
+    obj.rewrite_table()
+    srid = 26945
+
+    ## FIXME: it's slow looking up ids in a list. Instead, use a dictionary with id as key then convert via values() when required.
+    ## This will auto-ignore duplicate IDs.
+
+    DATADIR = os.path.join(settings.DATA_DIR, 'los_angeles')
+    count = 1
+    with open(os.path.join(DATADIR, 'lapd_crime_and_collision_2014.csv'), 'r') as f:
+        c = csv.DictReader(f)
+        res = []
+        for row in c:
+            if limit and count > limit:
+                break
+            if len(row['Location 1']) == 0 or row['Location 1'][0] != '(':
+                continue
+            loc_comp = row['Location 1'].replace(' ', '')[1:-1].split(',')
+            lat = float(loc_comp[0])
+            lon = float(loc_comp[1])
+
+            t = {
+                'incident_number': row['DR NO'],
+                'datetime': "to_timestamp('{0} {1}', 'MM/DD/YYYY HH24MI')".format(
+                    row['DATE OCC'],
+                    '%04d' % int(row['TIME OCC'])
+                ),
+                'location': "ST_Transform(ST_SetSRID(ST_Point({0}, {1}), 4326), {2})".format(
+                    lon,
+                    lat,
+                    srid
+                ),
+                'category': "'%s'" % row['Crm Cd Desc'],
+            }
+            res.append(t)
+            count += 1
+            if (count % chunksize) == 0 and count:
+                obj.insert_many(res)
+                res = []
+    obj.insert_many(res)
+    print count

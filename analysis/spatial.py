@@ -3,6 +3,7 @@ import math
 import numpy as np
 from shapely import geometry
 import shapefile
+import collections
 
 
 try:
@@ -210,3 +211,11 @@ def jiggle_on_grid_points(data, grid_polys):
         new_data.append(this_datum)
 
     return np.array(new_data)
+
+
+def spatial_repeat_analysis(xy):
+    rpt_idx = collections.defaultdict(list)
+    for i, t in enumerate(xy):
+        if np.sum((np.sum(xy == t, axis=1) == 2)) > 1:
+            rpt_idx[tuple(t)].append(i)
+    return rpt_idx
