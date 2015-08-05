@@ -1,9 +1,11 @@
 __author__ = 'gabriel'
 from point_process import models as pp_models, plots as pp_plotting, estimation, validate, simulate
 from validation import roc
+from kde import models as k_models
 from analysis import cad, chicago
 from matplotlib import pyplot as plt
 from database import osm
+import numpy as np
 
 
 def camden_sampling_example():
@@ -93,7 +95,7 @@ def camden():
 
 
 def chicago_south():
-    polys = chicago.get_chicago_polys()
+    polys = chicago.get_chicago_side_polys()
     south = polys['South']
     nw = polys['Northwest']
     r = pp_models.SeppStochasticNn.from_pickle('/home/gabriel/data/chicago_south/burglary/vary_num_nn/nn_100_15.pickle')
@@ -108,7 +110,7 @@ def chicago_south():
 
 
 def chicago_northwest():
-    polys = chicago.get_chicago_polys()
+    polys = chicago.get_chicago_side_polys()
     nw = polys['Northwest']
     r = pp_models.SeppStochasticNn.from_pickle('/home/gabriel/data/chicago_northwest/burglary/vary_num_nn/nn_100_15.pickle')
 
@@ -119,3 +121,27 @@ def chicago_northwest():
                                    fmax=0.99,
                                    cmap='Reds')
     plt.axis('equal')
+
+
+def different_time_kernel():
+    mu = 1.
+    st = 1.
+    t = np.linspace(-3, 5, 500)
+    k1 = k_models.kernels.MultivariateNormal([mu], [st])
+    k2 = k_models.kernels.SpaceTimeNormalReflective([mu], [st])
+
+    z1 = k1.pdf(t)
+    z2 = k2.pdf(t)
+
+    t_refl = t[t<0][::-1]
+    z_refl = k1.pdf(t_refl)
+
+    import seaborn as sns
+    sns.set_context("paper", font_scale=2.0)
+    plt.figure(figsize=(8, 6))
+    plt.plot(t, z1, 'k')
+    plt.plot(t, z2, 'r-')
+    plt.plot(-t_refl, z_refl, 'r--')
+    plt.legend(('Normal', 'Reflective'))
+    plt.xlabel('Time (days)')
+    plt.ylabel('Density')

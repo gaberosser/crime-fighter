@@ -5,13 +5,14 @@ if [ $EUID != 0 ]; then
     exit $?
 fi
 
-if [ -f "/home/gabriel/signal/shut_me_down_goddamnit" ]
+if [ ! -f "$1" ]
     then
-    rm /home/gabriel/signal/shut_me_down_goddamnit
+    echo "ERROR: File $1 does not exist" 1>&2
+    exit 1
 fi
 
 while true; do
-    if [ -f "/home/gabriel/signal/shut_me_down_goddamnit" ]
+    if [ ! -f "$1" ]
     then
         echo "SHUTDOWN"
         sleep 10

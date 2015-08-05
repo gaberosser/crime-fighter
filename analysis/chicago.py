@@ -14,6 +14,7 @@ import settings
 import os
 from django.db import connection
 from matplotlib import pyplot as plt
+from plotting.spatial import plot_shapely_geos
 import dill
 import copy
 
@@ -35,7 +36,7 @@ def compute_chicago_region(fill_in=True):
     return mpoly
 
 
-def get_chicago_polys(as_shapely=True):
+def get_chicago_side_polys(as_shapely=True):
     sides = models.ChicagoDivision.objects.filter(type='chicago_side')
     res = {}
     for s in sides:
@@ -132,6 +133,48 @@ def get_crimes_by_type(crime_type='burglary',
     cid = cid[sort_idx]
 
     return res, t0, cid
+
+
+
+def spatial_repeat_analysis(crime_type='burglary', domain=None, plot_osm=False, **kwargs):
+    data, t0, cid = get_crimes_by_type(crime_type=crime_type, domain=domain, **kwargs)
+    xy = data[:, 1:]
+    rpt = collections.defaultdict(int)
+    uniq = collections.defaultdict(int)
+    for t in xy:
+        if np.sum((np.sum(xy == t, axis=1) == 2)) > 1:
+            rpt[tuple(t)] += 1
+        else:
+            uniq[tuple(t)] += 1
+
+    # plotting
+    domain = domain or compute_chicago_region()
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+
+    # outline
+    plot_shapely_geos(domain, ax=ax, fc='None')
+
+    # off-grid repeat locations
+    tt = np.array(rpt.keys())
+    ax.plot(tt[:, 0], tt[:, 1], 'ok')
+
+    #
+    tt = np.array(uniq.keys())
+    ax.plot(tt[:, 0], tt[:, 1], 'o', color='#CCCCCC', alpha=0.6)
+
+    # x_max, y_max = np.max(np.array(camden.mpoly[0].coords[0]), axis=0)
+    # x_min, y_min = np.min(np.array(camden.mpoly[0].coords[0]), axis=0)
+
+    # ax.set_xlim(np.array([-150, 150]) + np.array([x_min, x_max]))
+    # ax.set_ylim(np.array([-150, 150]) + np.array([y_min, y_max]))
+    ax.set_aspect('equal')
+    ax.axis('off')
+
+    plt.draw()
+
+    return rpt, uniq
 
 
 def pairwise_time_lag_events(max_distance=200, num_bins=None, crime_type='burglary',
