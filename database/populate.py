@@ -24,6 +24,10 @@ CRIS_DATA_DIR = os.path.join(settings.DATA_DIR, 'cris')
 CHICAGO_DATA_DIR = os.path.join(settings.DATA_DIR, 'chicago')
 
 
+def sql_quote(x):
+    return "'%s'" % x
+
+
 def setup_ocu(**kwargs):
     OCU_CSV = os.path.join(CAD_DATA_DIR, 'ocu.csv')
     with open(OCU_CSV, 'r') as f:
@@ -303,21 +307,22 @@ def setup_cad250_grid(verbose=True, test=False):
     if verbose:
         print "Created %u grid areas" % len(polys)
 
-
+# INSERT into spatial_ref_sys (srid, auth_name, auth_srid, proj4text, srtext) values ( 102671, 'esri', 102671, '+proj=tmerc +lat_0=36.66666666666666 +lon_0=-88.33333333333333 +k=0.9999749999999999 +x_0=300000 +y_0=0 +ellps=GRS80 +datum=NAD83 +to_meter=0.3048006096012192 +no_defs ', 'PROJCS["NAD_1983_StatePlane_Illinois_East_FIPS_1201_Feet",GEOGCS["GCS_North_American_1983",DATUM["North_American_Datum_1983",SPHEROID["GRS_1980",6378137,298.257222101]],PRIMEM["Greenwich",0],UNIT["Degree",0.017453292519943295]],PROJECTION["Transverse_Mercator"],PARAMETER["False_Easting",984249.9999999999],PARAMETER["False_Northing",0],PARAMETER["Central_Meridian",-88.33333333333333],PARAMETER["Scale_Factor",0.999975],PARAMETER["Latitude_Of_Origin",36.66666666666666],UNIT["Foot_US",0.30480060960121924],AUTHORITY["EPSG","102671"]]');
 def setup_chicago_community_area(**kwargs):
     dt = models.DivisionType.objects.get(name='chicago_community_area')
-    shp_file = os.path.join(CHICAGO_DATA_DIR, 'community_areas', 'CommAreas.shp')
+    shp_file = os.path.join(CHICAGO_DATA_DIR, 'community_areas', 'community_areas.shp')
     ds = DataSource(shp_file)
     lyr = ds[0]
     # source_srid = 102671
-    source_srid = 26971
+    # source_srid = 26971
     dest_srid = 2028
 
     for x in lyr:
         name = x.get('COMMUNITY')
         mpoly = x.geom
-        mpoly.srid = source_srid
-        mpoly.transform(dest_srid)
+        mpoly.srid = dest_srid
+        # mpoly.srid = source_srid
+        # mpoly.transform(dest_srid)
         mpoly = mpoly.geos
         if isinstance(mpoly, Polygon):
             mpoly = MultiPolygon(mpoly)
@@ -334,21 +339,25 @@ def setup_chicago_community_area(**kwargs):
 
 
 # not required - single mpoly is easy to load straight from file
+# before running: need to make sure PostGIS has the weird SRS coord system used here
+# INSERT into spatial_ref_sys (srid, auth_name, auth_srid, proj4text, srtext) values ( 102671, 'esri', 102671, '+proj=tmerc +lat_0=36.66666666666666 +lon_0=-88.33333333333333 +k=0.9999749999999999 +x_0=300000 +y_0=0 +ellps=GRS80 +datum=NAD83 +to_meter=0.3048006096012192 +no_defs ', 'PROJCS["NAD_1983_StatePlane_Illinois_East_FIPS_1201_Feet",GEOGCS["GCS_North_American_1983",DATUM["North_American_Datum_1983",SPHEROID["GRS_1980",6378137,298.257222101]],PRIMEM["Greenwich",0],UNIT["Degree",0.017453292519943295]],PROJECTION["Transverse_Mercator"],PARAMETER["False_Easting",984249.9999999999],PARAMETER["False_Northing",0],PARAMETER["Central_Meridian",-88.33333333333333],PARAMETER["Scale_Factor",0.999975],PARAMETER["Latitude_Of_Origin",36.66666666666666],UNIT["Foot_US",0.30480060960121924],AUTHORITY["EPSG","102671"]]');
+
 def setup_chicago_division(**kwargs):
     dt = models.DivisionType.objects.get(name='city')
-    shp_file = os.path.join(CHICAGO_DATA_DIR, 'community_areas', 'CommAreas.shp')
+    shp_file = os.path.join(CHICAGO_DATA_DIR, 'community_areas', 'community_areas.shp')
     ds = DataSource(shp_file)
     lyr = ds[0]
     # source_srid = 102671
-    source_srid = 26971
+    # source_srid = 26971
     dest_srid = 2028
 
     mpolys = []
 
     for x in lyr:
         mpoly = x.geom
-        mpoly.srid = source_srid
-        mpoly.transform(dest_srid)
+        mpoly.srid = dest_srid
+        # mpoly.srid = source_srid
+        # mpoly.transform(dest_srid)
         mpoly = mpoly.geos
         if isinstance(mpoly, Polygon):
             mpoly = MultiPolygon(mpoly)
@@ -703,6 +712,63 @@ def import_monsuru_cad_data():
             )
             cur.execute(insert_sql)
         print "Done."
+
+
+def populate_geos_table(table_obj, data, mapper, skip_clause=None, verbose=True, chunksize=50000, limit=None):
+    table_obj.rewrite_table()
+    count = 0
+    res = []
+    for row in data:
+        if limit and count > limit:
+            break
+        if skip_clause is not None and skip_clause(row):
+            continue
+        try:
+            datum = dict([(k, v(row)) for k, v in mapper.items()])
+        except Exception as exc:
+            import ipdb; ipdb.set_trace()
+        res.append(datum)
+        count += 1
+        if (count % chunksize) == 0 and count:
+            table_obj.insert_many(res)
+            res = []
+    table_obj.insert_many(res)
+    return count
+
+
+def chicago(verbose=True, chunksize=50000, limit=None):
+    obj = models.Chic()
+    DATADIR = os.path.join(settings.DATA_DIR, 'chicago')
+
+    mapper = {
+        'id': lambda x: int(x.get('ID')),
+        'case_number': lambda x: sql_quote(x.get('Case Number')),
+        'datetime': lambda x: sql_quote(datetime.datetime.strptime(x.get('Date'), '%m/%d/%Y %I:%M:%S %p').replace(
+            tzinfo=USCENTRAL_TZ)),
+        'primary_type': lambda x: sql_quote(x.get('Primary Type')),
+        'description': lambda x: sql_quote(x.get('Description')),
+        'arrest_made': lambda x: x.get('Arrest') == 'true',
+        'location': lambda x: "ST_Transform(ST_SetSRID(ST_Point({0}, {1}), 4326), 2028)".format(
+                    float(x['Longitude']),
+                    float(x['Latitude'])
+                ),
+        # 'block': lambda x: x.get('Block'),
+        # 'iucr': lambda x: x.get('IUCR'),
+        # 'location_type': lambda x: x.get('Location Description'),
+        # 'domestic': lambda x: x.get('Domestic') == 'true',
+    }
+
+    skip_clause = lambda x: x['Location'] == ''
+
+    with open(os.path.join(CHICAGO_DATA_DIR, 'chicago_crime_data.csv'), 'r') as f:
+        data = csv.DictReader(f)
+        count = populate_geos_table(obj, data, mapper,
+                                    skip_clause=skip_clause,
+                                    verbose=verbose,
+                                    chunksize=chunksize,
+                                    limit=limit)
+    print count
+
 
 
 def san_francisco(verbose=True, chunksize=50000, limit=None):

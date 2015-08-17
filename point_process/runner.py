@@ -188,7 +188,7 @@ if __name__ == '__main__':
     # c.t_total = 1000
     # c.num_to_prune = 2000  # should leave ~2000 datapoints
 
-    # c = simulate.MohlerSimulation()
+    c = simulate.MohlerSimulation()
 
     # c = simulate.LocalTriggeringSplitByQuartiles()
     # c.t_total = 1500
@@ -201,20 +201,19 @@ if __name__ == '__main__':
     # c.bg_params['ymin'] = -20
     # c.bg_params['ymax'] = 20
 
-    c = simulate.PatchyGaussianSumBackground()
-    c.bg_params[0]['location'] = [-1, -1]
-    c.bg_params[1]['location'] = [-1, 1]
-    c.bg_params[2]['location'] = [1, -1]
-    c.bg_params[3]['location'] = [1, 1]
-    c.bg_params[0]['sigma'] = [.1, .5]
-    c.bg_params[1]['sigma'] = [.5, .5]
-    c.bg_params[2]['sigma'] = [.5, .5]
-    c.bg_params[3]['sigma'] = [.5, .1]
-    c.trigger_params['sigma'] = [0.1, 0.1]
-    # c.trigger_params['intensity'] = 0.5
-    c.t_total = 1500
-    c.num_to_prune = 2000
-    # c.num_to_prune = 4000
+    # c = simulate.PatchyGaussianSumBackground()
+    # c.bg_params[0]['location'] = [-1, -1]
+    # c.bg_params[1]['location'] = [-1, 1]
+    # c.bg_params[2]['location'] = [1, -1]
+    # c.bg_params[3]['location'] = [1, 1]
+    # c.bg_params[0]['sigma'] = [.1, .5]
+    # c.bg_params[1]['sigma'] = [.5, .5]
+    # c.bg_params[2]['sigma'] = [.5, .5]
+    # c.bg_params[3]['sigma'] = [.5, .1]
+    # c.trigger_params['sigma'] = [0.1, 0.1]
+    # # c.trigger_params['intensity'] = 0.5
+    # c.t_total = 1500
+    # c.num_to_prune = 2000
 
     c.run()
     data = c.data[:, :3]
@@ -254,8 +253,8 @@ if __name__ == '__main__':
     #                             bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
     # r = models.SeppStochasticNnSt(data=data, max_delta_d=0.75, max_delta_t=80,
     #                             bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
-    # r = models.SeppStochasticNnReflected(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
-    #                                     bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
+    r_refl = models.SeppStochasticNnReflected(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
+                                        bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
     # r = models.SeppStochasticNnOneSided(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
     #                                     bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
     # r = models.SeppDeterministicNn(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
@@ -270,12 +269,15 @@ if __name__ == '__main__':
     # p = estimation.estimator_bowers(data, r.linkage, **init_est_params)
     p = estimation.estimator_exp_gaussian(data, r.linkage, **init_est_params)
     r.p = p
+    r_refl.p = p
 
     # set seed for consistency
     r.set_seed(42)
+    r_refl.set_seed(42)
 
     try:
         ps = r.train(niter=num_iter)
+        ps_refl = r_refl.train(niter=num_iter)
     except KeyboardInterrupt:
         num_iter = len(r.num_bg)
 

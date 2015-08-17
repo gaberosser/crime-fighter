@@ -394,6 +394,23 @@ class LosAngeles(GeosTable):
     }
 
 
+class Chic(GeosTable):
+    # TODO: replace Chicago table with this one
+    table_name = 'chicago'
+    schema = (
+        'id INTEGER PRIMARY KEY',
+        'case_number VARCHAR(16)',
+        'datetime TIMESTAMP',
+        'location GEOMETRY(POINT, 2028)',  # TODO: switch to 26916, US NAD 83 zone 16
+        'primary_type VARCHAR(64)',
+        'description VARCHAR(128)',
+        'arrest_made BOOLEAN'
+    )
+
+    spatial_indices = {
+        'gix': 'location'
+    }
+
 
 class Ocu(models.Model):
     code = models.CharField(help_text='OCU code', max_length=3, primary_key=True)

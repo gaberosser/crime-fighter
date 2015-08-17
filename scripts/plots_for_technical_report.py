@@ -145,3 +145,34 @@ def different_time_kernel():
     plt.legend(('Normal', 'Reflective'))
     plt.xlabel('Time (days)')
     plt.ylabel('Density')
+
+    c = simulate.MohlerSimulation()
+    c.run()
+    data = c.data[:, :3]
+    max_delta_t = 100
+    max_delta_d = 1.
+    init_est_params = {
+        'ct': 10,
+        'cd': .05,
+        'frac_bg': 0.5,
+    }
+    ra = pp_models.SeppStochasticNn(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t)
+    rb = pp_models.SeppStochasticNnReflected(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t)
+    ra.train(niter=20)
+    rb.train(niter=20)
+
+    t = np.linspace(-10, 60, 500)
+    za = ra.trigger_kde.marginal_pdf(t, dim=0, normed=False) / float(ra.ndata)
+    zb = rb.trigger_kde.marginal_pdf(t, dim=0, normed=False) / float(rb.ndata)
+    w = c.trigger_params['time_decay']
+    th = c.trigger_params['intensity']
+    ztrue = th * w * np.exp(-w * t)
+    ztrue[t<0] = 0
+
+    plt.figure(figsize=(8, 6))
+    plt.plot(t, za, 'k-')
+    plt.plot(t, zb, 'r-')
+    plt.plot(t, ztrue, 'k--')
+    plt.legend(('Inferred, normal', 'Inferred, reflective', 'True'))
+    plt.xlabel('Time (days)')
+    plt.ylabel('Density')

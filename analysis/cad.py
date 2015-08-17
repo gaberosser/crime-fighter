@@ -403,18 +403,55 @@ def jiggle_all_points_on_grid(x, y):
     return np.array(res)
 
 
+def construct_sepp(data,
+                   sepp_class=pp_models.SeppStochasticNn,
+                   seed=42,
+                   max_delta_t=60,
+                   max_delta_d=500,
+                   initial_est=None,
+                   remove_coincident_pairs=False,
+                   bg_kde_kwargs=None,
+                   trigger_kde_kwargs=None,
+                   min_bandwidth=None
+                   ):
+
+    if initial_est is None:
+        # define initial estimator
+        initial_est = lambda x, y: estimation.estimator_exp_gaussian(x, y, ct=0.1, cd=50)
+
+    if bg_kde_kwargs is None:
+        bg_kde_kwargs = {'strict': False}
+    if min_bandwidth is not None:
+        bg_kde_kwargs['min_bandwidth'] = min_bandwidth
+
+
+    if trigger_kde_kwargs is None:
+        trigger_kde_kwargs = {'strict': False}
+    if min_bandwidth is not None:
+        trigger_kde_kwargs['min_bandwidth'] = min_bandwidth
+
+    r = sepp_class(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
+                   bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs,
+                   estimation_function=initial_est,
+                   remove_coincident_pairs=remove_coincident_pairs,
+                   seed=seed)
+
+    return r
+
+
+
+
 def apply_point_process(nicl_type=3,
                         only_new=False,
                         start_date=None,
                         end_date=None,
-                        niter=15,
+                        niter=50,
                         num_nn=None,
                         min_bandwidth=None,
                         jiggle_scale=None,
                         max_delta_t=60,  # days
                         max_delta_d=500,  # metres
                         sepp_class=pp_models.SeppStochasticNnReflected,
-                        tol_p=None,
                         data=None,
                         rng_seed=42,
                         initial_est=None,
@@ -467,15 +504,6 @@ def apply_point_process(nicl_type=3,
         rng_seed=rng_seed,
         remove_coincident_pairs=remove_coincident_pairs,
     )
-
-    # r = sepp_class(data=res, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
-    #                             bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
-    # r = sepp_class(data=res, max_delta_d=max_delta_d, max_delta_t=max_delta_t)
-    # r.p = estimation.estimator_bowers(res, r.linkage, ct=1, cd=0.02)
-    #
-    # # train on all data
-    # ps = r.train(niter=niter, tol_p=tol_p)
-    # return r, ps
 
 
 def apply_sepp_to_data(data,

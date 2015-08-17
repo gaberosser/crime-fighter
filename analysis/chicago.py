@@ -218,8 +218,8 @@ def apply_point_process(start_date=datetime.datetime(2010, 3, 1, 0),
                         num_nn=None,
                         estimate_kwargs=None,
                         pp_class=pp_models.SeppStochasticNnReflected,
-                        tol_p=None,
-                        seed=42):
+                        seed=42,
+                        remove_coincident_pairs=False):
 
     print "Getting data..."
     res, t0, cid = get_crimes_by_type(
@@ -245,22 +245,26 @@ def apply_point_process(start_date=datetime.datetime(2010, 3, 1, 0),
 
     bg_kde_kwargs = {
         'number_nn': num_nn_bg,
+        'strict': False,
     }
 
     trigger_kde_kwargs = {
         'min_bandwidth': min_bandwidth,
         'number_nn': num_nn_trig,
+        'strict': False,
     }
 
     if not estimate_kwargs:
         estimate_kwargs = {
-            'ct': 1,
-            'cd': 0.02
+            'ct': 0.1,
+            'cd': 50,
+            'frac_bg': None
         }
 
     print "Instantiating SEPP class..."
     r = pp_class(data=res, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
-                 bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
+                 bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs,
+                 remove_coincident_pairs=remove_coincident_pairs)
 
     # r = pp_models.SeppStochasticNn(data=res, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
     #                             bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
@@ -270,7 +274,7 @@ def apply_point_process(start_date=datetime.datetime(2010, 3, 1, 0),
     #                             bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
 
     print "Computing initial probability matrix estimate..."
-    p = estimation.estimator_bowers(res, r.linkage, **estimate_kwargs)
+    p = estimation.estimator_exp_gaussian(res, r.linkage, **estimate_kwargs)
     r.p = p
 
     # train on ALL data
@@ -278,67 +282,60 @@ def apply_point_process(start_date=datetime.datetime(2010, 3, 1, 0),
         r.set_seed(seed)
 
     print "Starting training..."
-    ps = r.train(niter=niter, tol_p=tol_p)
-    return r, ps
+    ps = r.train(niter=niter)
+    return r
 
 
 def validate_point_process(
-        start_date=datetime.datetime(2011, 12, 3, 0),
-        training_size=277,
-        num_validation=30,
-        num_pp_iter=75,
+        start_date=datetime.date(2011, 3, 1),
+        end_date=datetime.date(2012, 3, 31),
+        initial_cutoff=212,
+        num_validation=100,
+        num_pp_iter=100,
         grid=250,
         n_sample_per_grid=20,
-        prediction_dt=1, true_dt_plus=1,
         domain=None,
+        pp_class=pp_models.SeppStochasticNn,
         model_kwargs=None):
-
-
 
     if not model_kwargs:
         model_kwargs = {
-            'max_delta_t': 60,
-            'max_delta_d': 400,
+            'max_delta_t': 150,
+            'max_delta_d': 500,
             'bg_kde_kwargs': {'number_nn': [101, 16]},
-            'trigger_kde_kwargs': {'number_nn': 15,
-                                   'min_bandwidth': [0.3, 5, 5]}
+            'trigger_kde_kwargs': {'number_nn': 15},
+            'remove_conincident_pairs': False,
+            'estimation_function': lambda x, y: estimation.estimator_exp_gaussian(x, y, 0.1, 50, frac_bg=None),
+            'seed': 42,
         }
 
-    if not training_size:
-        # use all possible days before start_date as training
-        training_size = (start_date - T0).days
-    else:
-        if (start_date - T0).days < training_size:
-            new_training_size = (start_date - T0).days
-            warnings.warn("Requested %d training days, but only have data for %d days." % (training_size, new_training_size))
-            training_size = new_training_size
-
-    # compute number of days in date range
-    pre_start_date = start_date - datetime.timedelta(days=training_size)
-    ndays = training_size + num_validation
-    end_date = start_date + datetime.timedelta(days=num_validation)
+    if start_date + datetime.timedelta(days=initial_cutoff + num_validation) > end_date:
+        warnings.warn("Requested number of validation runs is too large for the data size")
 
     if domain is None:
         domain = compute_chicago_region()
 
-    res, t0, cid = get_crimes_by_type(
+    data, t0, cid = get_crimes_by_type(
         crime_type='burglary',
-        start_date=pre_start_date,
+        start_date=start_date,
         end_date=end_date,
         domain=domain,
     )
-    vb = validate.SeppValidationFixedModelIntegration(res, spatial_domain=domain, model_kwargs=model_kwargs)
+
+    sepp = pp_class(data=data, **model_kwargs)
+
+    vb = validate.SeppValidationFixedModelIntegration(data, spatial_domain=domain, cutoff_t=initial_cutoff)
     vb.set_sample_units(grid, n_sample_per_grid=n_sample_per_grid)
-    vb.set_t_cutoff(training_size, b_train=False)
 
     ## TODO: check the number of iterations reported is as expected here
-    res = vb.run(time_step=prediction_dt, t_upper=ndays, true_dt_plus=true_dt_plus,
-                 train_kwargs={'niter': num_pp_iter, 'tol_p': 1e-5},
+    res = vb.run(time_step=1, n_iter=num_validation,
+                 train_kwargs={'niter': num_pp_iter},
                  verbose=True)
 
     return res, vb
 
 
+# TODO: need to update the call interface for this code
 def validate_point_process_multi(
         start_date=datetime.datetime(2001, 6, 1, 0),
         training_size=90,
@@ -387,34 +384,6 @@ May be useful for pickling output incrementally.
         t += datetime.timedelta(days=dt)
 
     return res
-
-
-    # pre_start_date = start_date - datetime.timedelta(days=training_size)
-    #
-    # poly = compute_chicago_region()
-    # data, t0 = get_crimes_by_type(
-    #     crime_type='burglary',
-    #     datetime__gte=pre_start_date
-    # )
-    # nslices = int((max(data[:, 0]) - training_size - num_validation) / dt)
-    # res = []
-    # pps = []
-    #
-    # for n in range(nslices):
-    #     tn = dt * n
-    #     # slice data to avoid training on all past data
-    #     this_data = data[data[:, 0] >= tn]
-    #     vb = validate.PpValidation(this_data, spatial_domain=poly, model_kwargs={
-    #         'max_trigger_t': 30,
-    #         'max_trigger_d': 200,
-    #         'estimator': lambda x: estimation.initial_guess_educated(x, ct=1, cd=0.02),
-    #     })
-    #     vb.set_sample_units(grid_size)
-    #     vb.set_t_cutoff(training_size + tn)
-    #     res.append(vb.run(dt=1, t_upper=training_size + num_validation + tn, niter=num_pp_iter))
-    #     pps.append(vb.model)
-    #
-    # return res, pps
 
 
 def validate_historic_kernel(start_date=datetime.datetime(2001, 3, 1, 0),
