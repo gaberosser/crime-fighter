@@ -10,7 +10,7 @@ MODULE=scripts.validate_chicago_ani_vs_iso
 #$ -S /bin/bash
 
 # 2. Request wallclock time (format hours:minutes:seconds).
-#$ -l h_rt=2:0:0
+#$ -l h_rt=6:0:0
 
 # 3. Request RAM.
 #$ -l mem=8G
@@ -32,7 +32,7 @@ MODULE=scripts.validate_chicago_ani_vs_iso
 
 # 8. Parse parameter file to get variables.
 number=$SGE_TASK_ID
-paramfile=$HOME/Scratch/crime-fighter/scripts/parameters/validate_chicago_ani_vs_iso
+paramfile=$HOME/Scratch/crime-fighter/scripts/parameters/validate_chicago_ani_vs_iso.txt
 
 location=`sed -n ${number}p $paramfile | awk '{print $1}'`
 crime_type=`sed -n ${number}p $paramfile | awk '{print $2}'`
@@ -40,5 +40,6 @@ pp_class=`sed -n ${number}p $paramfile | awk '{print $3}'`
 
 # 9. Run the program (replace echo with your binary and options).
 cd $HOME/Scratch/crime-fighter
+echo "$MODULE $location $crime_type $pp_class" >> this_is_what_legion_called.log
 python -m $MODULE $location $crime_type $pp_class
 

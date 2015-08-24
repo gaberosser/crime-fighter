@@ -40,8 +40,9 @@ model_kwargs = {
 pred_include = ('full_static',)  # only use this method for prediction
 
 ## DEBUGGING:
-# niter = 2  # number of SEPP iterations before convergence is assumed
-# num_validation = 2  # number of predict - assess cycles
+#niter = 2  # number of SEPP iterations before convergence is assumed
+#num_validation = 2  # number of predict - assess cycles
+#num_sample_points = 2
 
 # end_date is the maximum required date
 end_date = start_date + datetime.timedelta(days=start_day_number + num_validation)
