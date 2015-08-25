@@ -24,7 +24,7 @@ T0 = datetime.datetime(2001, 1, 1, 0)
 Tmax = datetime.datetime(2014, 5, 24, 0)
 
 
-def compute_chicago_region(fill_in=True):
+def compute_chicago_region(fill_in=True, as_shapely=False):
     """ Get (multi) polygon representing Chicago city boundary.
         fill_in parameter specifies whether holes should be filled (better for visualisation) """
     mpoly = models.ChicagoDivision.objects.get(name='Chicago').mpoly
@@ -32,8 +32,14 @@ def compute_chicago_region(fill_in=True):
         mls = mpoly.boundary
         x = mls[0].coords
         x += (x[0],)
-        return Polygon(x)
-    return mpoly
+        if as_shapely:
+            return spatial.geodjango_to_shapely(Polygon(x))
+        else:
+            return Polygon(x)
+    if as_shapely:
+        return spatial.geodjango_to_shapely(mpoly)
+    else:
+        return mpoly
 
 
 def get_chicago_side_polys(as_shapely=True):

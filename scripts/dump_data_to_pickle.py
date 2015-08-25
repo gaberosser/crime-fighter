@@ -19,13 +19,14 @@ if not os.path.isdir(DATA_DIR):
 # chicago_south = models.ChicagoDivision.objects.get(name='South').mpoly.simplify()  # need this below
 
 boundaries = {
-    'camden': cad.get_camden_region(),
-    'chicago': chicago.compute_chicago_region(),
-    'chicago_south': models.ChicagoDivision.objects.get(name='South').mpoly,
+    'camden': cad.get_camden_region(as_shapely=True).simplify(0),
+    'chicago': chicago.compute_chicago_region(as_shapely=True).simplify(0),
 }
 
-for k in boundaries:
-    boundaries[k] = geodjango_to_shapely(boundaries[k]).simplify(0)
+chicago_sides = chicago.get_chicago_side_polys(as_shapely=True)
+for k, v in chicago_sides.iteritems():
+    key = 'chicago_' + k.lower().replace(' ', '_')
+    boundaries[key] = v
 
 with open(os.path.join(DATA_DIR, 'boundaries.pickle'), 'w') as f:
     pickle.dump(boundaries, f)
@@ -56,6 +57,30 @@ for k, n in crime_types.items():
     jdata = spatial.jiggle_on_grid_points(data, grid_polys)
     with open(os.path.join(this_path, '%s_jiggle.pickle' % k), 'w') as f:
         pickle.dump(jdata, f)
+
+## CHICAGO SIDES
+crime_types = {
+    'burglary': 'burglary',
+    'robbery': 'robbery',
+    'motor_vehicle_theft': 'motor vehicle theft',
+    'assault': 'assault',
+}
+
+for k in chicago_sides.keys():
+    key = 'chicago_' + k.lower().replace(' ', '_')
+    domain = chicago_sides[k]
+
+    for ct, n in crime_types.items():
+        this_path = os.path.join(DATA_DIR, 'chicago', key)
+        if not os.path.isdir(this_path):
+            os.makedirs(this_path)
+        data, t0, cid = chicago.get_crimes_by_type(crime_type=n,
+                                                   start_date=None,
+                                                   end_date=None,
+                                                   domain=domain)
+
+        with open(os.path.join(this_path, '%s.pickle' % ct), 'w') as f:
+            pickle.dump(data, f)
 
 ## CHICAGO SOUTH
 
