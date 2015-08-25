@@ -119,7 +119,7 @@ if __name__ == '__main__':
 
     # arg 2: crime type (burglary, assault, motor_vehicle_theft, ...)
     crime_type = sys.argv[2]
-    data_infile = os.path.join(IN_DIR, 'chicago', 'crime_data', sys.argv[1], '%s.pickle' % sys.argv[2])
+    data_infile = os.path.join(IN_DIR, 'chicago', sys.argv[1], '%s.pickle' % sys.argv[2])
     with open(data_infile, 'r') as f:
         data, t0, cid = pickle.load(f)
 
