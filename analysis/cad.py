@@ -701,7 +701,7 @@ class CadByGrid(object):
         :return:
         """
 
-        self.grid = grid or models.Division.objects.filter(type='cad_250m_grid')
+        self.grid = grid or [t.mpoly for t in models.Division.objects.filter(type='cad_250m_grid')]
         self.shapely_grid = [geodjango_to_shapely(x)[0] for x in self.grid]
         # preliminary cad filter
         self.data = data

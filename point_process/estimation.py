@@ -158,7 +158,7 @@ def estimator_bowers_fixed_proportion_bg(data, linkage, ct=1, cd=10, frac_bg=0.5
     return generate_p_from_trig_fixed_proportion_bg(P_trig, linkage, frac_bg)
 
 
-def estimator_exp_gaussian(data, linkage, ct, cd, frac_bg=0.5):
+def estimator_exp_gaussian(data, linkage, ct, cd, frac_bg=None):
     """
     Exponentially decaying in time, Gaussian in distance.  This implementation fixes the proportion of BG events by
     setting the probability of being part of the BG as equal to the sum of the probs of being triggered, multiplied by
@@ -167,7 +167,7 @@ def estimator_exp_gaussian(data, linkage, ct, cd, frac_bg=0.5):
     :param linkage:
     :param ct: Time decay constant, (per day, hour, etc.)
     :param cd: Standard deviation of Gaussian distance dependence in either axis.
-    :param frac_bg: The proportion of events that are BG.
+    :param frac_bg: The proportion of events that are BG. If None, the ratio is decided by the parameters alone.
     :return:
     """
     n = data.shape[0]

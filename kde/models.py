@@ -929,6 +929,10 @@ class VariableBandwidthRadialKde(FixedBandwidthRadialKde, VariableBandwidthKde):
 class VariableBandwidthNnRadialKde(FixedBandwidthRadialKde, VariableBandwidthNnKde):
     pass
 
+class VariableBandwidthNnRadialReflectedKde(VariableBandwidthNnRadialKde):
+
+    kernel_class = kernels.RadialReflectedTemporal
+
 
 class NetworkFixedBandwidthKde(FixedBandwidthKde):
     kernel_class = kernels.NetworkTemporalKernelEqualSplit

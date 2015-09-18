@@ -312,7 +312,6 @@ class SpaceTimeNormalReflective(MultivariateNormal):
         return arr
 
     def pdf(self, x, dims=None):
-
         if dims:
             ndim = len(dims)
         else:
@@ -338,6 +337,41 @@ class SpaceTimeNormalReflective(MultivariateNormal):
             return 0.5 * res
         else:
             return super(SpaceTimeNormalReflective, self).marginal_cdf(x, dim=dim)
+
+
+class RadialReflectedTemporal(SpaceTimeNormalReflective, RadialTemporal):
+    pass
+
+    # def pdf(self, x, dims=None):
+    #     """ Input is an ndarray of dims N x ndim.
+    #         This may be a data class or just a plain array.
+    #         If dims is specified, it is an array of the dims to include in the calculation """
+    #
+    #     if dims:
+    #         ndim = len(dims)
+    #     else:
+    #         dims = range(self.ndim)
+    #         ndim = self.ndim
+    #
+    #     x = self.prep_input(x, ndim)
+    #     res = super(RadialReflectedTemporal, self).pdf(x, dims=dims)
+    #
+    #     # test whether temporal dimension was included
+    #     if 0 in dims:
+    #         new_x = SpaceTimeNormalReflective.time_reversed_array(x)
+    #         res += super(RadialReflectedTemporal, self).pdf(new_x, dims=dims)
+    #         res[x.toarray(0) < 0] = 0.
+    #     return res
+    #
+    # def marginal_cdf(self, x, dim=0):
+    #     if dim == 0:
+    #         x = self.prep_input(x, 1).toarray(0)
+    #         res = special.erf((x - self.mean[0]) / (math.sqrt(2) * self.stdevs[0]))
+    #         res -= special.erf((-x - self.mean[0]) / (math.sqrt(2) * self.stdevs[0]))
+    #         res[x < 0] = 0.
+    #         return 0.5 * res
+    #     else:
+    #         return super(RadialReflectedTemporal, self).marginal_cdf(x, dim=dim)
 
 
 class LinearKernel1D(BaseKernel):

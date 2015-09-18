@@ -80,7 +80,7 @@ for k in chicago_sides.keys():
                                                    domain=domain)
 
         with open(os.path.join(this_path, '%s.pickle' % ct), 'w') as f:
-            pickle.dump(data, f)
+            pickle.dump((data, t0, cid), f)
 
 ## CHICAGO SOUTH
 
