@@ -1,5 +1,6 @@
 __author__ = 'gabriel'
 import datetime
+import time
 import os
 import dill as pickle
 import logging
@@ -21,7 +22,7 @@ start_day_number = 366  # number of days (after start date) on which first predi
 estimate_kwargs = {
     'ct': 0.1,
     'cd': 50,
-    # 'frac_bg': 0.5,
+    'frac_bg': None,
 }
 model_kwargs = {
     'parallel': False,
@@ -54,7 +55,13 @@ def run_me(data, domain, out_dir, run_name, pp_class):
     log_file = os.path.join(out_dir, '%s.log' % run_name)
 
     if not os.path.isdir(out_dir):
-        os.makedirs(out_dir)
+        try:
+            os.makedirs(out_dir)
+        except OSError:
+            # wait a moment, just in case another process has just done the folder creation
+            time.sleep(1)
+            if not os.path.isdir(out_dir):
+                raise
 
     # set loggers
     logger = logging.getLogger(run_name)
