@@ -5,6 +5,8 @@ import cad
 import collections
 import datetime
 import pytz
+import spatial
+from shapely import geometry
 
 # s_max = 500  # metres
 # t_max = 90  # days
@@ -73,6 +75,7 @@ class Aggregate(object):
         self._start_date = start_date
         self._end_date = end_date
         self.raw_data = data
+        self.data = None  # this attribute is updated once aggregate() has been called
         # strip out timezone if supplied
         if isinstance(self.raw_data[0, 0], datetime.datetime):
             new_dt = [t.replace(tzinfo=None) for t in self.raw_data[:, 0]]
@@ -97,7 +100,6 @@ class Aggregate(object):
 class TemporalAggregate(Aggregate):
     def __init__(self, data, start_date=None, end_date=None):
         super(TemporalAggregate, self).__init__(data, start_date=start_date, end_date=end_date)
-        self.data = self.bucket_data()
 
     @property
     def bucket_dict(self):
@@ -108,6 +110,9 @@ class TemporalAggregate(Aggregate):
         for k, func in self.bucket_dict.items():
             res[k] = [x for x in self.raw_data if func(x)]
         return res
+
+    def aggregate(self):
+        self.data = self.bucket_data()
 
 
 class DailyAggregate(TemporalAggregate):
@@ -123,4 +128,50 @@ class DailyAggregate(TemporalAggregate):
         gen_day = daily_iterator(self.start_date, self.end_date)
         return collections.OrderedDict(
             [(sd, self.create_bucket_fun(sd, ed)) for sd, ed in gen_day]
+        )
+
+
+class SpatialAggregate(TemporalAggregate):
+
+    def __init__(self, data, domain=None, *args, **kwargs):
+        super(SpatialAggregate, self).__init__(data, *args, **kwargs)
+        self.domain = domain
+        self.areal_units = []
+
+    def set_areal_units(self, poly_arr):
+        """
+        Provide an iterable containing polygons over which the data will be aggregated
+        :param poly_arr: Iterable of Shapely polygons (or geodjango, in which case they are converted)
+        """
+        self.areal_units = []
+        for p in poly_arr:
+            if spatial.HAS_GEODJANGO and isinstance(p, spatial.geos.GEOSGeometry):
+                p = spatial.geodjango_to_shapely(p)
+            self.areal_units.append(p)
+
+    def generate_grid(self, length, offset_coords=None):
+        """
+        Generate a square grid on the domain
+        :param length: the length of the side of a square
+        :param offset_coords: Optional 2 element array containing the coordsinates of the bottom left of a square
+        :return:
+        """
+        if self.domain is None:
+            domain = spatial.shapely_rectangle_from_vertices(min(self.raw_data[:, 1]),
+                                                             min(self.raw_data[:, 2]),
+                                                             max(self.raw_data[:, 1]),
+                                                             max(self.raw_data[:, 2]))
+        else:
+            domain = self.domain
+        self.set_areal_units(spatial.create_spatial_grid(domain, length, offset_coords=offset_coords)[0])
+
+
+    @staticmethod
+    def create_bucket_fun(poly):
+        return lambda x: poly.contains(geometry.Point(*x[1:]))
+
+    @property
+    def bucket_dict(self):
+        return collections.OrderedDict(
+            [(p, self.create_bucket_fun(p)) for p in self.areal_units]
         )

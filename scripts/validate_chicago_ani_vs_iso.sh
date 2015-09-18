@@ -19,7 +19,7 @@ MODULE=scripts.validate_chicago_ani_vs_iso
 #$ -l tmpfs=10G
 
 # 5. Set up the job array.
-#$ -t 1-12
+#$ -t 1-128
 
 # 6. Set the name of the job.
 #$ -N validate_chicago_ani_vs_iso

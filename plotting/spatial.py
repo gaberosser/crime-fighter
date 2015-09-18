@@ -5,6 +5,7 @@ from shapely import geometry as shapely_geometry
 import cartopy.crs as ccrs
 from matplotlib import pyplot as plt
 from matplotlib import cm
+import matplotlib as mpl
 import matplotlib.patches as mpatches
 import matplotlib.path as mpath
 from descartes import PolygonPatch
@@ -128,6 +129,93 @@ def plot_shapely_geos(shapes, ax=None, **kwargs):
 
     ## TODO: may wish to combine plotting of points for efficiency?
     return [plotters[t.__class__](t, ax, **kwargs) for t in shapes]
+
+
+def plot_shaded_regions(polys,
+                        values,
+                        domain=None,
+                        ax=None,
+                        cmap=cm.jet,
+                        vmin=None,
+                        vmax=None,
+                        fmax=None,
+                        alpha=None,
+                        colorbar=True,
+                        scale_bar=1000,
+                        scale_label='1 km',
+                        scale_bar_loc='se'):
+    """
+    :param polys:
+    :param values:
+    :param domain:
+    :param ax:
+    :param cmap:
+    :param vmin:
+    :param vmax:
+    :param fmax:
+    :param alpha:
+    :param colorbar:
+    :param scale_bar: Scale bar length in same units as polys , or None to disable
+    :return:
+    """
+
+    if fmax and vmax:
+        raise AttributeError("Either specify vmax OR fmax")
+
+    if len(polys) != len(values):
+        raise AttributeError("polys and values must be the same size")
+
+    ax = ax or plt.gca()
+
+    for i in range(len(polys)):
+        if isinstance(polys[i], geos.GEOSGeometry):
+            polys[i] = geodjango_to_shapely(polys[i])
+
+    if vmax is None:
+        vmax = np.max(values)
+
+    if vmin is None:
+        vmin = np.min(values)
+
+    if fmax:
+        tmp = sorted(values)
+        cut = int(np.floor(len(tmp) * fmax))
+        vmax = tmp[cut]
+
+    norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+    sm = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
+
+    for p,v in zip(polys, values):
+        if v < vmin:
+            continue
+        plot_shapely_geos(p, ax=ax, fc=sm.to_rgba(v), ec='black')
+
+    if colorbar:
+        cax = mpl.colorbar.make_axes(ax, location='bottom', pad=0.02, fraction=0.05, shrink=0.9)
+        cbar = mpl.colorbar.ColorbarBase(cax[0], cmap=cmap, norm=norm, orientation='horizontal')
+
+    ax.axis('off')
+    ax.autoscale()
+    ax.set_aspect('equal')
+
+    if scale_bar:
+        x0, x1 = ax.get_xlim()
+        y0, y1 = ax.get_ylim()
+
+        if scale_bar_loc == 'sw':
+            line_y = (y0 + 0.05 * (y1 - y0)) * np.ones(2)
+            line_x0 = x0 + 0.05 * (x1 - x0)
+            line_x = np.array([line_x0, line_x0 + scale_bar])
+        else:
+            line_y = (y0 + 0.05 * (y1 - y0)) * np.ones(2)
+            line_x1 = x1 - 0.05 * (x1 - x0)
+            line_x = np.array([line_x1 - scale_bar, line_x1])
+
+        ax.plot(line_x, line_y, 'k-', linewidth=4.0)
+        ax.text(np.mean(line_x), line_y[0] + 1, scale_label, ha='center', va='bottom')
+
+    if domain:
+        plot_shapely_geos(domain, ax=ax, facecolor='none', ec='black')
 
 
 def plot_surface_function_on_polygon(poly,

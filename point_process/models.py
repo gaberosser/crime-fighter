@@ -669,6 +669,10 @@ class SeppStochasticNnStExp(SeppStochasticNn):
     trigger_kde_class = pp_kde.SpaceTimeExponentialVariableBandwidthNnKde
 
 
+class SeppStochasticNnIsotropicReflectedTrigger(SeppStochasticNn):
+    trigger_kde_class = pp_kde.VariableBandwidthNnRadialReflectedKde
+
+
 class SeppDeterministicNn(Sepp):
 
     bg_kde_class = pp_kde.WeightedVariableBandwidthNnKdeSeparable

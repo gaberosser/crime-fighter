@@ -8,21 +8,22 @@ from pytz import utc
 from point_process import models as pp_models, estimation, validate
 from . import OUT_DIR, IN_DIR
 
-OUT_SUBDIR = 'validate_chicago_ani_vs_iso'
+OUT_SUBDIR = 'validate_chicago_ani_vs_iso_refl'
 
 # global parameters
 num_sample_points = 50
 grid_size = 250  # metres
-niter = 100  # number of SEPP iterations before convergence is assumed
+niter = 150  # number of SEPP iterations before convergence is assumed
 num_validation = 100  # number of predict - assess cycles
 start_date = datetime.datetime(2011, 3, 1)  # first date for which data are required
 start_day_number = 366  # number of days (after start date) on which first prediction is made
 
 estimate_kwargs = {
     'ct': 0.1,
-    'cd': 50,
-    # 'frac_bg': 0.5,
+    'cd': 150,
+    'frac_bg': None,
 }
+
 model_kwargs = {
     'parallel': False,
     'max_delta_t': 90, # set on each iteration
@@ -127,6 +128,10 @@ if __name__ == '__main__':
         pp_class = pp_models.SeppStochasticNn
     elif sys.argv[3] == 'iso':
         pp_class = pp_models.SeppStochasticNnIsotropicTrigger
+    elif sys.argv[3] == 'ani_refl':
+        pp_class = pp_models.SeppStochasticNnReflected
+    elif sys.argv[3] == 'iso_refl':
+        pp_class = pp_models.SeppStochasticNnIsotropicReflectedTrigger
     else:
         raise AttributeError("Unsupported pp_class type")
 
