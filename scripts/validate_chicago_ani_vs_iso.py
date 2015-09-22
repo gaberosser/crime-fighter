@@ -9,7 +9,7 @@ from pytz import utc
 from point_process import models as pp_models, estimation, validate
 from . import OUT_DIR, IN_DIR
 
-OUT_SUBDIR = 'validate_chicago_ani_vs_iso_refl'
+OUT_SUBDIR = 'validate_chicago_ani_vs_iso_refl_keep_coincident'
 
 # global parameters
 num_sample_points = 50
@@ -37,6 +37,7 @@ model_kwargs = {
                            'strict': False},
     'estimation_function': lambda x, y: estimation.estimator_exp_gaussian(x, y, **estimate_kwargs),
     'seed': 42,  # doesn't matter what this is, just want it fixed
+    'remove_coincident_pairs': False
 }
 
 pred_include = ('full_static',)  # only use this method for prediction

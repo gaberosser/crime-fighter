@@ -196,6 +196,30 @@ class RadialTemporal(MultivariateNormal):
             return cdf / self.int_constants[1]
 
 
+class SpaceNormalTimeGteZero(MultivariateNormal):
+    """
+    Same as multivariate normal KDE, but time component is truncated at zero and renormalised.
+    """
+    def normalisation_constants(self):
+        a = root2 * rootpi * self.stdevs
+        a[0] *= 1 - normcdf(0, self.mean[0], self.stdevs[0])
+        return a
+
+    def pdf(self, x, dims=None):
+        if dims:
+            ndim = len(dims)
+        else:
+            dims = range(self.ndim)
+            ndim = self.ndim
+
+        x = self.prep_input(x, ndim)
+
+        res = super(SpaceNormalTimeGteZero, self).pdf(x, dims=dims)
+        if 0 in dims:
+            res[x.toarray(0) < 0] = 0.
+        return res
+
+
 class SpaceNormalTimeExponential(BaseKernel):
 
     def __init__(self, mean, stdevs):

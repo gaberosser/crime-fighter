@@ -554,6 +554,10 @@ class FixedBandwidthKde(KdeBase):
         return self._t_dependent_variance(t)[2]
 
 
+class FixedBandwidthKdeTimeGteZero(FixedBandwidthKde):
+    kernel_class = kernels.SpaceNormalTimeGteZero
+
+
 class FixedBandwidthKdeSeparable(FixedBandwidthKde, KdeBaseSeparable):
     """
     Combination of fixed bandwidth and separable KDE in time / space.
@@ -644,6 +648,14 @@ class VariableBandwidthNnKde(VariableBandwidthKde):
         self.nn_distances, self.bandwidths = set_nn_bandwidths(normed_data, self.raw_std_devs, self.nn, **kwargs)
         if np.any(self.bandwidths == 0):
             raise AttributeError("Zero bandwidths present.")
+
+
+class VariableBandwidthNnTimeGteZeroKde(VariableBandwidthNnKde, FixedBandwidthKdeTimeGteZero):
+    """
+    Variable bandwidth KDE with bandwidths defined using NN as in VariableBandwidthNnKde class.
+    Time component is constrained to be greater than zero - kernel enforces this and renormalises the truncated
+    distribution.
+    """
 
 
 class WeightedFixedBandwidthKde(FixedBandwidthKde):
