@@ -25,7 +25,7 @@ def wilcoxon_signed_rank(v2, v1):
             this_rank[this_rank == i] = new_rank  # replace all matching ranks
         i += n
 
-    W = np.sum(s * this_rank)
+    W = np.nansum(s * this_rank)
     n = float(d.size)
     p_plus = np.sum(d > 0) / n
     p_minus = np.sum(d < 0) / n

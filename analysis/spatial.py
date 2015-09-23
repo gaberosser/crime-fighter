@@ -68,12 +68,10 @@ def create_spatial_grid(spatial_domain, grid_length, offset_coords=None):
     :return: list of grid vertices and centroids (both (x,y) pairs)
     """
 
-    if HAS_GEODJANGO and isinstance(spatial_domain, geos.Polygon):
+    if HAS_GEODJANGO and isinstance(spatial_domain, geos.GEOSGeometry):
         polygon = geos.Polygon
-    elif isinstance(spatial_domain, geometry.Polygon):
-        polygon = geometry.Polygon
     else:
-        raise TypeError("spatial_domain must be of type django.contrib.gis.geos.Polygon or shapely.geometry.Polygon")
+        polygon = geometry.Polygon
 
     intersect_polys = []
     full_extents = []

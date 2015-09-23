@@ -1,6 +1,7 @@
 __author__ = 'gabriel'
 from database import models
-from point_process import validate, models as pp_models, simulate, plotting, estimation, plotting
+from point_process import validate, models as pp_models, simulate, plots, estimation
+from kde import models as k_models
 import numpy as np
 import datetime
 import scripts
@@ -10,37 +11,40 @@ from analysis import chicago, cad
 
 start_date = datetime.datetime(2011, 3, 1)
 cutoff_day_number = 277
-end_date = start_date + datetime.timedelta(days=cutoff_day_number + 480)
-niter = 75
+# cutoff_day_number = 720
+end_date = start_date + datetime.timedelta(days=cutoff_day_number + 100)
+niter = 150
+
+estimate_kwargs = {
+    'ct': 1/10.,
+    'cd': 150,
+    # 'frac_bg': 0.5,
+}
 
 # estimate_kwargs = {
-#     'ct': 1,
-#     'cd': 0.02,
+#     'ct': 1 / 10.,
+#     'cd': 400,
 #     'frac_bg': 0.5,
 # }
 
-estimate_kwargs = {
-    'ct': 1 / 10.,
-    'cd': 400,
-    'frac_bg': 0.5,
-}
-
 model_kwargs = {
     'parallel': True,
-    # 'max_delta_t': 120, # set on each iteration
-    'max_delta_t': 1200, # set on each iteration
-    # 'max_delta_d': 500, # set on each iteration
-    'max_delta_d': 1000, # set on each iteration
+    'max_delta_t': 120, # set on each iteration
+    # 'max_delta_t': 1200, # set on each iteration
+    'max_delta_d': 500, # set on each iteration
+    # 'max_delta_d': 1000, # set on each iteration
     'bg_kde_kwargs': {'number_nn': [100, 15],
                       'min_bandwidth': None,
                       'strict': False},
     'trigger_kde_kwargs': {'number_nn': 15,
                            'min_bandwidth': None,
                            'strict': False,
-                           'tol': 1e-8},
+                           # 'tol': 1e-8
+                           },
     # 'estimation_function': lambda x, y: estimation.estimator_bowers_fixed_proportion_bg(x, y, **estimate_kwargs),
     'estimation_function': lambda x, y: estimation.estimator_exp_gaussian(x, y, **estimate_kwargs),
-    'seed': 42,  # doesn't matter what this is, just want it fixed
+    'seed': 43,  # doesn't matter what this is, just want it fixed
+    'remove_coincident_pairs': False,
 }
 
 
@@ -50,15 +54,16 @@ chic_south = models.ChicagoDivision.objects.get(name='South').mpoly
 chic_central = models.ChicagoDivision.objects.get(name='Central').mpoly
 chic_sw = models.ChicagoDivision.objects.get(name='Southwest').mpoly
 chic_n = models.ChicagoDivision.objects.get(name='North').mpoly
+chic_nw = models.ChicagoDivision.objects.get(name='Northwest').mpoly
 
 ## Load from database
-# res, t0, cid = chicago.get_crimes_by_type(crime_type='burglary', start_date=start_date, end_date=end_date,
-#                                           domain=chic_south)
+res, t0, cid = chicago.get_crimes_by_type(crime_type='burglary', start_date=start_date, end_date=end_date,
+                                          domain=chic_nw)
 
 ## Load from file
-with open(os.path.join(scripts.IN_DIR, 'chicago_south', 'burglary.pickle'), 'r') as f:
+# with open(os.path.join(scripts.IN_DIR, 'chicago_south', 'burglary.pickle'), 'r') as f:
 # with open(os.path.join(scripts.IN_DIR, 'chicago', 'burglary.pickle'), 'r') as f:
-    res = dill.load(f)
+#     res = dill.load(f)
 
 ## CAMDEN
 
@@ -70,14 +75,16 @@ training = res[res[:, 0] <= cutoff_day_number]
 # sepp_isotropic = pp_models.SeppStochasticNnIsotropicTrigger(data=training, **model_kwargs)
 # ps_isotropic = sepp_isotropic.train(niter=niter)
 
-sepp_local = pp_models.LocalSeppDeterministicNn(data=training, **model_kwargs)
-ps_local = sepp_local.train(niter=niter)
+# sepp_local = pp_models.LocalSeppDeterministicNn(data=training, **model_kwargs)
+# ps_local = sepp_local.train(niter=niter)
 
 # sepp_det = pp_models.SeppDeterministicNn(data=training, **model_kwargs)
 # ps_det = sepp_det.train(niter=niter)
 
-# sepp_xy = pp_models.SeppStochasticNn(data=training, **model_kwargs)
-# ps_xy = sepp_xy.train(niter=niter)
+sepp_xy = pp_models.SeppStochasticNn(data=training, **model_kwargs)
+
+sepp_xy.trigger_kde_class = k_models.VariableBandwidthNnTimeGteZeroKde
+ps_xy = sepp_xy.train(niter=niter)
 
 ## standardise the data
 # s = np.std(training, axis=0, ddof=1)

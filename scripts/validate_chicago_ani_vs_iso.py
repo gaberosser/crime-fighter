@@ -12,9 +12,9 @@ from . import OUT_DIR, IN_DIR
 OUT_SUBDIR = 'validate_chicago_ani_vs_iso_refl_keep_coincident'
 
 # global parameters
-num_sample_points = 50
-grid_size = 250  # metres
-niter = 150  # number of SEPP iterations before convergence is assumed
+num_sample_points = 30
+grid_size = 150  # metres
+niter = 200  # number of SEPP iterations before convergence is assumed
 num_validation = 100  # number of predict - assess cycles
 start_date = datetime.datetime(2011, 3, 1)  # first date for which data are required
 start_day_number = 366  # number of days (after start date) on which first prediction is made

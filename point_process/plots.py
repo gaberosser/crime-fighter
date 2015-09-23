@@ -259,7 +259,9 @@ def num_bg_trigger_plot(ppobj, simobj=None):
 #
 
 
-def radial_spatial_triggering_plots(ppobj, simobj=None, xmax=None, ymax=None, cbar=True):
+def radial_spatial_triggering_plots(ppobj, simobj=None, xmax=None, ymax=None, cbar=True,
+                                    fmax=None,
+                                    vmax=None):
     npt = 500
     ci = 0.99
     fig_kwargs = {
@@ -268,6 +270,7 @@ def radial_spatial_triggering_plots(ppobj, simobj=None, xmax=None, ymax=None, cb
         'facecolor': 'w',
     }
 
+    assert fmax is None or vmax is None, "Can specify EITHER vmax OR fmax"
 
     xmax = xmax or ppobj.trigger_kde.marginal_icdf(ci, dim=1)
     ymax = ymax or xmax
@@ -275,7 +278,12 @@ def radial_spatial_triggering_plots(ppobj, simobj=None, xmax=None, ymax=None, cb
     xy = DataArray.from_meshgrid(*np.meshgrid(np.linspace(-xmax, xmax, npt), np.linspace(-ymax, ymax, npt)))
     zxy1 = ppobj.trigger_kde.partial_marginal_pdf(xy, normed=False) / ppobj.ndata
     # zxy1 = ppobj.trigger_kde.partial_marginal_pdf(xy, normed=True)
-    vmax = zxy1.max()
+    if fmax is not None:
+        vmax = sorted(zxy1.flat)[int(zxy1.size * fmax)]
+    elif vmax is not None:
+        pass
+    else:
+        vmax = zxy1.max()
 
     if simobj:
         sx = simobj.trigger_params['sigma'][0]
