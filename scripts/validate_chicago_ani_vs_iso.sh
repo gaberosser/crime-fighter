@@ -10,7 +10,7 @@ MODULE=scripts.validate_chicago_ani_vs_iso
 #$ -S /bin/bash
 
 # 2. Request wallclock time (format hours:minutes:seconds).
-#$ -l h_rt=6:0:0
+#$ -l h_rt=18:0:0
 
 # 3. Request RAM.
 #$ -l mem=8G
@@ -19,7 +19,7 @@ MODULE=scripts.validate_chicago_ani_vs_iso
 #$ -l tmpfs=10G
 
 # 5. Set up the job array.
-#$ -t 1-128
+#$ -t 1-36
 
 # 6. Set the name of the job.
 #$ -N validate_chicago_ani_vs_iso
