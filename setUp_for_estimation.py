@@ -50,7 +50,7 @@ model_kwargs = {
 
 ## CHICAGO SOUTH SIDE
 
-chic_south = models.ChicagoDivision.objects.get(name='South').mpoly
+chic_s = models.ChicagoDivision.objects.get(name='South').mpoly
 chic_central = models.ChicagoDivision.objects.get(name='Central').mpoly
 chic_sw = models.ChicagoDivision.objects.get(name='Southwest').mpoly
 chic_n = models.ChicagoDivision.objects.get(name='North').mpoly
@@ -58,7 +58,7 @@ chic_nw = models.ChicagoDivision.objects.get(name='Northwest').mpoly
 
 ## Load from database
 res, t0, cid = chicago.get_crimes_by_type(crime_type='burglary', start_date=start_date, end_date=end_date,
-                                          domain=chic_nw)
+                                          domain=chic_s)
 
 ## Load from file
 # with open(os.path.join(scripts.IN_DIR, 'chicago_south', 'burglary.pickle'), 'r') as f:
@@ -71,6 +71,15 @@ res, t0, cid = chicago.get_crimes_by_type(crime_type='burglary', start_date=star
 # res, t0, cid = cad.get_crimes_by_type(nicl_type=3)  # burglary
 
 training = res[res[:, 0] <= cutoff_day_number]
+rot_mat = lambda th: np.array(
+    [[np.cos(th), -np.sin(th)],
+    [np.sin(th), np.cos(th)]]
+)
+
+training_xy = training[:, 1:] - training[:, 1:].mean(axis=0)
+training_xy = np.dot(rot_mat(np.pi / 4.), training_xy.transpose()).transpose()
+
+training[:, 1:] = training_xy
 
 # sepp_isotropic = pp_models.SeppStochasticNnIsotropicTrigger(data=training, **model_kwargs)
 # ps_isotropic = sepp_isotropic.train(niter=niter)

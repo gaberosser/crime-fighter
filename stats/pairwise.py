@@ -5,12 +5,11 @@ from scipy import stats
 
 def wilcoxon_signed_rank(v2, v1):
 
+    s = np.sign(v2 - v1)
     d = v2 - v1
-    s = np.sign(d)
-    d = np.abs(d)
 
     # ranking: NB, matches are given the AVERAGE RANK
-    _, _, this_rank, this_count = np.unique(d, True, True, True)
+    _, _, this_rank, this_count = np.unique(np.abs(d), True, True, True)
     this_rank += 1
 
     m = this_rank.max()

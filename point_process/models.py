@@ -627,6 +627,8 @@ class SeppStochasticNn(SeppStochastic):
                 raise AttributeError("Kwarg 'number_nn' in bg_kde_kwargs must have length 2")
 
 
+
+
 class SeppStochasticNnBgFixedTrigger(SeppStochastic):
     bg_kde_class = pp_kde.VariableBandwidthNnKdeSeparable
     trigger_kde_class = pp_kde.FixedBandwidthKde

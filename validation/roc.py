@@ -376,6 +376,11 @@ class RocGridMean(RocGrid):
         """ Generate n_sample_per_grid sample points per grid unit
          Return n_sample_per_grid x self.ndata x 2 array, final dim is x, y """
 
+        if HAS_GEODJANGO and isinstance(self.poly, geos.GEOSGeometry):
+            point_class = geos.Point
+        else:
+            point_class = Point
+
         if self.side_length is None:
             # grid was supplied as an array
             # slow version: need to iterate over the polygons
@@ -393,7 +398,7 @@ class RocGridMean(RocGrid):
         if respect_boundary:
             # loop over grid squares that are incomplete
             for i in np.where(np.array(self.full_grid_square) == False)[0]:
-                inside_idx = np.array([Point(x, y).within(self.poly) for x, y in zip(xres[:, i], yres[:, i])])
+                inside_idx = np.array([point_class(x, y).within(self.poly) for x, y in zip(xres[:, i], yres[:, i])])
                 # pad empty parts with repeats of the centroid location
                 num_empty = n_sample_per_grid - sum(inside_idx)
                 if num_empty:

@@ -71,7 +71,7 @@ class ValidationBase(object):
 
         # set roc
         self.roc = self.roc_class(poly=self.bounding_poly)
-        # set roc with ALL data initially
+        # set roc with ALL data initially so it can compute the boundary if no poly has been provided
         self.roc.set_data(self.data[:, 1:], index=self.data_index)
 
 
@@ -178,17 +178,34 @@ class ValidationBase(object):
         # estimate total propensity in each grid poly
         return self.model.predict(t, self.sample_points)
 
-    def _iterate_run(self, pred_dt_plus, true_dt_plus, true_dt_minus, **kwargs):
-        true_dt_plus = true_dt_plus or pred_dt_plus
+    def run_roc_prediction(self, t, testing_data, testing_ind, **kwargs):
         # run prediction
         # output should be M x ndata matrix, where M is the number of sample points per grid square
-        prediction = self.predict(self.cutoff_t + pred_dt_plus, **kwargs)
-        testing_data = self.testing(dt_plus=true_dt_plus, dt_minus=true_dt_minus)
-        testing_ind = self.testing_data_index(dt_plus=true_dt_plus, dt_minus=true_dt_minus)
+        prediction = self.predict(t, **kwargs)
         self.roc.set_data(testing_data.space, index=testing_ind)
         self.roc.set_prediction(prediction)
-
         return self.roc.evaluate(include_predictions=self.include_predictions)
+
+    def _iterate_run(self, pred_dt_plus, true_dt_plus, true_dt_minus, **kwargs):
+        true_dt_plus = true_dt_plus or pred_dt_plus
+
+        testing_data = self.testing(dt_plus=true_dt_plus, dt_minus=true_dt_minus)
+        testing_ind = self.testing_data_index(dt_plus=true_dt_plus, dt_minus=true_dt_minus)
+        prediction_t = self.cutoff_t + pred_dt_plus
+
+        res = {}
+
+        # ROC
+        roc_evaluation = self.run_roc_prediction(prediction_t, testing_data, testing_ind, **kwargs)
+        res.update(roc_evaluation)
+
+        # conditional likelihood
+        # compute the intensity at the test points
+        # TODO: adding a small eps here to avoid log(0), but is this justifiable?
+        intensity_at_test_points = self.model.predict(prediction_t, testing_data.space) + 1e-12
+        res['conditional_likelihood'] = sum(np.log(intensity_at_test_points))
+
+        return res
 
     def run(self, time_step,
             pred_dt_plus=None,
@@ -480,13 +497,13 @@ if __name__ == "__main__":
     sk = hotspot.SKernelHistoric(2) # use heatmap from final 2 days data
     # vb = ValidationBase(data, hotspot.Hotspot, camden.mpoly, model_args=(sk,))
     # vb.set_sample_units(200)
-    vb = ValidationIntegration(data, sk, camden.mpoly)
+    vb = ValidationIntegration(data, sk, spatial_domain=camden.mpoly, include_predictions=True)
     vb.set_sample_units(200, n_sample_per_grid=10)
     vb.set_t_cutoff(4.0)
 
-    res = vb.run(time_step=1, n_iter=1) # predict one day ahead
-    pred_values = res['prediction_values'][0]
-    polys_pred_rank_order = [vb.roc.igrid[i] for i in res['prediction_rank'][0]]
+    res = vb.run(time_step=1, n_iter=5) # predict one day ahead
+    pred_values = res['prediction_values'][-1]
+    polys_pred_rank_order = [vb.roc.grid_polys[i] for i in res['prediction_rank'][-1]]
 
     norm = mpl.colors.Normalize(min(pred_values), max(pred_values))
     cmap = mpl.cm.jet
@@ -495,8 +512,12 @@ if __name__ == "__main__":
     # Figure: surface showing prediction values by grid square
     fig = plt.figure()
     ax = fig.add_subplot(111)
-    for (p, r) in zip(polys_pred_rank_order, pred_values):
-        spatial.plot_geodjango_shapes(shapes=(p,), ax=ax, facecolor=sm.to_rgba(r), set_axes=False)
+    for (p, r) in zip(polys_pred_rank_order, sorted(pred_values, reverse=True)):
+        # spatial.plot_geodjango_shapes(shapes=(p,), ax=ax, facecolor=sm.to_rgba(r), set_axes=False)
+        try:
+            spatial.plot_shapely_geos(shapes=p, ax=ax, facecolor=sm.to_rgba(r))
+        except Exception:
+            pass
     spatial.plot_geodjango_shapes((vb.spatial_domain,), ax=ax, facecolor='none')
 
     # Figure: surface showing true values by grid square
@@ -506,7 +527,11 @@ if __name__ == "__main__":
 
     fig = plt.figure()
     ax = fig.add_subplot(111)
-    for (p, r) in zip(vb.roc.igrid, vb.roc.true_count):
-        spatial.plot_geodjango_shapes(shapes=(p,), ax=ax, facecolor=sm.to_rgba(r), set_axes=False)
+    for (p, r) in zip(vb.roc.grid_polys, vb.roc.true_count):
+        # spatial.plot_geodjango_shapes(shapes=(p,), ax=ax, facecolor=sm.to_rgba(r), set_axes=False)
+        try:
+            spatial.plot_shapely_geos(shapes=p, ax=ax, facecolor=sm.to_rgba(r))
+        except Exception:
+            pass
     spatial.plot_geodjango_shapes((vb.spatial_domain,), ax=ax, facecolor='none')
 

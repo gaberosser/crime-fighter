@@ -43,7 +43,7 @@ def bounding_box_grid(spatial_domain, grid_length, offset_coords=None):
     """
     offset_coords = offset_coords or (0, 0)
 
-    if HAS_GEODJANGO and isinstance(spatial_domain, geos.Polygon):
+    if HAS_GEODJANGO and isinstance(spatial_domain, geos.GEOSGeometry):
         spatial_domain = geodjango_to_shapely(spatial_domain)
 
     xmin, ymin, xmax, ymax = spatial_domain.bounds
@@ -59,19 +59,27 @@ def bounding_box_grid(spatial_domain, grid_length, offset_coords=None):
     return edges_x, edges_y
 
 
-def create_spatial_grid(spatial_domain, grid_length, offset_coords=None):
+def create_spatial_grid(spatial_domain, grid_length, offset_coords=None, convert_to_shapely=True):
     """
     Compute a grid on the spatial domain.
     :param spatial_domain: geos Polygon or Multipolygon describing the overall geometry
     :param grid_length: the length of one side of the grid square
     :param offset_coords: tuple giving the (x, y) coordinates of the bottom LHS of a gridsquare, default = (0, 0)
+    :param convert_to_shapely: If True, geodjango input is automatically converted to shapely
     :return: list of grid vertices and centroids (both (x,y) pairs)
     """
 
     if HAS_GEODJANGO and isinstance(spatial_domain, geos.GEOSGeometry):
-        polygon = geos.Polygon
+        if convert_to_shapely:
+            spatial_domain = geodjango_to_shapely(spatial_domain)
+            polygon = geometry.Polygon
+            bounds = lambda x: x.bounds
+        else:
+            polygon = geos.Polygon
+            bounds = lambda x: x.extent
     else:
         polygon = geometry.Polygon
+        bounds = lambda x: x.bounds
 
     intersect_polys = []
     full_extents = []
@@ -89,11 +97,11 @@ def create_spatial_grid(spatial_domain, grid_length, offset_coords=None):
             ))
             if p.within(spatial_domain):
                 intersect_polys.append(p)
-                full_extents.append(p.bounds)
+                full_extents.append(bounds(p))
                 full_grid_square.append(True)
             elif spatial_domain.intersects(p):
                 intersect_polys.append(spatial_domain.intersection(p))
-                full_extents.append(p.bounds)
+                full_extents.append(bounds(p))
                 full_grid_square.append(False)
 
     return intersect_polys, full_extents, full_grid_square

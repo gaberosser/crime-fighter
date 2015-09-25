@@ -7,8 +7,8 @@ import collections
 import operator
 from matplotlib import pyplot as plt
 
-INDIR = os.path.join(OUT_DIR, 'validate_chicago_ani_vs_iso_refl')
-# INDIR = os.path.join(OUT_DIR, 'validate_chicago_ani_vs_iso_refl_keep_coincident')
+# INDIR = os.path.join(OUT_DIR, 'validate_chicago_ani_vs_iso_refl')
+INDIR = os.path.join(OUT_DIR, 'validate_chicago_ani_vs_iso_refl_keep_coincident')
 
 REGIONS = (
     'chicago_central',
@@ -19,21 +19,22 @@ REGIONS = (
     'chicago_north',
     'chicago_south',
     'chicago_west',
-    # 'chicago_far_north',
+    'chicago_far_north',
 )
 
 METHODS = (
-    'ani',
-    'iso',
+    # 'ani',
+    # 'iso',
     'ani_refl',
     'iso_refl',
+    'ani_norm',
 )
 
 CRIME_TYPES = (
     'burglary',
-    'robbery',
+    # 'robbery',
     'assault',
-    'motor_vehicle_theft',
+    # 'motor_vehicle_theft',
 )
 
 def load_results_all_methods(region,
@@ -72,7 +73,7 @@ def load_all_results(include_model=False):
     res = {}
     indirs = {
         'remove_coinc': INDIR,
-        'keep_coinc': INDIR + '_keep_coincident',
+        # 'keep_coinc': INDIR + '_keep_coincident',
     }
     for k, ind in indirs.iteritems():
         res[k] = {}
@@ -118,48 +119,80 @@ if __name__ == '__main__':
     crime_cat = dict([(k, i) for i, k in enumerate(CRIME_TYPES)])
     method_cat = dict([(k, i) for i, k in enumerate(METHODS)])
 
-    for r in REGIONS:
-        # data_coinc = np.zeros((len(CRIME_TYPES), len(METHODS)))
-        # data_no_coinc = np.zeros((len(CRIME_TYPES), len(METHODS)))
-        data_coinc = []
-        data_no_coinc = []
-        ct_v = []
-        m_v = []
-        for ct in CRIME_TYPES:
-            for m in METHODS:
-                # keeping coincident points
-                ct_ix = crime_cat[ct]
-                m_ix = method_cat[m]
-                ct_v.append(ct_ix)
-                m_v.append(m_ix)
-                try:
-                    a = res['keep_coinc'][r][ct][m]['frac_trigger']
-                    if a == 0:
-                        data_coinc.append(-1)
-                    else:
-                        data_coinc.append(a)
-                except KeyError:
-                    data_coinc.append(np.nan)
-                try:
-                    a = res['remove_coinc'][r][ct][m]['frac_trigger']
-                    if a == 0:
-                        data_no_coinc.append(-1)
-                    else:
-                        data_no_coinc.append(a)
-                except KeyError:
-                    data_no_coinc.append(np.nan)
+    # for r in REGIONS:
+    #     data_coinc = []
+    #     data_no_coinc = []
+    #     ct_v = []
+    #     m_v = []
+    #     for ct in CRIME_TYPES:
+    #         for m in METHODS:
+    #             # keeping coincident points
+    #             ct_ix = crime_cat[ct]
+    #             m_ix = method_cat[m]
+    #             ct_v.append(ct_ix)
+    #             m_v.append(m_ix)
+    #             try:
+    #                 a = res['keep_coinc'][r][ct][m]['frac_trigger']
+    #                 if a == 0:
+    #                     data_coinc.append(-1)
+    #                 else:
+    #                     data_coinc.append(a)
+    #             except KeyError:
+    #                 data_coinc.append(np.nan)
+    #             try:
+    #                 a = res['remove_coinc'][r][ct][m]['frac_trigger']
+    #                 if a == 0:
+    #                     data_no_coinc.append(-1)
+    #                 else:
+    #                     data_no_coinc.append(a)
+    #             except KeyError:
+    #                 data_no_coinc.append(np.nan)
+    #
+    #     plt.figure()
+    #     plt.scatter(np.array(ct_v) - dist_between/2., np.array(m_v), c=data_coinc, s=s, vmin=-1, vmax=1, cmap='RdYlBu')
+    #     plt.scatter(np.array(ct_v) + dist_between/2., np.array(m_v), c=data_no_coinc, s=s, vmin=-1, vmax=1, cmap='RdYlBu')
+    #     plt.title(r.replace('_', ' '))
+    #     ax = plt.gca()
+    #     xticks = reduce(operator.add, [[t - dist_between/2., t + dist_between/2.] for t in range(len(CRIME_TYPES))])
+    #     xticklabels = reduce(operator.add, [['%s keep' % t, '%s remove' % t] for t in crime_labels])
+    #     ax.set_xticks(xticks)
+    #     ax.set_yticks(range(len(METHODS)))
+    #     ax.set_xticklabels(xticklabels)
+    #     ax.set_yticklabels(method_labels)
+    #     plt.colorbar()
+
+    bar_width = 0.3
+
+    for ct in CRIME_TYPES:
+
+        frac_trigger_iso = []
+        frac_trigger_ani = []
+        x_pos_iso = []
+        x_pos_ani = []
+        x_pos_all = []
+        x_label = []
+        i = 1.
+        for r in REGIONS:
+            try:
+                frac_trigger_ani.append(res[r][ct]['ani_refl']['frac_trigger'])
+            except Exception:
+                frac_trigger_ani.append(np.nan)
+            try:
+                frac_trigger_iso.append(res[r][ct]['iso_refl']['frac_trigger'])
+            except Exception:
+                frac_trigger_iso.append(np.nan)
+            x_pos_ani.append(i)
+            x_pos_iso.append(i + bar_width)
+
+            x_pos_all.append(i + bar_width)
+
+            x_label.append(r.replace('_', ' ').capitalize())
+            i += 1
 
         plt.figure()
-        plt.scatter(np.array(ct_v) - dist_between/2., np.array(m_v), c=data_coinc, s=s, vmin=-1, vmax=1, cmap='RdYlBu')
-        plt.scatter(np.array(ct_v) + dist_between/2., np.array(m_v), c=data_no_coinc, s=s, vmin=-1, vmax=1, cmap='RdYlBu')
-        plt.title(r.replace('_', ' '))
+        plt.bar(x_pos_ani, frac_trigger_ani, bar_width, color='r', alpha=0.4)
+        plt.bar(x_pos_iso, frac_trigger_iso, bar_width, color='b', alpha=0.4)
         ax = plt.gca()
-        xticks = reduce(operator.add, [[t - dist_between/2., t + dist_between/2.] for t in range(len(CRIME_TYPES))])
-        xticklabels = reduce(operator.add, [['%s keep' % t, '%s remove' % t] for t in crime_labels])
-        ax.set_xticks(xticks)
-        ax.set_yticks(range(len(METHODS)))
-        ax.set_xticklabels(xticklabels)
-        ax.set_yticklabels(method_labels)
-        plt.colorbar()
-
-
+        ax.set_xticks(np.array(x_pos_all))
+        ax.set_xticklabels(x_label)
+        plt.title(ct.replace('_', ' ').capitalize())
