@@ -7,6 +7,7 @@ import logging
 import sys
 from pytz import utc
 from point_process import models as pp_models, estimation, validate
+from kde import models as k_models
 from . import OUT_DIR, IN_DIR
 
 OUT_SUBDIR = 'validate_chicago_ani_vs_iso_refl_keep_coincident'
@@ -134,6 +135,9 @@ if __name__ == '__main__':
 
     if sys.argv[3] == 'ani':
         pp_class = pp_models.SeppStochasticNn
+    elif sys.argv[3] == 'ani_norm':
+        pp_class = pp_models.SeppStochasticNn
+        pp_class.trigger_kde_class = k_models.VariableBandwidthNnTimeGteZeroKde
     elif sys.argv[3] == 'iso':
         pp_class = pp_models.SeppStochasticNnIsotropicTrigger
     elif sys.argv[3] == 'ani_refl':
