@@ -1,6 +1,7 @@
 __author__ = 'gabriel'
 
 from point_process import models, estimation, simulate, plots
+from kde import models as kde_models
 from matplotlib import pyplot as plt
 import numpy as np
 from scipy import sparse
@@ -218,7 +219,7 @@ if __name__ == '__main__':
     c.run()
     data = c.data[:, :3]
     max_delta_t = 100
-    max_delta_d = 1.
+    max_delta_d = .5
     # init_est_params = {
     #     'ct': 1/15.,
     #     'cd': 4.,
@@ -226,7 +227,7 @@ if __name__ == '__main__':
     init_est_params = {
         'ct': 10,
         'cd': .05,
-        'frac_bg': 0.5,
+        # 'frac_bg': 0.5,
     }
 
     ndata = data.shape[0]
@@ -246,7 +247,10 @@ if __name__ == '__main__':
     # }
 
 
-    r = models.SeppStochasticNn(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
+    pp_class = models.SeppStochasticNn
+    pp_class.trigger_kde_class = kde_models.VariableBandwidthNnTimeGteZeroKde
+
+    r = pp_class(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
                                 bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
     # r = models.SeppStochasticStationaryBg(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t)
     # r = models.SeppStochasticNnStExp(data=data, max_delta_d=0.75, max_delta_t=80,

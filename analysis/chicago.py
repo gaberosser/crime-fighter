@@ -24,6 +24,10 @@ T0 = datetime.datetime(2001, 1, 1, 0)
 Tmax = datetime.datetime(2014, 5, 24, 0)
 
 
+# TODO
+# def stik(poly, start_date, end_date)
+
+
 def compute_chicago_region(fill_in=True, as_shapely=False):
     """ Get (multi) polygon representing Chicago city boundary.
         fill_in parameter specifies whether holes should be filled (better for visualisation) """
