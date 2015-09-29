@@ -1,11 +1,14 @@
 __author__ = 'gabriel'
 import numpy as np
 import os
-from .. import OUT_DIR
+from scripts import OUT_DIR
 import dill
 import collections
 import operator
 from matplotlib import pyplot as plt
+from analysis import chicago
+from tools import get_ellipse_coords
+
 
 # INDIR = os.path.join(OUT_DIR, 'validate_chicago_ani_vs_iso_refl')
 INDIR = os.path.join(OUT_DIR, 'validate_chicago_ani_vs_iso_refl_keep_coincident')
@@ -66,43 +69,83 @@ def load_results_all_methods(region,
             # couldn't load data
             print exc
             pass
-    return res
+    # cast back to normal dictionary
+    return dict(res)
 
 
-def load_all_results(include_model=False):
+def load_all_results(include_model=False,
+                     aggregate=True):
     res = {}
-    indirs = {
-        'remove_coinc': INDIR,
-        # 'keep_coinc': INDIR + '_keep_coincident',
-    }
-    for k, ind in indirs.iteritems():
-        res[k] = {}
-        for r in REGIONS:
-            res[k][r] = {}
-            for ct in CRIME_TYPES:
-                res[k][r][ct] = load_results_all_methods(r, ct, indir=ind, include_model=include_model)
+    for r in REGIONS:
+        res[r] = {}
+        for ct in CRIME_TYPES:
+            res[r][ct] = load_results_all_methods(r, ct, indir=INDIR,
+                                                  include_model=include_model,
+                                                  aggregate=aggregate)
 
     return res
 
 
 def pickle_all_models():
     res = load_all_results(include_model=True)
-    indirs = {
-        'remove_coinc': INDIR,
-        'keep_coinc': INDIR + '_keep_coincident',
+    for r in REGIONS:
+        for ct in CRIME_TYPES:
+            for m in METHODS:
+                try:
+                    obj = res[r][ct][m]['model']
+                    fn = os.path.join(INDIR, '{0}-{1}-{2}-model.pickle').format(
+                        r, ct, m
+                    )
+                    obj.pickle(fn)
+                except Exception as exc:
+                    print repr(exc)
+
+
+def wilcoxon_analysis(this_res):
+    from stats.pairwise import wilcoxon
+    out = {}
+    for m1 in METHODS:
+        for m2 in METHODS:
+            if (m2, m1) in out:
+                continue
+            try:
+                area = np.nanmean(this_res[m1]['cumulative_area'], axis=0)
+                n = area.size
+                t = []
+                for i in range(n):
+                    x1 = this_res[m1]['cumulative_crime'][:, i]
+                    x2 = this_res[m2]['cumulative_crime'][:, i]
+                    a, b = wilcoxon(x1, x2)
+                    t.append({'area': area[i],
+                              'Z': a,
+                              'pval': b})
+                out[(m1, m2)] = t
+            except Exception:
+                pass
+    return out
+
+
+def plot_mean_hit_rate(this_res, cutoff=0.2, ax=None, legend=True):
+    if ax is None:
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+    colour_mapping = {
+        'ani_norm': 'k',
+        'ani_refl': 'r',
+        'iso_refl': 'b',
     }
-    for k, ind in indirs.iteritems():
-        for r in REGIONS:
-            for ct in CRIME_TYPES:
-                for m in METHODS:
-                    try:
-                        obj = res[k][r][ct][m]['model']
-                        fn = os.path.join(ind, '{0}-{1}-{2}-model.pickle').format(
-                            r, ct, m
-                        )
-                        obj.pickle(fn)
-                    except Exception as exc:
-                        print repr(exc)
+    for m in METHODS:
+        try:
+            c = colour_mapping[m]
+            x = np.nanmean(this_res[m]['cumulative_area'], axis=0)
+            y = np.nanmean(this_res[m]['cumulative_crime'], axis=0)
+            ax.plot(x[x<=cutoff], y[x<=cutoff], colour_mapping[m])
+        except Exception as exc:
+            print repr(exc)
+    ax.set_xlabel('Coverage')
+    ax.set_ylabel('Hit rate')
+    if legend:
+        ax.legend([t.replace('_', ' ') for t in METHODS], loc='upper left')
 
 
 if __name__ == '__main__':
@@ -111,9 +154,9 @@ if __name__ == '__main__':
     crime_labels = [t.replace('_', ' ') for t in CRIME_TYPES]
     method_labels = [t.replace('_', ' ') for t in METHODS]
 
-    INFILE = 'validate_chicago_ani_vs_iso.pickle'
-    with open(INFILE, 'r') as f:
-        res = dill.load(f)
+    # INFILE = 'validate_chicago_ani_vs_iso.pickle'
+    # with open(INFILE, 'r') as f:
+    #     res = dill.load(f)
 
     # category -> number
     crime_cat = dict([(k, i) for i, k in enumerate(CRIME_TYPES)])
@@ -167,24 +210,34 @@ if __name__ == '__main__':
 
         frac_trigger_iso = []
         frac_trigger_ani = []
+        frac_trigger_nor = []
         x_pos_iso = []
         x_pos_ani = []
+        x_pos_nor = []
         x_pos_all = []
         x_label = []
         i = 1.
         for r in REGIONS:
             try:
                 frac_trigger_ani.append(res[r][ct]['ani_refl']['frac_trigger'])
-            except Exception:
+            except Exception as exc:
+                print repr(exc)
                 frac_trigger_ani.append(np.nan)
             try:
                 frac_trigger_iso.append(res[r][ct]['iso_refl']['frac_trigger'])
-            except Exception:
+            except Exception as exc:
+                print repr(exc)
                 frac_trigger_iso.append(np.nan)
+            try:
+                frac_trigger_nor.append(res[r][ct]['ani_norm']['frac_trigger'])
+            except Exception as exc:
+                print repr(exc)
+                frac_trigger_nor.append(np.nan)
             x_pos_ani.append(i)
             x_pos_iso.append(i + bar_width)
+            x_pos_nor.append(i + 2 * bar_width)
 
-            x_pos_all.append(i + bar_width)
+            x_pos_all.append(i + 1.5 * bar_width)
 
             x_label.append(r.replace('_', ' ').capitalize())
             i += 1
@@ -192,7 +245,76 @@ if __name__ == '__main__':
         plt.figure()
         plt.bar(x_pos_ani, frac_trigger_ani, bar_width, color='r', alpha=0.4)
         plt.bar(x_pos_iso, frac_trigger_iso, bar_width, color='b', alpha=0.4)
+        plt.bar(x_pos_nor, frac_trigger_nor, bar_width, color='g', alpha=0.4)
         ax = plt.gca()
         ax.set_xticks(np.array(x_pos_all))
         ax.set_xticklabels(x_label)
         plt.title(ct.replace('_', ' ').capitalize())
+        plt.legend((
+            'Ani, refl',
+            'Iso, refl',
+            'Ani, norm',
+        ))
+
+    domains = chicago.get_chicago_side_polys(as_shapely=True)
+    domain_mapping = {
+        'chicago_south': 'South',
+        'chicago_southwest': 'Southwest',
+        'chicago_west': 'West',
+        'chicago_northwest': 'Northwest',
+        'chicago_north': 'North',
+        'chicago_central': 'Central',
+        'chicago_far_north': 'Far North',
+        'chicago_far_southwest': 'Far Southwest',
+        'chicago_far_southeast': 'Far Southeast',
+    }
+
+    colour_mapping = {
+        'ani_norm': 'k',
+        'ani_refl': 'r',
+        'iso_refl': 'b',
+    }
+
+    t = 0.95
+
+    for ct in CRIME_TYPES:
+        fig, axs = plt.subplots(3, 3, sharex=True, sharey=True)
+        i = 0
+        for r in REGIONS:
+            dom = domains[domain_mapping[r]]
+            for m in METHODS:
+                try:
+                    k = res[r][ct][m]['model'].trigger_kde
+                    if k.ndim == 3:
+                        a = k.marginal_icdf(t, dim=1)
+                        b = k.marginal_icdf(t, dim=2)
+                        coords = get_ellipse_coords(a=a, b=b)
+                    else:
+                        a = k.marginal_icdf(t, dim=1)
+                        coords = get_ellipse_coords(a, a)
+                    axs.flat[i].plot(coords[:, 0], coords[:, 1], colour_mapping[m])
+
+                except Exception as exc:
+                    print repr(exc)
+            axs.flat[i].title.set_text(domain_mapping[r])
+            i += 1
+
+
+    for ct in CRIME_TYPES:
+        fig, axs = plt.subplots(3, 3, sharex=True, sharey=True)
+        i = 0
+        for r in REGIONS:
+            plot_mean_hit_rate(res[r][ct], ax=axs.flat[i], legend=(i == 0))
+            axs.flat[i].set_title(domain_mapping[r])
+            i += 1
+
+
+    from plotting.spatiotemporal import pairwise_distance_histogram
+    for ct in CRIME_TYPES:
+        for r in REGIONS:
+            try:
+                data = res[r][ct]['ani_refl']['model'].data
+                pairwise_distance_histogram(data, max_t=120, max_d=500, fmax=0.99)
+                plt.title("%s - %s" % (domain_mapping[r], ct.capitalize()))
+            except Exception as exc:
+                print repr(exc)

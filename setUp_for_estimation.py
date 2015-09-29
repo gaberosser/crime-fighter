@@ -10,8 +10,8 @@ import dill
 from analysis import chicago, cad
 
 start_date = datetime.datetime(2011, 3, 1)
-cutoff_day_number = 277
-# cutoff_day_number = 720
+# cutoff_day_number = 277
+cutoff_day_number = 366
 end_date = start_date + datetime.timedelta(days=cutoff_day_number + 100)
 niter = 150
 
@@ -71,6 +71,8 @@ res, t0, cid = chicago.get_crimes_by_type(crime_type='burglary', start_date=star
 # res, t0, cid = cad.get_crimes_by_type(nicl_type=3)  # burglary
 
 training = res[res[:, 0] <= cutoff_day_number]
+
+## rotation
 rot_mat = lambda th: np.array(
     [[np.cos(th), -np.sin(th)],
     [np.sin(th), np.cos(th)]]
@@ -91,9 +93,16 @@ training[:, 1:] = training_xy
 # ps_det = sepp_det.train(niter=niter)
 
 sepp_xy = pp_models.SeppStochasticNn(data=training, **model_kwargs)
-
 sepp_xy.trigger_kde_class = k_models.VariableBandwidthNnTimeGteZeroKde
 ps_xy = sepp_xy.train(niter=niter)
+
+# sepp_fixed = pp_models.SeppStochasticPluginBandwidth(data=training, **model_kwargs)
+# model_kwargs['bg_kde_kwargs']['bandwidths'] = [1., 10., 10.]
+# model_kwargs['trigger_kde_kwargs']['bandwidths'] = [1., 10., 10.]
+# sepp_fixed = pp_models.SeppStochastic(data=training, **model_kwargs)
+# ps_fixed = sepp_fixed.train(niter=niter)
+
+from scipy.stats import wilcoxon
 
 ## standardise the data
 # s = np.std(training, axis=0, ddof=1)
