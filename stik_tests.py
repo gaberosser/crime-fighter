@@ -3,6 +3,7 @@ from django.db import connection
 from analysis import chicago
 import datetime
 import numpy as np
+from time import time
 
 from database.models import Chicago
 from data.models import CartesianSpaceTimeData
@@ -119,17 +120,23 @@ class Stik(object):
         AND i.id < j.id
         AND ST_Distance(j.location, i.location) < {0}
         AND EXTRACT(DAY FROM (j.datetime - i.datetime)) < {1}
+        ORDER BY ti, tj
         """.format(
             self.max_d,
             self.max_t
         )
 
+        tic = time()
         cursor.execute(sql)
+        print "Fetched DB results in %f s" % (time() - tic)
         res = cursor.fetchall()
         self.ii = np.array([x[0] for x in res])
         self.jj = np.array([x[1] for x in res])
+        assert np.all(self.jj > self.ii), "Expect j > i for all pairs."
         self.dt = np.array([x[2] for x in res])
+        assert np.all(self.dt >= 0), "Found negative time differences"
         self.dd = np.array([x[3] for x in res])
+        assert np.all(self.dd >= 0), "Found negative distances"
         self.edge_corr = np.array([x[4] for x in res])
         ti = [x[5] for x in res]
         tj = [x[8] for x in res]
@@ -138,7 +145,6 @@ class Stik(object):
         tj = np.array([[(x - t0).total_seconds() / float(60 * 60 * 24)] for x in tj])
         xyi = np.array([(x[6], x[7]) for x in res])
         xyj = np.array([(x[9], x[10]) for x in res])
-        import ipdb; ipdb.set_trace()
         self.i_data = np.hstack((ti, xyi))
         self.j_data = np.hstack((tj, xyj))
 
@@ -181,3 +187,14 @@ class Stik(object):
         int_j = np.array([self.intensity[t] for t in jj])
         nv = sum(self.data[:, 0] <= (self.T - v))
         return self.n / (self.S * self.T * nv) * sum(1 / (w * int_i * int_j))
+
+    def stik_rel_csr(self, u, v):
+        """
+        Compute the difference between STIK and the CSR model
+        :param u: Distance threshold
+        :param v: Time threshold
+        :return:
+        """
+        k = self.stik(u, v)
+        csr = np.pi * u ** 2 * v
+        return k - csr
