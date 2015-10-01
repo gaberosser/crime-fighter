@@ -38,7 +38,12 @@ def pairwise_differences_indices(n):
     return idx_i, idx_j
 
 
-def linkages(data_source, threshold_fun, data_target=None, chunksize=2**18, remove_coincident_pairs=False):
+def linkages(data_source,
+             threshold_fun,
+             data_target=None,
+             chunksize=2**18,
+             remove_coincident_pairs=False,
+             time_gte_zero=True):
     """
     Compute the indices of datapoints that are within the following tolerances:
     interpoint distance less than max_d
@@ -50,6 +55,9 @@ def linkages(data_source, threshold_fun, data_target=None, chunksize=2**18, remo
     :param data_target: optional EuclideanSpaceTimeData array.  If supplied, the linkage indices are between
     data_source and data_target, otherwise the two are set equal
     :param chunksize: The size of an iteration chunk.
+    :param remove_coincident_pairs: If True, remove links between pairs of crimes with Delta d == 0
+    :param time_gte_zero: If True, enforce dt > 0 in addition to threshold function. This is the usual desired behaviour
+    for space-time point processes, but is not required for some spatial only analyses.
     :return: tuple (idx_array_source, idx_array_target),
     """
     ndata_source = data_source.ndata
@@ -71,7 +79,10 @@ def linkages(data_source, threshold_fun, data_target=None, chunksize=2**18, remo
         j = idx_j.flat[k:(k + chunksize)]
         dt = (data_target.time.getrows(j) - data_source.time.getrows(i))
         dd = (data_target.space.getrows(j).distance(data_source.space.getrows(i)))
-        mask = threshold_fun(dt, dd) & (dt > 0)
+        if time_gte_zero:
+            mask = threshold_fun(dt, dd) & (dt > 0)
+        else:
+            mask = threshold_fun(dt, dd)
         if remove_coincident_pairs:
             mask[dd.toarray() == 0] = False
         mask = mask.toarray(0)
