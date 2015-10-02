@@ -4,6 +4,8 @@ import numpy as np
 from shapely import geometry
 import shapefile
 import collections
+from data.models import CartesianData
+from tools import pairwise_differences_indices
 
 
 try:
@@ -225,3 +227,49 @@ def spatial_repeat_analysis(xy):
         if np.sum((np.sum(xy == t, axis=1) == 2)) > 1:
             rpt_idx[tuple(t)].append(i)
     return rpt_idx
+
+
+def spatial_linkages(data_source,
+                     max_d,
+                     data_target=None,
+                     chunksize=2**18,
+                     remove_coincident_pairs=False):
+    """
+    Compute the indices of datapoints that lie within distance max_d of one another. Distances are euclidean.
+    :param data_source: numpy or CartesianData array of source data.
+    :param max_d: Maximum distance between points
+    :param data_target: optional EuclideanSpaceTimeData array.  If supplied, the linkage indices are between
+    data_source and data_target, otherwise the two are set equal
+    :param chunksize: The size of an iteration chunk.
+    :param remove_coincident_pairs: If True, remove links between pairs of crimes with Delta d == 0
+    :return: tuple (idx_array_source, idx_array_target, dist_between),
+    """
+    data_source = CartesianData(data_source)
+    ndata_source = data_source.ndata
+    if data_target is not None:
+        data_target = CartesianData(data_target)
+        ndata_target = data_target.ndata
+        chunksize = min(chunksize, ndata_source * ndata_target)
+        idx_i, idx_j = np.meshgrid(range(ndata_source), range(ndata_target), copy=False)
+    else:
+        # self-linkage
+        data_target = data_source
+        chunksize = min(chunksize, ndata_source * (ndata_source - 1) / 2)
+        idx_i, idx_j = pairwise_differences_indices(ndata_source)
+
+    link_i = []
+    link_j = []
+    link_d = []
+
+    for k in range(0, idx_i.size, chunksize):
+        i = idx_i.flat[k:(k + chunksize)]
+        j = idx_j.flat[k:(k + chunksize)]
+        dd = (data_target.getrows(j).distance(data_source.getrows(i))).toarray()
+        mask = (dd <= max_d)
+        if remove_coincident_pairs:
+            mask[dd == 0] = False
+        link_i.extend(i[mask])
+        link_j.extend(j[mask])
+        link_d.extend(dd[mask])
+
+    return np.array(link_i), np.array(link_j), np.array(link_d)

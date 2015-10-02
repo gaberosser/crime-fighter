@@ -62,3 +62,34 @@ def get_ellipse_coords(a=0.0, b=0.0, x=0.0, y=0.0, angle=0.0, k=2):
     pts[:, 1] = y + (a * cos_alpha * sin_beta + b * sin_alpha * cos_beta)
 
     return pts
+
+
+def pairwise_differences_indices(n):
+
+    dtypes = [
+        np.uint8,
+        np.uint16,
+        np.uint32,
+        np.uint64,
+    ]
+
+    dtype = None
+    # find appropriate datatype
+    for d in dtypes:
+        if np.iinfo(d).max >= (n - 1):
+            dtype = d
+            break
+
+    if not dtype:
+        raise MemoryError("Unable to index an array this large.")
+
+    idx_i = np.zeros(n* (n - 1) / 2, dtype=dtype)
+    idx_j = np.zeros_like(idx_i)
+
+    tally = 0
+    for i in range(n):
+        idx_i[tally:(tally + n - i - 1)] = np.ones(n - i - 1, dtype=dtype) * i
+        idx_j[tally:(tally + n - i - 1)] = np.arange(i + 1, n, dtype=dtype)
+        tally += n - i - 1
+
+    return idx_i, idx_j

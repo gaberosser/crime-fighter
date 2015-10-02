@@ -4,38 +4,11 @@ from scipy import sparse
 import logging
 import multiprocessing as mp
 from data.models import DataArray
+from tools import pairwise_differences_indices
 
 logger = logging.getLogger(__name__)
 
-def pairwise_differences_indices(n):
 
-    dtypes = [
-        np.uint8,
-        np.uint16,
-        np.uint32,
-        np.uint64,
-    ]
-
-    dtype = None
-    # find appropriate datatype
-    for d in dtypes:
-        if np.iinfo(d).max >= (n - 1):
-            dtype = d
-            break
-
-    if not dtype:
-        raise MemoryError("Unable to index an array this large.")
-
-    idx_i = np.zeros(n* (n - 1) / 2, dtype=dtype)
-    idx_j = np.zeros_like(idx_i)
-
-    tally = 0
-    for i in range(n):
-        idx_i[tally:(tally + n - i - 1)] = np.ones(n - i - 1, dtype=dtype) * i
-        idx_j[tally:(tally + n - i - 1)] = np.arange(i + 1, n, dtype=dtype)
-        tally += n - i - 1
-
-    return idx_i, idx_j
 
 
 def linkages(data_source,

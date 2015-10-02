@@ -310,12 +310,33 @@ class CartesianData(DataArray):
             res.original_shape = self.original_shape
         return res
 
+    def angle(self, other):
+        """
+        Return the angle in radians, anti-clockwise relative to the horizontal, of the vector that connects
+        THIS POINT TO ANOTHER POINT
+        """
+        if other.nd != self.nd:
+            raise AttributeError("Incompatible dimensions")
+        if other.ndata != self.ndata:
+            raise AttributeError("Incompatible number of datapoints")
+
+        if self.nd == 1:
+            raise AttributeError("Cannot compute angle difference between 1D points")
+        elif self.nd == 2:
+            res = np.arctan2(other[:, 1] - self[:, 1], other[:, 0] - self[:, 0])
+        else:
+            raise NotImplementedError("Have not implemented angles in >2D yet.")
+        res = DataArray(res)
+        if self.original_shape is not None:
+            res.original_shape = self.original_shape
+        return res
 
 class CartesianSpaceTimeData(SpaceTimeDataArray, CartesianData):
     """
     SpaceTime data, where the distance function is defined in the same way as for Cartesian data
     As for SpaceTimeDataArray, the first dimension refers to time
     """
+    ## FIXME: the distance and angle methods have no meaning here?
     space_class = CartesianData
 
 
