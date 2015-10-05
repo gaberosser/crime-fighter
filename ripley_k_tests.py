@@ -24,6 +24,31 @@ def edge_correction(xy, d, domain=None, n_quad=32):
     area = poly.intersection(domain).area / (np.pi * d ** 2)
     return circ, area
 
+def prepare_data(data, domain, max_d, compute_angles=False):
+    """
+    Process spatial data to obtain linkages and distance from the boundary for Ripley's K computation.
+    :param data:
+    :param domain:
+    :param max_d:
+    :param compute_angles: If True, also calculate dphi, the angle made by the line connecting i to j.
+    :return:
+    """
+    i1, j1, dd = spatial.spatial_linkages(data, max_d)
+    idx_cat = np.argsort(j1)
+    ii = np.concatenate((i1, j1[idx_cat]))
+    jj = np.concatenate((j1, i1[idx_cat]))
+    i1 = None
+    j1 = None
+    dd = np.concatenate((dd, dd[idx_cat]))
+    d_to_ext = np.array([geometry.Point(data[i]).distance(domain.exterior) for i in range(len(data))])
+    near_exterior = np.where(d_to_ext[ii] < dd)[0]
+    if compute_angles:
+        dphi = data.getrows(ii).angle(data.getrows(jj)).toarray()
+        # mask zero distances to avoid them all appearing at 0 angle
+        dphi[dd == 0.] = np.nan
+        return ii, jj, dd, dphi, near_exterior
+    return ii, jj, dd, near_exterior
+
 
 class RipleyK(object):
 
@@ -42,6 +67,7 @@ class RipleyK(object):
         self.domain = domain
         self.S = self.domain.area
         self.ii = self.jj = self.dd = self.dphi = None
+        self.near_exterior = None
         self.edge_corr_circ = self.edge_corr_area = None
         self.intensity = self.n / self.S
 
@@ -53,64 +79,35 @@ class RipleyK(object):
         area = poly.intersection(self.domain).area / (np.pi * this_d ** 2)
         return circ, area
 
-    # def compute_edge_correction(self, data=None):
-    #     print "Computing edge correction terms..."
-    #     data = CartesianData(data) if data is not None else self.data
-    #     ii, jj, dd = spatial.spatial_linkages(self.data,
-    #                                       self.max_d)
-    #     idx_cat = np.argsort(jj)
-    #     self.ii = np.concatenate((ii, jj[idx_cat]))
-    #     self.jj = np.concatenate((jj, ii[idx_cat]))
-    #     self.dd = np.concatenate((dd, dd[idx_cat]))
-    #     d_to_ext = np.array([geometry.Point(data[i]).distance(self.domain.exterior) for i in range(self.n)])
-    #
-    #     self.edge_corr_circ = np.ones(self.dd.size)
-    #     self.edge_corr_area = np.ones(self.dd.size)
-    #
-    #     for i in range(self.ii.size):
-    #         this_i = self.ii[i]
-    #         this_d = self.dd[i]
-    #         # no need to do anything if the circle is entirely within the domain
-    #         if d_to_ext[this_i] > this_d:
-    #             continue
-    #         # if it is, compute the edge correction factor
-    #         poly = geometry.Point(data[this_i]).buffer(this_d, self.n_quad)
-    #         self.edge_corr_circ[i] = poly.exterior.intersection(self.domain).length / (2 * np.pi * this_d)
-    #         self.edge_corr_area[i] = poly.intersection(self.domain).area / (np.pi * this_d ** 2)
+    def process(self):
+        # Call after instantiation to prepare all data and compute edge corrections
+        self.ii, self.jj, self.dd, self.near_exterior = prepare_data(self.data, self.domain, self.max_d)
+        self.compute_edge_correction()
 
-    def compute_edge_correction(self, data=None):
-        print "Computing edge correction terms..."
-        data = CartesianData(data) if data is not None else self.data
-        ii, jj, dd = spatial.spatial_linkages(self.data,
-                                              self.max_d)
-        idx_cat = np.argsort(jj)
-        self.ii = np.concatenate((ii, jj[idx_cat]))
-        self.jj = np.concatenate((jj, ii[idx_cat]))
-        self.dd = np.concatenate((dd, dd[idx_cat]))
-        d_to_ext = np.array([geometry.Point(data[i]).distance(self.domain.exterior) for i in range(self.n)])
-
+    def compute_edge_correction(self):
+        mappable_func = partial(edge_correction_wrapper, n_quad=32, domain=self.domain)
         self.edge_corr_circ = np.ones(self.dd.size)
         self.edge_corr_area = np.ones(self.dd.size)
 
-        ind = np.where(d_to_ext[self.ii] < self.dd)[0]
-
-        mappable_func = partial(edge_correction_wrapper, n_quad=32, domain=domain)
-
+        print "Computing edge correction terms..."
+        tic = time()
         pool = mp.Pool()
-        res = pool.map_async(mappable_func, ((self.data[self.ii[i]], self.dd[i]) for i in ind)).get(1e100)
+        res = pool.map_async(mappable_func, ((self.data[self.ii[i]], self.dd[i]) for i in self.near_exterior)).get(1e100)
 
-        self.edge_corr_circ[ind] = np.array(res)[:, 0]
-        self.edge_corr_area[ind] = np.array(res)[:, 1]
+        self.edge_corr_circ[self.near_exterior] = np.array(res)[:, 0]
+        self.edge_corr_area[self.near_exterior] = np.array(res)[:, 1]
+        print "Completed in %f seconds" % (time() - tic)
 
-    def compute_k(self, u, *args, **kwargs):
-        if self.edge_corr_area is None:
-            self.compute_edge_correction()
+    def compute_k(self, u, dd=None, edge_corr=None, *args, **kwargs):
         if not hasattr(u, '__iter__'):
             u = [u]
+        dd = dd if dd is not None else self.dd
+        # can try switching this for circumferential correction
+        edge_corr = edge_corr if edge_corr is not None else self.edge_corr_area
         res = []
         for t in u:
-            ind = (self.dd <= t)
-            w = 1 / self.edge_corr_area[ind]  ## TODO: which correction to use here?
+            ind = (dd <= t)
+            w = 1 / edge_corr[ind]
             res.append(w.sum() / float(self.n) / self.intensity)
         return np.array(res)
 
@@ -136,22 +133,25 @@ class RipleyK(object):
 
 
     def run_permutation(self, u, niter=20):
-        res = []
-        def callback(x):
-            res.append(x)
         if np.any(u > self.max_d):
             raise AttributeError('No values of u may be > max_d')
-        pool = mp.Pool()
-        jobs = []
-        for i in range(niter):
-            jobs.append(
-                pool.apply_async(run_permutation,
-                                 args=(u, self.n, self.domain, self.max_d),
-                                 callback=callback)
-            )
-        pool.close()
-        pool.join()
-        return np.array(res)
+        mappable_func = partial(edge_correction_wrapper, n_quad=32, domain=self.domain)
+        k = []
+        try:
+            for i in range(niter):
+                data = CartesianData.from_args(*spatial.random_points_within_poly(self.domain, self.n))
+                ii, jj, dd, near_exterior = prepare_data(data, self.domain, self.max_d)
+                edge_corr_circ = np.ones(dd.size)
+                edge_corr_area = np.ones(dd.size)
+                pool = mp.Pool()
+                res = pool.map_async(mappable_func, ((data[ii[i]], dd[i]) for i in near_exterior)).get(1e100)
+
+                edge_corr_circ[near_exterior] = np.array(res)[:, 0]
+                edge_corr_area[near_exterior] = np.array(res)[:, 1]
+
+                k.append(self.compute_k(u, dd=dd, edge_corr=edge_corr_area))
+        finally:
+            return np.array(k)
 
 
 class RipleyKAnisotropic(RipleyK):
@@ -160,99 +160,137 @@ class RipleyKAnisotropic(RipleyK):
         self.dphi = None
         super(RipleyKAnisotropic, self).__init__(*args, **kwargs)
 
-    def compute_edge_correction(self, data=None):
-        super(RipleyKAnisotropic, self).compute_edge_correction(data=data)
-        ## If this is slow, can only perform 1/2 the computations by being clever about reversing angles
-        self.dphi = data.getrows(self.ii).angle(data.getrows(self.jj))
+    def process(self):
+        self.ii, self.jj, self.dd, self.dphi, self.near_exterior = prepare_data(self.data,
+                                                                                 self.domain,
+                                                                                 self.max_d,
+                                                                                 compute_angles=True)
+        self.compute_edge_correction()
 
-    def compute_k(self, u, phi, bidirectional=True, *args, **kwargs):
+    def compute_edge_correction(self):
+        """
+        This COULD be adjusted to compute edge corrections properly, using only the area/circumf of the segment of the
+        circle described by dphi. That will take a while though, so let's not bother?
+        :return:
+        """
+        super(RipleyKAnisotropic, self).compute_edge_correction()
+
+    def compute_k(self, u, phi=None, dd=None, dphi=None, edge_corr=None, *args, **kwargs):
         """
         Compute anisotropic K in which distance is less than u and phi lies in the bins specified.
         :param u: Array of distances.
-        :param phi: Array of angle *edges*. The number of angle bins will have length one fewer. MUST BE INCREASING.
+        :param phi: Array of filter functions. These should accept a vector of angles and return a masked array that is
+        True for angles within the segment.
         :param bidirectional: If True, each phi range is automatically combined with the equivalent range after adding
         pi. It is up to the user to ensure that ranges do not overlap.
         :return: 2D array, rows represent values in u and cols represent between-values in phi
         """
-        assert np.all(np.diff(phi) > 0.), "phi array must be increasing"
-        if self.edge_corr_area is None:
-            self.compute_edge_correction()
+        if phi is None:
+            raise AttributeError("Input argument phi is required.")
+        dd = dd if dd is not None else self.dd
+        dphi = dphi if dphi is not None else self.dphi
+        # can try switching this for circumferential correction
+        edge_corr = edge_corr if edge_corr is not None else self.edge_corr_area
+
         if not hasattr(u, '__iter__'):
             u = [u]
-        # create phi bins
-        phi_lower = phi[:-1]
-        phi_width = np.diff(phi)
-        res = np.zeros((len(u), len(phi_lower)))
 
-        for i in range(len(u)):
-            for j in range(len(phi_lower)):
-                phi0 = np.mod(phi_lower[j], 2 * np.pi)
-                phi1 = phi0 + phi_width[j]
+        # create phi filters
+        phi_filters, phi_width = generate_angle_filters(phi)
+        res = np.zeros((len(u), len(phi_filters)))
+
+        for j in range(len(phi_filters)):
+            ff = phi_filters[j]
+            phi_ind = ff(dphi)
+            for i in range(len(u)):
                 t = u[i]
-                if bidirectional:
-                    phi_frac = phi_width[j] / np.pi
-                else:
-                    phi_frac = phi_width[j] / (2 * np.pi)
-
-                if bidirectional:
-                    # compute opposite side angle range
-                    dphi = self.dphi.copy
-                    rev = (dphi > (np.pi / 2.)) | (dphi < (-np.pi / 2.))
-                    dphi[rev] = np.mod(dphi[rev] + np.pi, 2 * np.pi)
-                    ind = (self.dd <= t) & (dphi >= phi0) & (dphi < phi1)
-                else:
-                    ind = (self.dd <= t) & (self.dphi >= phi0) & (self.dphi < phi1)
-
-                # Correct for fraction of circular area / circumference actually covered by the slice
-                # This is an APPROXIMATION: in reality, this will vary between slice. However, that makes the
-                # calculation of edge correction terms even slower.
-
-                w = 1 / (self.edge_corr_area[ind] * phi_frac)  # using area-based correction
+                phi_frac = phi_width[j] / (2 * np.pi)
+                ind = (dd <= t) & phi_ind
+                w = 1 / (edge_corr[ind] * phi_frac)  # using area-based correction
                 res[i, j] = w.sum() / float(self.n) / self.intensity
 
         return res
 
+    def run_permutation(self, u, phi=None, niter=20):
+        """
+        Run random permutation to test significance of K value.
+        :param u:
+        :param phi: Array of filter functions. These should accept a vector of angles and return a masked array that is
+        True for angles within the segment.
+        :param niter:
+        :return:
+        """
+        if phi is None:
+            raise AttributeError("phi is a required input argument")
+        if np.any(u > self.max_d):
+            raise AttributeError('No values of u may be > max_d')
+        mappable_func = partial(edge_correction_wrapper, n_quad=32, domain=self.domain)
+        k = []
+        try:
+            for i in range(niter):
+                data = CartesianData.from_args(*spatial.random_points_within_poly(self.domain, self.n))
+                ii, jj, dd, dphi, near_exterior = prepare_data(data, self.domain, self.max_d, compute_angles=True)
+                edge_corr_circ = np.ones(dd.size)
+                edge_corr_area = np.ones(dd.size)
+                pool = mp.Pool()
+                res = pool.map_async(mappable_func, ((data[ii[i]], dd[i]) for i in near_exterior)).get(1e100)
 
-def run_permutation(u, n, domain, max_d, n_quad=32):
+                edge_corr_circ[near_exterior] = np.array(res)[:, 0]
+                edge_corr_area[near_exterior] = np.array(res)[:, 1]
 
-    np.random.seed()
+                k.append(self.compute_k(u, phi=phi, dd=dd, dphi=dphi, edge_corr=edge_corr_area))
+        finally:
+            return np.array(k)
 
-    xy = CartesianData.from_args(*spatial.random_points_within_poly(domain, n))
-    ii, jj, dd = spatial.spatial_linkages(xy, max_d)
-    idx_cat = np.argsort(jj)
-    ii = np.concatenate((ii, jj[idx_cat]))
-    jj = np.concatenate((jj, ii[idx_cat]))
-    dd = np.concatenate((dd, dd[idx_cat]))
 
-    include_idx = np.where(dd <= max_d)[0]
-    d_to_ext = np.array([geometry.Point(xy[ii[i]]).distance(domain.exterior) for i in include_idx])
-    edge_corr_factor = np.ones(dd.size)
-    for i in range(d_to_ext.size):
-        # no need to do anything if the circle is entirely within the domain
-        if d_to_ext[i] > max_d:
-            continue
-        # if it is, compute the edge correction factor
-        idx = include_idx[i]
-        poly = geometry.Point(xy[ii[idx]]).buffer(dd[idx], n_quad)
-        edge_corr_factor[idx] = poly.exterior.intersection(domain).length / (2 * np.pi * dd[idx])
+def phi_filter_factory(*args):
+    """
+    Create a filter function. Each pair of args defines a radial segment. The filter function represents the combined
+    OR operation on these
+    :param args: Pairs of phi values (a, b) enclosing segments, defined such that
+    a <= phi < a + b
+    :return: Filter function for phi.
+    """
+    assert len(args) % 2 == 0, "Phi threshold values must appear in pairs"
+    assert len(args) >= 2, "Must provide at least two phi values to generate a filter function"
+    for i in range(len(args) / 2):
+        assert 0. <= args[i] <= 2 * np.pi, "Phi threshold lower value must be in the range [0, 2 * np.pi]"
 
-    k_func = lambda t: domain.area * (1 / edge_corr_factor[dd <= t]).sum() / n ** 2
+    def filter_component(x, phi0, dphi):
+        if phi0 + dphi < 2 * np.pi:
+            return (phi0 <= np.mod(x, 2 * np.pi)) & (np.mod(x, 2 * np.pi) < phi0 + dphi)
+        else:
+            return (phi0 <= np.mod(x, 2 * np.pi)) | (np.mod(x, 2 * np.pi) < np.mod(phi0 + dphi, 2 * np.pi))
 
-    return np.array([k_func(t) for t in u])
+    def filter_func(x):
+        phi0 = args[0]
+        dphi = args[1]
+        out = filter_component(x, phi0, dphi)
+        for i in range(1, len(args) / 2):
+            phi0 = args[2 * i]
+            dphi = args[2 * i + 1]
+            out = out | filter_component(x, phi0, dphi)
+        return out
 
+    return filter_func
+
+def generate_angle_filters(phi):
+    phi_width = [sum(t[1::2]) for t in phi]
+    phi_filters = [phi_filter_factory(*t) for t in phi]
+    return phi_filters, phi_width
 
 if __name__ == '__main__':
 
-    max_d = 500
+    max_d = 100
     geos_simplification = 20  # metres tolerance factor
-    # max_d = 5000
-    n_sim = 5
+    n_sim = 100
     start_date = datetime.date(2011, 3, 1)
     end_date = start_date + datetime.timedelta(days=366)
     domains = chicago.get_chicago_side_polys(as_shapely=True)
 
     # define a vector of threshold distances
     u = np.linspace(0, max_d, 400)
+    phi = [((2 * i + 1) * np.pi / 8, np.pi / 4.) for i in range(8)]
 
     domain_mapping = {
         'chicago_south': 'South',
@@ -268,19 +306,19 @@ if __name__ == '__main__':
 
     REGIONS = (
         'chicago_south',
-        # 'chicago_central',
-        # 'chicago_far_southwest',
-        # 'chicago_northwest',
-        # 'chicago_southwest',
-        # 'chicago_far_southeast',
-        # 'chicago_north',
-        # 'chicago_west',
-        # 'chicago_far_north',
+        'chicago_central',
+        'chicago_far_southwest',
+        'chicago_northwest',
+        'chicago_southwest',
+        'chicago_far_southeast',
+        'chicago_north',
+        'chicago_west',
+        'chicago_far_north',
     )
 
     CRIME_TYPES = (
         'burglary',
-        # 'assault',
+        'assault',
     )
     res = collections.defaultdict(dict)
 
@@ -292,37 +330,40 @@ if __name__ == '__main__':
                                                        end_date=end_date,
                                                        domain=domain)
             tic = time()
-            obj = RipleyK(data[:, 1:], max_d, domain)
-
-            k_obs = obj.compute_k(u)
+            # obj = RipleyK(data[:, 1:], max_d, domain)
+            obj = RipleyKAnisotropic(data[:, 1:], max_d, domain)
+            obj.process()
+            # k_obs = obj.compute_k(u)
+            k_obs = obj.compute_k(u, phi=phi)
             print "%s, %s, %f seconds" % (domain_mapping[r], ct, time() - tic)
-            k_sim = obj.run_permutation(u, niter=n_sim)
-            lhat_obs = obj.compute_lhat(u)
-            lhat_sim = np.sqrt(k_sim / np.pi)
+            # k_sim = obj.run_permutation(u, niter=n_sim)
+            k_sim = obj.run_permutation(u, phi=phi, niter=n_sim)
+            # lhat_obs = obj.compute_lhat(u)
+            # lhat_sim = np.sqrt(k_sim / np.pi)
 
             res[r][ct] = {'obj': obj,
                           'k_obs': k_obs,
                           'k_sim': k_sim,
-                          'lhat_obs': lhat_obs,
-                          'lhat_sim': lhat_sim,
+                          # 'lhat_obs': lhat_obs,
+                          # 'lhat_sim': lhat_sim,
                           }
 
-            # with open('ripley_%s_%s.pickle' % (r, ct), 'w') as f:
-            #     dill.dump(
-            #         {'obj': obj,
-            #          'k_obs': k_obs,
-            #          'k_sim': k_sim,
-            #          'lhat_obs': lhat_obs,
-            #          'lhat_sim': lhat_sim,
-            #          },
-            #         f
-            #     )
+            with open('ripley_%s_%s.pickle' % (r, ct), 'w') as f:
+                dill.dump(
+                    {'obj': obj,
+                     'k_obs': k_obs,
+                     'k_sim': k_sim,
+                     # 'lhat_obs': lhat_obs,
+                     # 'lhat_sim': lhat_sim,
+                     },
+                    f
+                )
             print "Completed %s %s" % (r, ct)
 
     # r = 'chicago_south'
     # ct = 'burglary'
     # domain = domains[domain_mapping[r]].simplify(5)
-    # sq_side = 800
+    # sq_side = 3200
     # max_d = np.sqrt(2) * sq_side
     # sq_centre = (448950, 4629000)
     # sq_domain = spatial.shapely_rectangle_from_vertices(sq_centre[0] - sq_side/2,
@@ -333,8 +374,39 @@ if __name__ == '__main__':
     #                                            start_date=start_date,
     #                                            end_date=end_date,
     #                                            domain=sq_domain)
-    # obj = RipleyK3(data[:, 1:], max_d, sq_domain)
+    # obj = RipleyK(data[:, 1:], max_d, sq_domain)
+    # obj.compute_edge_correction()
     # u = np.linspace(0, max_d, 100)
+    #
     # k_obs = obj.compute_k(u)
     # l_obs = obj.compute_l(u)
     # k_sim = obj.run_permutation(u, niter=n_sim)
+
+    # anisotropy plot
+    from matplotlib import pyplot as plt
+
+    fig, axs = plt.subplots(3, 3, sharey=True)
+    ax_ordering = [
+        (0, 2),
+        (0, 1),
+        (0, 0),
+        (1, 0),
+        (2, 0),
+        (2, 1),
+        (2, 2),
+        (1, 2)
+    ]
+    for i in range(8):
+        ax = axs[ax_ordering[i]]
+        y1 = np.sqrt(k_sim[:, :, i].min(axis=0) / np.pi)
+        y2 = np.sqrt(k_sim[:, :, i].max(axis=0) / np.pi)
+        ax.fill_between(u, y1, y2, facecolor='k', interpolate=True, alpha=0.4)
+        ax.plot(u, np.sqrt(k_obs[:, i] / np.pi), 'r-')
+        if ax_ordering[i][0] != 2:
+            ax.set_xticklabels([])
+
+    # middle circle
+    # th = np.linspace(0, 2 * np.pi, 200)
+    # xc = np.cos(th)
+    # yc = np.sin(th)
+    # th = np.array([])
