@@ -352,6 +352,9 @@ def clock_plot(u, phi, k_obs, k_sim,
 
 if __name__ == '__main__':
 
+    import os
+
+    OUTDIR = '/home/gabriel/Dropbox/research/output/'
     max_d = 100
     geos_simplification = 20  # metres tolerance factor
     n_sim = 100
@@ -377,19 +380,19 @@ if __name__ == '__main__':
 
     REGIONS = (
         'chicago_south',
-        # 'chicago_central',
-        # 'chicago_far_southwest',
-        # 'chicago_northwest',
-        # 'chicago_southwest',
-        # 'chicago_far_southeast',
-        # 'chicago_north',
-        # 'chicago_west',
-        # 'chicago_far_north',
+        'chicago_central',
+        'chicago_far_southwest',
+        'chicago_northwest',
+        'chicago_southwest',
+        'chicago_far_southeast',
+        'chicago_north',
+        'chicago_west',
+        'chicago_far_north',
     )
 
     CRIME_TYPES = (
         'burglary',
-        # 'assault',
+        'assault',
     )
     res = collections.defaultdict(dict)
 
@@ -404,16 +407,11 @@ if __name__ == '__main__':
                                                        end_date=end_date,
                                                        domain=domain)
             tic = time()
-            # obj = RipleyK(data[:, 1:], max_d, domain)
             obj = RipleyKAnisotropic(data[:, 1:], max_d, domain)
             obj.process()
-            # k_obs = obj.compute_k(u)
             k_obs = obj.compute_k(u, phi=phi)
             print "%s, %s, %f seconds" % (domain_mapping[r], ct, time() - tic)
-            # k_sim = obj.run_permutation(u, niter=n_sim)
             k_sim = obj.run_permutation(u, phi=phi, niter=n_sim)
-            # lhat_obs = obj.compute_lhat(u)
-            # lhat_sim = np.sqrt(k_sim / np.pi)
 
             res[r][ct] = {
                 # 'obj': obj,
@@ -421,7 +419,8 @@ if __name__ == '__main__':
                 'k_sim': k_sim,
             }
 
-            with open('ripley_%s_%s.pickle' % (r, ct), 'w') as f:
+            outfile = os.path.join(OUTDIR, 'ripley_%s_%s.pickle' % (r, ct))
+            with open(outfile, 'w') as f:
                 dill.dump(
                     {'obj': obj,
                      'k_obs': k_obs,
