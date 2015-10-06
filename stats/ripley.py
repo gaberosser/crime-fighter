@@ -1,5 +1,4 @@
 __author__ = 'gabriel'
-from django.db import connection
 from analysis import chicago, spatial
 import datetime
 import numpy as np
@@ -70,14 +69,6 @@ class RipleyK(object):
         self.near_exterior = None
         self.edge_corr_circ = self.edge_corr_area = None
         self.intensity = self.n / self.S
-
-    def prepare_one(self, i):
-        this_i = self.ii[i]
-        this_d = self.dd[i]
-        poly = geometry.Point(data[this_i]).buffer(this_d, self.n_quad)
-        circ = poly.exterior.intersection(self.domain).length / (2 * np.pi * this_d)
-        area = poly.intersection(self.domain).area / (np.pi * this_d ** 2)
-        return circ, area
 
     def process(self):
         # Call after instantiation to prepare all data and compute edge corrections
@@ -202,12 +193,24 @@ class RipleyKAnisotropic(RipleyK):
         for j in range(len(phi_filters)):
             ff = phi_filters[j]
             phi_ind = ff(dphi)
+            # zero distance objects have a NaN angle change
+            # we will apply these equally across ALL phi bins, so get an index here
+            zero_d_ind = np.isnan(dphi)
             for i in range(len(u)):
                 t = u[i]
-                phi_frac = phi_width[j] / (2 * np.pi)
-                ind = (dd <= t) & phi_ind
-                w = 1 / (edge_corr[ind] * phi_frac)  # using area-based correction
-                res[i, j] = w.sum() / float(self.n) / self.intensity
+                # phi_frac = phi_width[j] / (2 * np.pi)
+                d_ind = dd <= t
+                # w = 1 / (edge_corr[d_ind & phi_ind] * phi_frac)  # using area-based correction
+                w = 1 / edge_corr[d_ind & phi_ind]  # using area-based correction
+
+                # compute contribution from zero distance links - these are spread evenly over all phi bins
+                # w_zero = 1 / (edge_corr[d_ind & zero_d_ind] * phi_frac)
+                w_zero = 1 / edge_corr[d_ind & zero_d_ind]
+
+                a = (w.sum() + w_zero.sum() / float(len(phi_filters)))
+                b = float(self.n * self.intensity)
+
+                res[i, j] = a / b
 
         return res
 
@@ -282,112 +285,10 @@ def generate_angle_filters(phi):
     phi_filters = [phi_filter_factory(*t) for t in phi]
     return phi_filters, phi_width
 
-if __name__ == '__main__':
 
-    max_d = 100
-    geos_simplification = 20  # metres tolerance factor
-    n_sim = 100
-    start_date = datetime.date(2011, 3, 1)
-    end_date = start_date + datetime.timedelta(days=366)
-    domains = chicago.get_chicago_side_polys(as_shapely=True)
-
-    # define a vector of threshold distances
-    u = np.linspace(0, max_d, 400)
-    phi = [((2 * i + 1) * np.pi / 8, np.pi / 4.) for i in range(8)]
-
-    domain_mapping = {
-        'chicago_south': 'South',
-        'chicago_southwest': 'Southwest',
-        'chicago_west': 'West',
-        'chicago_northwest': 'Northwest',
-        'chicago_north': 'North',
-        'chicago_central': 'Central',
-        'chicago_far_north': 'Far North',
-        'chicago_far_southwest': 'Far Southwest',
-        'chicago_far_southeast': 'Far Southeast',
-    }
-
-    REGIONS = (
-        # 'chicago_south',
-        'chicago_central',
-        'chicago_far_southwest',
-        'chicago_northwest',
-        'chicago_southwest',
-        'chicago_far_southeast',
-        'chicago_north',
-        'chicago_west',
-        'chicago_far_north',
-    )
-
-    CRIME_TYPES = (
-        'burglary',
-        'assault',
-    )
-    res = collections.defaultdict(dict)
-
-    for r in REGIONS:
-        for ct in CRIME_TYPES:
-            domain = domains[domain_mapping[r]].simplify(geos_simplification)
-            data, t0, cid = chicago.get_crimes_by_type(crime_type=ct,
-                                                       start_date=start_date,
-                                                       end_date=end_date,
-                                                       domain=domain)
-            tic = time()
-            # obj = RipleyK(data[:, 1:], max_d, domain)
-            obj = RipleyKAnisotropic(data[:, 1:], max_d, domain)
-            obj.process()
-            # k_obs = obj.compute_k(u)
-            k_obs = obj.compute_k(u, phi=phi)
-            print "%s, %s, %f seconds" % (domain_mapping[r], ct, time() - tic)
-            # k_sim = obj.run_permutation(u, niter=n_sim)
-            k_sim = obj.run_permutation(u, phi=phi, niter=n_sim)
-            # lhat_obs = obj.compute_lhat(u)
-            # lhat_sim = np.sqrt(k_sim / np.pi)
-
-            res[r][ct] = {
-                # 'obj': obj,
-                'k_obs': k_obs,
-                'k_sim': k_sim,
-            }
-
-            with open('ripley_%s_%s.pickle' % (r, ct), 'w') as f:
-                dill.dump(
-                    {'obj': obj,
-                     'k_obs': k_obs,
-                     'k_sim': k_sim,
-                     'u': u,
-                     'phi': phi,
-                     },
-                    f
-                )
-            print "Completed %s %s" % (r, ct)
-            del obj
-
-    # r = 'chicago_south'
-    # ct = 'burglary'
-    # domain = domains[domain_mapping[r]].simplify(5)
-    # sq_side = 3200
-    # max_d = np.sqrt(2) * sq_side
-    # sq_centre = (448950, 4629000)
-    # sq_domain = spatial.shapely_rectangle_from_vertices(sq_centre[0] - sq_side/2,
-    #                                                     sq_centre[1] - sq_side/2,
-    #                                                     sq_centre[0] + sq_side/2,
-    #                                                     sq_centre[1] + sq_side/2)
-    # data, t0, cid = chicago.get_crimes_by_type(crime_type=ct,
-    #                                            start_date=start_date,
-    #                                            end_date=end_date,
-    #                                            domain=sq_domain)
-    # obj = RipleyK(data[:, 1:], max_d, sq_domain)
-    # obj.compute_edge_correction()
-    # u = np.linspace(0, max_d, 100)
-    #
-    # k_obs = obj.compute_k(u)
-    # l_obs = obj.compute_l(u)
-    # k_sim = obj.run_permutation(u, niter=n_sim)
-
-    # anisotropy plot
+def clock_plot(u, phi, k_obs, k_sim,
+               title=None):
     from matplotlib import pyplot as plt
-
     fig, axs = plt.subplots(3, 3, figsize=(8, 8))
     ax_ordering = [
         (0, 2),
@@ -442,5 +343,93 @@ if __name__ == '__main__':
     big_ax.set_ylabel('Anisotropic Ripley''s K')
     big_ax.patch.set_visible(False)
 
-    plt.tight_layout(pad=0.5, h_pad=0.1, w_pad=0.1)
-    big_ax.set_position([0.05, 0.05, 0.95, 0.95])
+    plt.tight_layout(pad=1.5, h_pad=0.05, w_pad=0.05)
+    big_ax.set_position([0.05, 0.05, 0.95, 0.9])
+    if title:
+        big_ax.set_title(title)
+
+
+
+if __name__ == '__main__':
+
+    max_d = 100
+    geos_simplification = 20  # metres tolerance factor
+    n_sim = 100
+    start_date = datetime.date(2011, 3, 1)
+    end_date = start_date + datetime.timedelta(days=366)
+    domains = chicago.get_chicago_side_polys(as_shapely=True)
+
+    # define a vector of threshold distances
+    u = np.linspace(0, max_d, 400)
+    phi = [((2 * i + 1) * np.pi / 8, np.pi / 4.) for i in range(8)]
+
+    domain_mapping = {
+        'chicago_south': 'South',
+        'chicago_southwest': 'Southwest',
+        'chicago_west': 'West',
+        'chicago_northwest': 'Northwest',
+        'chicago_north': 'North',
+        'chicago_central': 'Central',
+        'chicago_far_north': 'Far North',
+        'chicago_far_southwest': 'Far Southwest',
+        'chicago_far_southeast': 'Far Southeast',
+    }
+
+    REGIONS = (
+        'chicago_south',
+        # 'chicago_central',
+        # 'chicago_far_southwest',
+        # 'chicago_northwest',
+        # 'chicago_southwest',
+        # 'chicago_far_southeast',
+        # 'chicago_north',
+        # 'chicago_west',
+        # 'chicago_far_north',
+    )
+
+    CRIME_TYPES = (
+        'burglary',
+        # 'assault',
+    )
+    res = collections.defaultdict(dict)
+
+    for r in REGIONS:
+        for ct in CRIME_TYPES:
+            domain = domains[domain_mapping[r]].simplify(geos_simplification)
+            if isinstance(domain, geometry.MultiPolygon):
+                # quick fix for Far North, in which the first polygon is the vast majority of the region
+                domain = domain[0]
+            data, t0, cid = chicago.get_crimes_by_type(crime_type=ct,
+                                                       start_date=start_date,
+                                                       end_date=end_date,
+                                                       domain=domain)
+            tic = time()
+            # obj = RipleyK(data[:, 1:], max_d, domain)
+            obj = RipleyKAnisotropic(data[:, 1:], max_d, domain)
+            obj.process()
+            # k_obs = obj.compute_k(u)
+            k_obs = obj.compute_k(u, phi=phi)
+            print "%s, %s, %f seconds" % (domain_mapping[r], ct, time() - tic)
+            # k_sim = obj.run_permutation(u, niter=n_sim)
+            k_sim = obj.run_permutation(u, phi=phi, niter=n_sim)
+            # lhat_obs = obj.compute_lhat(u)
+            # lhat_sim = np.sqrt(k_sim / np.pi)
+
+            res[r][ct] = {
+                # 'obj': obj,
+                'k_obs': k_obs,
+                'k_sim': k_sim,
+            }
+
+            with open('ripley_%s_%s.pickle' % (r, ct), 'w') as f:
+                dill.dump(
+                    {'obj': obj,
+                     'k_obs': k_obs,
+                     'k_sim': k_sim,
+                     'u': u,
+                     'phi': phi,
+                     },
+                    f
+                )
+            print "Completed %s %s" % (r, ct)
+            del obj
