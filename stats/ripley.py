@@ -286,7 +286,7 @@ def generate_angle_filters(phi):
     return phi_filters, phi_width
 
 
-def clock_plot(u, phi, k_obs, k_sim,
+def clock_plot(u, phi, k_obs, k_sim=None,
                title=None):
     from matplotlib import pyplot as plt
     fig, axs = plt.subplots(3, 3, figsize=(8, 8))
@@ -305,12 +305,16 @@ def clock_plot(u, phi, k_obs, k_sim,
         lhat = np.sqrt(k_obs[:, i] / np.pi)
         running_max = max(running_max, lhat.max())
         ax = axs[ax_ordering[i]]
-        y1 = np.sqrt(k_sim[:, :, i].min(axis=0) / np.pi)
-        y2 = np.sqrt(k_sim[:, :, i].max(axis=0) / np.pi)
-        ax.fill_between(u, y1, y2, facecolor='k', interpolate=True, alpha=0.4)
+        if k_sim is not None:
+            y1 = np.sqrt(k_sim[:, :, i].min(axis=0) / np.pi)
+            y2 = np.sqrt(k_sim[:, :, i].max(axis=0) / np.pi)
+            ax.fill_between(u, y1, y2, facecolor='k', interpolate=True, alpha=0.4)
+            running_max = max(running_max, y2.max())
         ax.plot(u, lhat, 'r-')
         if ax_ordering[i][0] != 2:
             ax.set_xticklabels([])
+        if ax_ordering[i][1] != 0:
+            ax.set_yticklabels([])
 
     # set running maximum ylim
     for i in range(8):
