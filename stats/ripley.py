@@ -436,3 +436,23 @@ if __name__ == '__main__':
                 )
             print "Completed %s %s" % (r, ct)
             del obj
+
+    from matplotlib import pyplot as plt
+    k_obs_dict = collections.defaultdict(dict)
+    k_sim_dict = collections.defaultdict(dict)
+    fig, axs = plt.subplots(3, 3)
+    combinations = [
+        (3, 7),
+        (0, 4),
+        (1, 5),
+        (2, 6),
+    ]
+    ct = 'burglary'
+    for i, r in enumerate(REGIONS):
+        infile = os.path.join(OUTDIR, 'ripley_%s_%s.pickle' % (r, ct))
+        with open(infile, 'r') as f:
+            res = dill.load(f)
+        k_obs_dict[ct][r] = res['k_obs']
+        k_sim_dict[ct][r] = res['k_sim']
+
+        # axs.flat(i).plot(res['u'], res['k_obs'][])
