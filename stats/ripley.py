@@ -7,6 +7,8 @@ import dill
 from shapely import geometry
 import multiprocessing as mp
 from functools import partial
+import operator
+import os
 
 from data.models import CartesianSpaceTimeData, CartesianData
 from kde import models as kde_models
@@ -353,21 +355,183 @@ def clock_plot(u, phi, k_obs, k_sim=None,
         big_ax.set_title(title)
 
 
+def anisotropy_array_plot(save=True):
+    """
+    Not really a flexible method, more a way to isolate this plotting function
+    """
+    OUTDIR = '/home/gabriel/Dropbox/research/output/'
+    domains = chicago.get_chicago_side_polys(as_shapely=True)
+    chicago_poly = chicago.compute_chicago_region(as_shapely=True).simplify(1000)
+
+    domain_mapping = {
+        'chicago_south': 'South',
+        'chicago_southwest': 'Southwest',
+        'chicago_west': 'West',
+        'chicago_northwest': 'Northwest',
+        'chicago_north': 'North',
+        'chicago_central': 'Central',
+        'chicago_far_north': 'Far North',
+        'chicago_far_southwest': 'Far Southwest',
+        'chicago_far_southeast': 'Far Southeast',
+    }
+
+    REGIONS = (
+        'chicago_central',
+        'chicago_southwest',
+        'chicago_south',
+
+        'chicago_far_southwest',
+        'chicago_far_southeast',
+        'chicago_west',
+
+        'chicago_northwest',
+        'chicago_north',
+        'chicago_far_north',
+    )
+
+    CRIME_TYPES = (
+        'burglary',
+        'assault',
+    )
+
+    from matplotlib import pyplot as plt
+
+    # Define phi combinations. This corresponds to inversion through the origin.
+    combinations = [
+        (3, 7),
+        (0, 4),
+        (1, 5),
+        (2, 6),
+    ]
+    colours = ('k', 'k', 'r', 'r')
+    linestyles = ('solid', 'dashed', 'solid', 'dashed')
+
+    for ct in CRIME_TYPES:
+        k_obs_dict = collections.defaultdict(dict)
+        k_sim_dict = collections.defaultdict(dict)
+        fig, axs = plt.subplots(3, 3, figsize=(10, 8))
+
+        running_max = 0
+        for i, r in enumerate(REGIONS):
+            ax_i = np.mod(i, 3)
+            ax_j = i / 3
+            ax = axs[ax_i, ax_j]
+            infile = os.path.join(OUTDIR, 'ripley_%s_%s.pickle' % (r, ct))
+            with open(infile, 'r') as f:
+                res = dill.load(f)
+            k_obs_dict[ct][r] = res['k_obs']
+            k_sim_dict[ct][r] = res['k_sim']
+            for j, c in enumerate(combinations):
+                ls = linestyles[np.mod(j, len(linestyles))]
+                col = colours[np.mod(j, len(colours))]
+                this_k_obs = res['k_obs'][:, c].sum(axis=1)
+                running_max = max(running_max, this_k_obs.max())
+                ax.plot(res['u'], this_k_obs, c=col, linestyle=ls)
+            # pick any simulated K - all angles look the same at this scale
+            this_k_sim = res['k_sim'][:, :, :len(c)].sum(axis=2)
+            y0 = this_k_sim.min(axis=0)
+            y1 = this_k_sim.max(axis=0)
+            running_max = max(running_max, y1.max())
+            ax.fill_between(res['u'], y0, y1,
+                            facecolor='k',
+                            edgecolor='none',
+                            alpha=0.4)
+
+            if ax_i != 2:
+                ax.set_xticklabels([])
+            if ax_j != 0:
+                ax.set_yticklabels([])
+
+
+        for i in range(len(REGIONS)):
+            axs.flat[i].set_ylim([0, running_max * 1.02])
+            # axs.flat[i].text(3, 0.9 * running_max, domain_mapping[REGIONS[i]])
+
+        big_ax = fig.add_subplot(111)
+        big_ax.spines['top'].set_color('none')
+        big_ax.spines['bottom'].set_color('none')
+        big_ax.spines['left'].set_color('none')
+        big_ax.spines['right'].set_color('none')
+        big_ax.set_xticks([])
+        big_ax.set_yticks([])
+        big_ax.tick_params(labelcolor='w', top='off', bottom='off', left='off', right='off')
+        big_ax.set_xlabel('Distance (m)')
+        big_ax.set_ylabel('Anisotropic Ripley''s K')
+        big_ax.patch.set_visible(False)
+
+        plt.tight_layout(pad=1.5, h_pad=0.05, w_pad=0.05)
+        big_ax.set_position([0.05, 0.05, 0.95, 0.9])
+
+        inset_pad = 0.01  # proportion of parent axis width or height
+        inset_width_ratio = 0.35
+        inset_height_ratio = 0.55
+
+        for i in range(len(REGIONS)):
+            ax_i = np.mod(i, 3)
+            ax_j = i / 3
+            ax = axs[ax_i, ax_j]
+            ax_bbox = ax.get_position()
+            inset_bbox = [
+                ax_bbox.x0 + inset_pad * ax_bbox.width,
+                ax_bbox.y1 - (inset_pad + inset_height_ratio) * ax_bbox.height,
+                inset_width_ratio * ax_bbox.width,
+                inset_height_ratio * ax_bbox.height,
+            ]
+            inset_ax = fig.add_axes(inset_bbox)
+            chicago.plot_domain(chicago_poly, sub_domain=domains[domain_mapping[REGIONS[i]]], ax=inset_ax)
+
+        if save:
+            fig.savefig('ripley_k_anisotropic_with_inset_%s.png' % ct, dpi=150)
+            fig.savefig('ripley_k_anisotropic_with_inset_%s.pdf' % ct)
+
+
+def rose_plot(phi, combinations, ax=None):
+    from matplotlib import pyplot as plt
+    colours = ('k', 'k', 'r', 'r')
+    linestyles = ('solid', 'dashed', 'solid', 'dashed')
+
+    if ax is None:
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='polar')
+    th = np.linspace(0, 2 * np.pi, 500)
+    r_circ = np.ones_like(th)
+    ax.plot(th, r_circ)
+
+    for i, c in enumerate(combinations):
+        pff = lambda th: reduce(operator.__or__, (phi_filter_factory(*phi[i])(th) for i in c))
+        this_segment = np.zeros_like(th)
+        this_segment[pff(th)] = 1.
+        ls = linestyles[i]
+        col = colours[i]
+        if ls == 'dashed':
+            ax.fill_between(th, 0, this_segment,
+                            facecolor='none',
+                            edgecolor=col,
+                            hatch='//\\')
+        else:
+            ax.fill_between(th, 0, this_segment,
+                            facecolor=col,
+                            edgecolor=col,
+                            alpha=0.7)
+    ax.set_yticks([])
+    ax.set_xticks([])
+
 
 if __name__ == '__main__':
 
     import os
 
     OUTDIR = '/home/gabriel/Dropbox/research/output/'
-    max_d = 100
+    max_d = 500
     geos_simplification = 20  # metres tolerance factor
     n_sim = 100
     start_date = datetime.date(2011, 3, 1)
     end_date = start_date + datetime.timedelta(days=366)
     domains = chicago.get_chicago_side_polys(as_shapely=True)
+    chicago_poly = chicago.compute_chicago_region(as_shapely=True).simplify(1000)
 
     # define a vector of threshold distances
-    u = np.linspace(0, max_d, 400)
+    u = np.linspace(0, max_d, 2000)
     phi = [((2 * i + 1) * np.pi / 8, np.pi / 4.) for i in range(8)]
 
     domain_mapping = {
@@ -383,14 +547,16 @@ if __name__ == '__main__':
     }
 
     REGIONS = (
-        'chicago_south',
         'chicago_central',
-        'chicago_far_southwest',
-        'chicago_northwest',
         'chicago_southwest',
+        'chicago_south',
+
+        'chicago_far_southwest',
         'chicago_far_southeast',
-        'chicago_north',
         'chicago_west',
+
+        'chicago_northwest',
+        'chicago_north',
         'chicago_far_north',
     )
 
@@ -398,102 +564,170 @@ if __name__ == '__main__':
         'burglary',
         'assault',
     )
-    # res = collections.defaultdict(dict)
+
+    ## 1) run all Ripley's anisotropic
+
+    res = collections.defaultdict(dict)
+
+    for r in REGIONS:
+        for ct in CRIME_TYPES:
+            domain = domains[domain_mapping[r]].simplify(geos_simplification)
+            if isinstance(domain, geometry.MultiPolygon):
+                # quick fix for Far North, in which the first polygon is the vast majority of the region
+                domain = domain[0]
+            data, t0, cid = chicago.get_crimes_by_type(crime_type=ct,
+                                                       start_date=start_date,
+                                                       end_date=end_date,
+                                                       domain=domain)
+            tic = time()
+            obj = RipleyKAnisotropic(data[:, 1:], max_d, domain)
+            obj.process()
+            k_obs = obj.compute_k(u, phi=phi)
+            print "%s, %s, %f seconds" % (domain_mapping[r], ct, time() - tic)
+            k_sim = obj.run_permutation(u, phi=phi, niter=n_sim)
+
+            res[r][ct] = {
+                # 'obj': obj,
+                'k_obs': k_obs,
+                'k_sim': k_sim,
+            }
+
+            outfile = os.path.join(OUTDIR, 'ripley_%s_%s.pickle' % (r, ct))
+            with open(outfile, 'w') as f:
+                dill.dump(
+                    {'obj': obj,
+                     'k_obs': k_obs,
+                     'k_sim': k_sim,
+                     'u': u,
+                     'phi': phi,
+                     },
+                    f
+                )
+            print "Completed %s %s" % (r, ct)
+            del obj
+
+    ## 2) Grid array of K_ani plots
+
+    # from matplotlib import pyplot as plt
     #
-    # for r in REGIONS:
-    #     for ct in CRIME_TYPES:
-    #         domain = domains[domain_mapping[r]].simplify(geos_simplification)
-    #         if isinstance(domain, geometry.MultiPolygon):
-    #             # quick fix for Far North, in which the first polygon is the vast majority of the region
-    #             domain = domain[0]
-    #         data, t0, cid = chicago.get_crimes_by_type(crime_type=ct,
-    #                                                    start_date=start_date,
-    #                                                    end_date=end_date,
-    #                                                    domain=domain)
-    #         tic = time()
-    #         obj = RipleyKAnisotropic(data[:, 1:], max_d, domain)
-    #         obj.process()
-    #         k_obs = obj.compute_k(u, phi=phi)
-    #         print "%s, %s, %f seconds" % (domain_mapping[r], ct, time() - tic)
-    #         k_sim = obj.run_permutation(u, phi=phi, niter=n_sim)
+    # combinations = [
+    #     (3, 7),
+    #     (0, 4),
+    #     (1, 5),
+    #     (2, 6),
+    # ]
+    # styles = ('k-', 'k--', 'r-', 'r--')
     #
-    #         res[r][ct] = {
-    #             # 'obj': obj,
-    #             'k_obs': k_obs,
-    #             'k_sim': k_sim,
-    #         }
+    # for ct in CRIME_TYPES:
+    #     k_obs_dict = collections.defaultdict(dict)
+    #     k_sim_dict = collections.defaultdict(dict)
+    #     fig, axs = plt.subplots(3, 3, figsize=(10, 8))
     #
-    #         outfile = os.path.join(OUTDIR, 'ripley_%s_%s.pickle' % (r, ct))
-    #         with open(outfile, 'w') as f:
-    #             dill.dump(
-    #                 {'obj': obj,
-    #                  'k_obs': k_obs,
-    #                  'k_sim': k_sim,
-    #                  'u': u,
-    #                  'phi': phi,
-    #                  },
-    #                 f
-    #             )
-    #         print "Completed %s %s" % (r, ct)
-    #         del obj
+    #     running_max = 0
+    #     for i, r in enumerate(REGIONS):
+    #         ax_i = np.mod(i, 3)
+    #         ax_j = i / 3
+    #         ax = axs[ax_i, ax_j]
+    #         infile = os.path.join(OUTDIR, 'ripley_%s_%s.pickle' % (r, ct))
+    #         with open(infile, 'r') as f:
+    #             res = dill.load(f)
+    #         k_obs_dict[ct][r] = res['k_obs']
+    #         k_sim_dict[ct][r] = res['k_sim']
+    #         for j, c in enumerate(combinations):
+    #             this_k_obs = res['k_obs'][:, c].sum(axis=1)
+    #             running_max = max(running_max, this_k_obs.max())
+    #             ax.plot(res['u'], this_k_obs, styles[j])
+    #
+    #         # pick an arbitrary simulation combination - they are all the same
+    #         this_k_sim = res['k_sim'][:, :, combinations[0]].sum(axis=2)
+    #         ymax = this_k_sim.max(axis=0)
+    #         ymin = this_k_sim.min(axis=0)
+    #         running_max = max(running_max, ymax.max())
+    #         ax.fill_between(res['u'], ymin, ymax, facecolor='k', alpha=0.4)
+    #
+    #         if ax_i != 2:
+    #             ax.set_xticklabels([])
+    #         if ax_j != 0:
+    #             ax.set_yticklabels([])
+    #
+    #
+    #     for i in range(len(REGIONS)):
+    #         axs.flat[i].set_ylim([0, running_max * 1.02])
+    #         # axs.flat[i].text(3, 0.9 * running_max, domain_mapping[REGIONS[i]])
+    #
+    #     big_ax = fig.add_subplot(111)
+    #     big_ax.spines['top'].set_color('none')
+    #     big_ax.spines['bottom'].set_color('none')
+    #     big_ax.spines['left'].set_color('none')
+    #     big_ax.spines['right'].set_color('none')
+    #     big_ax.set_xticks([])
+    #     big_ax.set_yticks([])
+    #     big_ax.tick_params(labelcolor='w', top='off', bottom='off', left='off', right='off')
+    #     big_ax.set_xlabel('Distance (m)')
+    #     big_ax.set_ylabel('Anisotropic Ripley''s K')
+    #     big_ax.patch.set_visible(False)
+    #
+    #     plt.tight_layout(pad=1.5, h_pad=0.05, w_pad=0.05)
+    #     big_ax.set_position([0.05, 0.05, 0.95, 0.9])
+    #
+    #     inset_pad = 0.01  # proportion of parent axis width or height
+    #     inset_width_ratio = 0.35
+    #     inset_height_ratio = 0.55
+    #
+    #     for i in range(len(REGIONS)):
+    #         ax_i = np.mod(i, 3)
+    #         ax_j = i / 3
+    #         ax = axs[ax_i, ax_j]
+    #         ax_bbox = ax.get_position()
+    #         inset_bbox = [
+    #             ax_bbox.x0 + inset_pad * ax_bbox.width,
+    #             ax_bbox.y1 - (inset_pad + inset_height_ratio) * ax_bbox.height,
+    #             inset_width_ratio * ax_bbox.width,
+    #             inset_height_ratio * ax_bbox.height,
+    #         ]
+    #         inset_ax = fig.add_axes(inset_bbox)
+    #         chicago.plot_domain(chicago_poly, sub_domain=domains[domain_mapping[REGIONS[i]]], ax=inset_ax)
+    #
+    #     fig.savefig('ripley_k_anisotropic_with_inset_%s.png' % ct, dpi=150)
+    #     fig.savefig('ripley_k_anisotropic_with_inset_%s.pdf' % ct)
 
-    from matplotlib import pyplot as plt
-    from analysis.chicago import plot_domain
+    ## 3) plot NORMED K_ani sim and obs
 
-    k_obs_dict = collections.defaultdict(dict)
-    k_sim_dict = collections.defaultdict(dict)
-    fig, axs = plt.subplots(3, 3, figsize=(10,8))
-    combinations = [
-        (3, 7),
-        (0, 4),
-        (1, 5),
-        (2, 6),
-    ]
-    styles = ('k-', 'k--', 'r-', 'r--')
-    ct = 'assault'
-    running_max = 0
-    for i, r in enumerate(REGIONS):
-        ax_i = np.mod(i, 3)
-        ax_j = i / 3
-        infile = os.path.join(OUTDIR, 'ripley_%s_%s.pickle' % (r, ct))
-        with open(infile, 'r') as f:
-            res = dill.load(f)
-        k_obs_dict[ct][r] = res['k_obs']
-        k_sim_dict[ct][r] = res['k_sim']
-        for j, c in enumerate(combinations):
-            this_k_obs = res['k_obs'][:, c].sum(axis=1)
-            running_max = max(running_max, this_k_obs.max())
-            axs[ax_i, ax_j].plot(res['u'], this_k_obs, styles[j])
-
-        # pick an arbitrary simulation combination - they are all the same
-        this_k_sim = res['k_sim'][:, :, combinations[0]].sum(axis=2)
-        ymax = this_k_sim.max(axis=0)
-        ymin = this_k_sim.min(axis=0)
-        running_max = max(running_max, ymax.max())
-        axs[ax_i, ax_j].fill_between(res['u'], ymin, ymax, facecolor='k', alpha=0.4)
-
-        if ax_i != 2:
-            axs[ax_i, ax_j].set_xticklabels([])
-        if ax_j != 0:
-            axs[ax_i, ax_j].set_yticklabels([])
-
-        inset_ax = fig.add_axes() ## TODO: finish
-
-    for i in range(len(REGIONS)):
-        axs.flat[i].set_ylim([0, running_max * 1.02])
-        axs.flat[i].text(3, 0.9 * running_max, domain_mapping[REGIONS[i]])
-
-    big_ax = fig.add_subplot(111)
-    big_ax.spines['top'].set_color('none')
-    big_ax.spines['bottom'].set_color('none')
-    big_ax.spines['left'].set_color('none')
-    big_ax.spines['right'].set_color('none')
-    big_ax.set_xticks([])
-    big_ax.set_yticks([])
-    big_ax.tick_params(labelcolor='w', top='off', bottom='off', left='off', right='off')
-    big_ax.set_xlabel('Distance (m)')
-    big_ax.set_ylabel('Anisotropic Ripley''s K')
-    big_ax.patch.set_visible(False)
-
-    plt.tight_layout(pad=1.5, h_pad=0.05, w_pad=0.05)
-    big_ax.set_position([0.05, 0.05, 0.95, 0.9])
+    # from matplotlib import pyplot as plt
+    # max_u = 8000
+    #
+    # combinations = [
+    #     (3, 7),
+    #     (0, 4),
+    #     (1, 5),
+    #     (2, 6),
+    # ]
+    # colours = ('k', 'k', 'r', 'r')
+    # linestyles = ('solid', 'dashed', 'solid', 'dashed')
+    #
+    # # k_obs_n = k_obs / k_obs[-1, :]
+    # k_obs_n = k_obs
+    # # k_sim_n = np.array([k_sim[i] / k_sim[i, -1, :] for i in range(k_sim.shape[0])])
+    # k_sim_n = k_sim
+    #
+    # fig = plt.figure()
+    # ax = fig.add_subplot(111)
+    # for i, c in enumerate(combinations):
+    #     ls = linestyles[np.mod(i, len(linestyles))]
+    #     col = colours[np.mod(i, len(colours))]
+    #     this_k_obs_n = k_obs_n[:, c].sum(axis=1) / len(c)
+    #     this_k_sim_n = k_sim_n[:, :, c].sum(axis=2) / len(c)
+    #     y0 = this_k_sim_n.min(axis=0)
+    #     y1 = this_k_sim_n.max(axis=0)
+    #     idx = u <= max_u
+    #     ax.plot(u[idx], this_k_obs_n[idx], c=col, linestyle=ls)
+    #     if ls == 'dashed':
+    #         ax.fill_between(u[idx], y0[idx], y1[idx],
+    #                         facecolor='none',
+    #                         edgecolor=col,
+    #                         hatch='//\\')
+    #     else:
+    #         ax.fill_between(u[idx], y0[idx], y1[idx],
+    #                         facecolor=col,
+    #                         edgecolor=col,
+    #                         alpha=0.3)
