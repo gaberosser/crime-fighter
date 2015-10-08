@@ -14,7 +14,7 @@ import settings
 import os
 from django.db import connection
 from matplotlib import pyplot as plt
-from plotting.spatial import plot_shapely_geos
+from plotting.spatial import plot_shapely_geos, geodjango_to_shapely
 import dill
 import copy
 
@@ -216,6 +216,34 @@ def pairwise_time_lag_events(max_distance=200, num_bins=None, crime_type='burgla
     plt.show()
 
     return dt
+
+
+def plot_domain(city_domain, sub_domain, ax=None, set_axis=True):
+    bbox = np.array(city_domain.buffer(100).bounds)
+    if ax is None:
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+    plot_shapely_geos(city_domain, ax=ax)
+    plot_shapely_geos(sub_domain, ax=ax, facecolor='k')
+    if set_axis:
+        plt.axis('equal')
+        plt.axis(np.array(bbox)[(0, 2, 1, 3),])
+        plt.axis('off')
+
+
+def plot_domains(name=None, ax=None, set_axis=True):
+    if name is None and ax is not None:
+        raise AttributeError("If no single domain is specified, we have to make new figures for each plot")
+    city = geodjango_to_shapely(
+        models.ChicagoDivision.objects.get(name='ChicagoFilled').mpoly.simplify(0)
+    )
+    domains = get_chicago_side_polys(as_shapely=True)
+    if name is not None:
+        plot_domain(city, domains[name], ax=ax, set_axis=set_axis)
+    else:
+        for k, v in domains.items():
+            plot_domain(city, v)
+
 
 
 def apply_point_process(start_date=datetime.datetime(2010, 3, 1, 0),

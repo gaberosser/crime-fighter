@@ -398,61 +398,102 @@ if __name__ == '__main__':
         'burglary',
         'assault',
     )
-    res = collections.defaultdict(dict)
-
-    for r in REGIONS:
-        for ct in CRIME_TYPES:
-            domain = domains[domain_mapping[r]].simplify(geos_simplification)
-            if isinstance(domain, geometry.MultiPolygon):
-                # quick fix for Far North, in which the first polygon is the vast majority of the region
-                domain = domain[0]
-            data, t0, cid = chicago.get_crimes_by_type(crime_type=ct,
-                                                       start_date=start_date,
-                                                       end_date=end_date,
-                                                       domain=domain)
-            tic = time()
-            obj = RipleyKAnisotropic(data[:, 1:], max_d, domain)
-            obj.process()
-            k_obs = obj.compute_k(u, phi=phi)
-            print "%s, %s, %f seconds" % (domain_mapping[r], ct, time() - tic)
-            k_sim = obj.run_permutation(u, phi=phi, niter=n_sim)
-
-            res[r][ct] = {
-                # 'obj': obj,
-                'k_obs': k_obs,
-                'k_sim': k_sim,
-            }
-
-            outfile = os.path.join(OUTDIR, 'ripley_%s_%s.pickle' % (r, ct))
-            with open(outfile, 'w') as f:
-                dill.dump(
-                    {'obj': obj,
-                     'k_obs': k_obs,
-                     'k_sim': k_sim,
-                     'u': u,
-                     'phi': phi,
-                     },
-                    f
-                )
-            print "Completed %s %s" % (r, ct)
-            del obj
+    # res = collections.defaultdict(dict)
+    #
+    # for r in REGIONS:
+    #     for ct in CRIME_TYPES:
+    #         domain = domains[domain_mapping[r]].simplify(geos_simplification)
+    #         if isinstance(domain, geometry.MultiPolygon):
+    #             # quick fix for Far North, in which the first polygon is the vast majority of the region
+    #             domain = domain[0]
+    #         data, t0, cid = chicago.get_crimes_by_type(crime_type=ct,
+    #                                                    start_date=start_date,
+    #                                                    end_date=end_date,
+    #                                                    domain=domain)
+    #         tic = time()
+    #         obj = RipleyKAnisotropic(data[:, 1:], max_d, domain)
+    #         obj.process()
+    #         k_obs = obj.compute_k(u, phi=phi)
+    #         print "%s, %s, %f seconds" % (domain_mapping[r], ct, time() - tic)
+    #         k_sim = obj.run_permutation(u, phi=phi, niter=n_sim)
+    #
+    #         res[r][ct] = {
+    #             # 'obj': obj,
+    #             'k_obs': k_obs,
+    #             'k_sim': k_sim,
+    #         }
+    #
+    #         outfile = os.path.join(OUTDIR, 'ripley_%s_%s.pickle' % (r, ct))
+    #         with open(outfile, 'w') as f:
+    #             dill.dump(
+    #                 {'obj': obj,
+    #                  'k_obs': k_obs,
+    #                  'k_sim': k_sim,
+    #                  'u': u,
+    #                  'phi': phi,
+    #                  },
+    #                 f
+    #             )
+    #         print "Completed %s %s" % (r, ct)
+    #         del obj
 
     from matplotlib import pyplot as plt
+    from analysis.chicago import plot_domain
+
     k_obs_dict = collections.defaultdict(dict)
     k_sim_dict = collections.defaultdict(dict)
-    fig, axs = plt.subplots(3, 3)
+    fig, axs = plt.subplots(3, 3, figsize=(10,8))
     combinations = [
         (3, 7),
         (0, 4),
         (1, 5),
         (2, 6),
     ]
-    ct = 'burglary'
+    styles = ('k-', 'k--', 'r-', 'r--')
+    ct = 'assault'
+    running_max = 0
     for i, r in enumerate(REGIONS):
+        ax_i = np.mod(i, 3)
+        ax_j = i / 3
         infile = os.path.join(OUTDIR, 'ripley_%s_%s.pickle' % (r, ct))
         with open(infile, 'r') as f:
             res = dill.load(f)
         k_obs_dict[ct][r] = res['k_obs']
         k_sim_dict[ct][r] = res['k_sim']
+        for j, c in enumerate(combinations):
+            this_k_obs = res['k_obs'][:, c].sum(axis=1)
+            running_max = max(running_max, this_k_obs.max())
+            axs[ax_i, ax_j].plot(res['u'], this_k_obs, styles[j])
 
-        # axs.flat(i).plot(res['u'], res['k_obs'][])
+        # pick an arbitrary simulation combination - they are all the same
+        this_k_sim = res['k_sim'][:, :, combinations[0]].sum(axis=2)
+        ymax = this_k_sim.max(axis=0)
+        ymin = this_k_sim.min(axis=0)
+        running_max = max(running_max, ymax.max())
+        axs[ax_i, ax_j].fill_between(res['u'], ymin, ymax, facecolor='k', alpha=0.4)
+
+        if ax_i != 2:
+            axs[ax_i, ax_j].set_xticklabels([])
+        if ax_j != 0:
+            axs[ax_i, ax_j].set_yticklabels([])
+
+        inset_ax = fig.add_axes() ## TODO: finish
+
+    for i in range(len(REGIONS)):
+        axs.flat[i].set_ylim([0, running_max * 1.02])
+        axs.flat[i].text(3, 0.9 * running_max, domain_mapping[REGIONS[i]])
+
+    big_ax = fig.add_subplot(111)
+    big_ax.spines['top'].set_color('none')
+    big_ax.spines['bottom'].set_color('none')
+    big_ax.spines['left'].set_color('none')
+    big_ax.spines['right'].set_color('none')
+    big_ax.set_xticks([])
+    big_ax.set_yticks([])
+    big_ax.tick_params(labelcolor='w', top='off', bottom='off', left='off', right='off')
+    big_ax.set_xlabel('Distance (m)')
+    big_ax.set_ylabel('Anisotropic Ripley''s K')
+    big_ax.patch.set_visible(False)
+
+    plt.tight_layout(pad=1.5, h_pad=0.05, w_pad=0.05)
+    big_ax.set_position([0.05, 0.05, 0.95, 0.9])
