@@ -355,9 +355,10 @@ def clock_plot(u, phi, k_obs, k_sim=None,
         big_ax.set_title(title)
 
 
-def anisotropy_array_plot(save=True):
+def anisotropy_array_plot(save=True, max_d=None):
     """
     Not really a flexible method, more a way to isolate this plotting function
+    If max_d is not specified, the full range is used.
     """
     OUTDIR = '/home/gabriel/Dropbox/research/output/'
     domains = chicago.get_chicago_side_polys(as_shapely=True)
@@ -421,18 +422,26 @@ def anisotropy_array_plot(save=True):
                 res = dill.load(f)
             k_obs_dict[ct][r] = res['k_obs']
             k_sim_dict[ct][r] = res['k_sim']
+            u = res['u']
+            if max_d is not None:
+                idx = u <= max_d
+                u = u[idx]
             for j, c in enumerate(combinations):
                 ls = linestyles[np.mod(j, len(linestyles))]
                 col = colours[np.mod(j, len(colours))]
                 this_k_obs = res['k_obs'][:, c].sum(axis=1)
+                if max_d is not None:
+                    this_k_obs = this_k_obs[idx]
                 running_max = max(running_max, this_k_obs.max())
-                ax.plot(res['u'], this_k_obs, c=col, linestyle=ls)
+                ax.plot(u, this_k_obs, c=col, linestyle=ls)
             # pick any simulated K - all angles look the same at this scale
             this_k_sim = res['k_sim'][:, :, :len(c)].sum(axis=2)
+            if max_d is not None:
+                this_k_sim = this_k_sim[:, idx]
             y0 = this_k_sim.min(axis=0)
             y1 = this_k_sim.max(axis=0)
             running_max = max(running_max, y1.max())
-            ax.fill_between(res['u'], y0, y1,
+            ax.fill_between(u, y0, y1,
                             facecolor='k',
                             edgecolor='none',
                             alpha=0.4)

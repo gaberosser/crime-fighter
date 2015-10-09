@@ -1,6 +1,5 @@
 __author__ = 'gabriel'
 from data.models import CartesianSpaceTimeData
-import seaborn as sns
 import pandas
 import numpy as np
 from utils import mask_contour
@@ -23,6 +22,7 @@ def pairwise_distance_histogram(data,
                                 nbin=40,
                                 vmax=None,
                                 fmax=None):
+    import seaborn as sns
     data = CartesianSpaceTimeData(data)
     linkage_fun = linkage_func_separable(max_t, max_d)
     i, j = linkages(data, linkage_fun,
@@ -56,3 +56,49 @@ def pairwise_distance_histogram(data,
                                  size=8)
 
     return grid
+
+
+def pairwise_distance_histogram_manual(data,
+                                       max_t,
+                                       max_d,
+                                       ax=None,
+                                       remove_coincident_pairs=False,
+                                       nbin=40,
+                                       vmax=None,
+                                       fmax=None,
+                                       cmap='binary',
+                                       colorbar=True,
+                                       mask=True):
+
+    # nbin must be EVEN to ensure no weird origin effects
+    if np.mod(nbin, 2):
+        nbin += 1
+    data = CartesianSpaceTimeData(data)
+    linkage_fun = linkage_func_separable(max_t, max_d)
+    i, j = linkages(data, linkage_fun,
+                    remove_coincident_pairs=remove_coincident_pairs)
+    interpoint = data[j] - data[i]
+    xe = np.linspace(-max_d, max_d, nbin)
+    H, xedges, yedges = np.histogram2d(interpoint[:, 1], interpoint[:, 2], [xe, xe])
+
+    # H needs to be rotated and flipped
+    H = np.rot90(H)
+    H = np.flipud(H)
+
+    # Mask zeros if requested
+    if mask:
+        H = np.ma.masked_where(H == 0, H) # Mask pixels with a value of zero
+
+    # Plot 2D histogram using pcolor
+    if ax is None:
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+
+    if fmax is not None:
+        dd_sorted = sorted(np.ma.getdata(H).flat)
+        vmax = dd_sorted[int(len(dd_sorted) * fmax)]
+
+    quadmesh = ax.pcolormesh(xedges, yedges, H, vmax=vmax, cmap=cmap)
+    if colorbar:
+        cbar = plt.colorbar(quadmesh, ax=ax)
+        cbar.ax.set_ylabel('Counts')
