@@ -3,7 +3,7 @@ import numpy as np
 from scipy import stats
 import warnings
 
-
+# don't use these at present, but we should if the number of samples is <= 25 I think
 WILCOX_LOOKUP = {
     0.05: {
         6: 0,
@@ -71,77 +71,6 @@ WILCOX_LOOKUP = {
 }
 
 
-def wilcoxon_one_tailed(v2, v1):
-    """
-    Wilcoxon signed rank test, ONE TAILED.
-    Null hypothesis is median difference is zero.
-    Alternative hypothesis: median(v2) > median(v1) NB ALWAYS IN THIS ORDER
-    :param v2:
-    :param v1:
-    :param one_tailed:
-    :return:
-    """
-
-    # perform a two-tailed test
-    W, p = wilcoxon(v2, v1)
-    p *= 0.5
-
-    d = v2 - v1
-    # manually check the one-sided assumption - this is wrong by definition if the medians are the other way around
-    # in such a case report p = 0.5, meaning p >= 0.5
-
-    if np.nanmedian(d) < 0:
-        return W, 0.5
-
-    return W, p
-
-
-
-
-    # s = np.sign(v2 - v1)
-    # d = v2 - v1
-    #
-    # # Wilcox correction: ignore zeros
-    # d = d[d != 0.]
-    #
-    # # ranking: NB, matches are given the AVERAGE RANK
-    # _, _, this_rank, this_count = np.unique(np.abs(d), True, True, True)
-    # this_rank += 1
-    #
-    # m = this_rank.max()
-    # i = 1
-    # while i <= d.size:
-    #
-    #     n = sum(this_rank == i)
-    #     if n > 1:
-    #         # new rank is the MEAN of the tied ranks
-    #         new_rank = np.arange(i, i + n).mean()
-    #         this_rank[this_rank > i] += n - 1  # increment all further ranks
-    #         this_rank[this_rank == i] = new_rank  # replace all matching ranks
-    #     i += n
-    #
-    #
-    # Wplus = np.nansum(this_rank[d > 0])
-    # Wminus = np.nansum(this_rank[d < 0])
-    # W = min(Wplus, Wminus)
-    # n = float(d.size)
-    #
-    # # null hypothesis with normal asssumption -> Z value -> p-value
-    # if n >= 10:
-    #     mn = n*(n + 1.) * 0.25
-    #     se = np.sqrt(n * (n + 1.) * (2. * n + 1.) / 24.)
-    #     z = (W - mn) / se
-    #
-    # prob = stats.distributions.norm.sf(abs(z))
-    # if not one_tailed:
-    #     prob *= 2
-    #
-    #
-    # Z = (4 * W - n * (n + 1)) / (np.sqrt(2 * n * (n + 1) * (2 * n + 1) / 3) * (p_plus + p_minus - (p_plus - p_minus) ** 2))
-    #
-    # return Z, stats.norm.sf(np.abs(Z))
-
-
 def wilcoxon(x, y=None, zero_method="wilcox", correction=False):
     """
     Calculate the Wilcoxon signed-rank test.
@@ -180,6 +109,11 @@ def wilcoxon(x, y=None, zero_method="wilcox", correction=False):
         is smaller.
     p-value : float
         The two-sided p-value for the test.
+    outcome : integer
+        The direction of the effect (if any): +1 means a positive difference (x > y)
+        -1 means a negative difference (x < y)
+        0 means no difference
+        This is computed by comparing W_plus and W_minus.
 
     Notes
     -----
@@ -209,6 +143,9 @@ def wilcoxon(x, y=None, zero_method="wilcox", correction=False):
         d = np.compress(np.not_equal(d, 0), d, axis=-1)  # Keep all non-zero differences
 
     count = len(d)
+    if count == 0:
+        return None, 1.0, 0.
+
     if (count < 10):
         warnings.warn("Warning: sample size too small for normal approximation.")
     r = stats.rankdata(abs(d))
@@ -236,4 +173,8 @@ def wilcoxon(x, y=None, zero_method="wilcox", correction=False):
     correction = 0.5 * int(bool(correction)) * np.sign(T - mn)
     z = (T - mn - correction) / se
     prob = 2. * stats.distributions.norm.sf(abs(z))
-    return T, prob
+
+    # Added by GR: compute direction of effect (if present)
+    outcome = 2 * (r_plus > r_minus) - 1 if r_plus != r_minus else 0
+
+    return T, prob, outcome

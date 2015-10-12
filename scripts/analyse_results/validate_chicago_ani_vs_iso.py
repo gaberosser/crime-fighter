@@ -15,13 +15,15 @@ INDIR = os.path.join(OUT_DIR, 'validate_chicago_ani_vs_iso_refl_keep_coincident'
 
 REGIONS = (
     'chicago_central',
-    'chicago_far_southwest',
-    'chicago_northwest',
     'chicago_southwest',
-    'chicago_far_southeast',
-    'chicago_north',
     'chicago_south',
+
+    'chicago_far_southwest',
+    'chicago_far_southeast',
     'chicago_west',
+
+    'chicago_northwest',
+    'chicago_north',
     'chicago_far_north',
 )
 
@@ -146,6 +148,122 @@ def plot_mean_hit_rate(this_res, cutoff=0.2, ax=None, legend=True):
     ax.set_ylabel('Hit rate')
     if legend:
         ax.legend([t.replace('_', ' ') for t in METHODS], loc='upper left')
+
+
+def plot_wilcox_test_hit_rate(this_res, ax=None,
+                              sign_level=0.05,
+                              max_cover=0.2,
+                              min_difference=0.01):
+    """
+    Plot the mean hit rate vs coverage along with an overlay that indicates significant differences between methods.
+    :param this_res:
+    :param ax:
+    :param sign_level: The two-tailed significance level
+    :param max_cover:
+    :param min_difference: The minimum magnitude of difference required before an overlay is plotted
+    :return:
+    """
+    from stats import pairwise
+    if ax is None:
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+
+    x = np.nanmean(this_res['ani_refl']['cumulative_area'], axis=0)
+    idx = x <= max_cover
+    x = x[idx]
+    y_ani = this_res['ani_refl']['cumulative_crime'][:, idx]
+    y_iso = this_res['iso_refl']['cumulative_crime'][:, idx]
+    y_ani_mean = np.nanmean(y_ani, axis=0)
+    y_iso_mean = np.nanmean(y_iso, axis=0)
+    pvals = []
+    outcomes = []
+    for i in range(y_ani.shape[1]):
+        W, p, out = pairwise.wilcoxon(y_iso[:, i], y_ani[:, i])
+        pvals.append(p)
+        outcomes.append(out)
+    pvals = np.array(pvals)
+    outcomes = np.array(outcomes)
+    ax.plot(x, y_ani_mean, 'r')
+    ax.plot(x, y_iso_mean, 'k')
+    ax.fill_between(x, 0, 1, (pvals < sign_level) & (outcomes == 1) & ((y_iso_mean - y_ani_mean) >= min_difference),
+                    facecolor='k', edgecolor='none', alpha=0.3, interpolate=True)
+    ax.fill_between(x, 0, 1, (pvals < sign_level) & (outcomes == -1) & ((y_ani_mean - y_iso_mean) >= min_difference),
+                    facecolor='r', edgecolor='none', alpha=0.3, interpolate=True)
+
+
+def plot_hit_rate_array(res, max_cover=0.2, min_difference=0.01):
+    domains = chicago.get_chicago_side_polys(as_shapely=True)
+    chicago_poly = chicago.compute_chicago_region(as_shapely=True).simplify(1000)
+
+    domain_mapping = {
+        'chicago_south': 'South',
+        'chicago_southwest': 'Southwest',
+        'chicago_west': 'West',
+        'chicago_northwest': 'Northwest',
+        'chicago_north': 'North',
+        'chicago_central': 'Central',
+        'chicago_far_north': 'Far North',
+        'chicago_far_southwest': 'Far Southwest',
+        'chicago_far_southeast': 'Far Southeast',
+    }
+
+    for ct in CRIME_TYPES:
+
+        fig, axs = plt.subplots(3, 3, figsize=(10, 8), sharex=True, sharey=True)
+
+        for i, r in enumerate(REGIONS):
+            ax_i = np.mod(i, 3)
+            ax_j = i / 3
+            ax = axs[ax_i, ax_j]
+
+            this_res = res[r][ct]
+            try:
+                plot_wilcox_test_hit_rate(this_res, ax=ax, max_cover=max_cover, min_difference=min_difference)
+            except KeyError:
+                continue
+
+            if ax_i != 2:
+                ax.set_xticklabels([])
+            if ax_j != 0:
+                ax.set_yticklabels([])
+
+        for i in range(len(REGIONS)):
+            axs.flat[i].set_xlim([0., max_cover])
+            axs.flat[i].set_ylim([0., 1.])
+
+        big_ax = fig.add_subplot(111)
+        big_ax.spines['top'].set_color('none')
+        big_ax.spines['bottom'].set_color('none')
+        big_ax.spines['left'].set_color('none')
+        big_ax.spines['right'].set_color('none')
+        big_ax.set_xticks([])
+        big_ax.set_yticks([])
+        big_ax.tick_params(labelcolor='w', top='off', bottom='off', left='off', right='off')
+        big_ax.set_xlabel('Coverage')
+        big_ax.set_ylabel('Hit rate')
+        big_ax.patch.set_visible(False)
+
+        plt.tight_layout(pad=1.5, h_pad=0.05, w_pad=0.05)
+        big_ax.set_position([0.05, 0.05, 0.95, 0.9])
+
+        inset_pad = 0.01  # proportion of parent axis width or height
+        inset_width_ratio = 0.35
+        inset_height_ratio = 0.55
+
+        for i in range(len(REGIONS)):
+            ax_i = np.mod(i, 3)
+            ax_j = i / 3
+            ax = axs[ax_i, ax_j]
+            ax_bbox = ax.get_position()
+            inset_bbox = [
+                ax_bbox.x0 + inset_pad * ax_bbox.width,
+                ax_bbox.y1 - (inset_pad + inset_height_ratio) * ax_bbox.height,
+                inset_width_ratio * ax_bbox.width,
+                inset_height_ratio * ax_bbox.height,
+            ]
+            inset_ax = fig.add_axes(inset_bbox)
+            chicago.plot_domain(chicago_poly, sub_domain=domains[domain_mapping[REGIONS[i]]], ax=inset_ax)
+
 
 
 if __name__ == '__main__':
