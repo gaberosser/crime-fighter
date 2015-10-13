@@ -209,7 +209,7 @@ def plot_hit_rate_array(res, max_cover=0.2, min_difference=0.01):
 
     for ct in CRIME_TYPES:
 
-        fig, axs = plt.subplots(3, 3, figsize=(10, 8), sharex=True, sharey=True)
+        fig, axs = plt.subplots(3, 3, figsize=(10, 8), sharex=False, sharey=False)
 
         for i, r in enumerate(REGIONS):
             ax_i = np.mod(i, 3)
@@ -223,9 +223,9 @@ def plot_hit_rate_array(res, max_cover=0.2, min_difference=0.01):
                 continue
 
             if ax_i != 2:
-                ax.set_xticklabels([])
+                ax.set_xticks([])
             if ax_j != 0:
-                ax.set_yticklabels([])
+                ax.set_yticks([])
 
         for i in range(len(REGIONS)):
             axs.flat[i].set_xlim([0., max_cover])
@@ -243,7 +243,7 @@ def plot_hit_rate_array(res, max_cover=0.2, min_difference=0.01):
         big_ax.set_ylabel('Hit rate')
         big_ax.patch.set_visible(False)
 
-        plt.tight_layout(pad=1.5, h_pad=0.05, w_pad=0.05)
+        plt.tight_layout(pad=1.5, h_pad=0.25, w_pad=0.5)
         big_ax.set_position([0.05, 0.05, 0.95, 0.9])
 
         inset_pad = 0.01  # proportion of parent axis width or height

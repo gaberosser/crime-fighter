@@ -9,6 +9,7 @@ import copy
 import pickle
 import re
 import importlib
+import operator
 from data.models import CartesianSpaceTimeData
 
 
@@ -221,33 +222,30 @@ class SeppValidation(validation.ValidationBase):
     def post_process(self, res):
         methods = ['full', 'full_static', 'bg', 'bg_static', 'trigger']
 
-        # restructure results
-        # only need one copy of cumulative_crime_max
-        # these are all the same, as they are independent of the prediction
-        ccm = None
-        for m in methods:
-            if m in res:
-                ccm = res[m][0]['cumulative_crime_max']
-                break
-        assert ccm is not None, "Unable to find results for any of the methods."
-
         for m in methods:
             if m not in res:
                 # method not included in this run; skip
                 continue
+            # Get full keys list - *cannot* assume that the first day has all of them, because it might not have any
+            # testing data.
+            keys = set(
+                reduce(operator.add, [res[m][i].keys() for i in range(len(res[m]))])
+            )
             this_res = {}
-            for k in res[m][0].keys():
-                if k == 'cumulative_crime_max':
-                    pass
-                else:
-                    # fix errors upon finding missing data by providing default NaN get argument
-                    val = np.array(
-                        [res[m][i].get(k, np.zeros(self.roc.n_sample_units) * np.nan) for i in range(len(res[m]))]
-                    )
-                    this_res[k] = val
+            for k in keys:
+                # fix errors upon finding missing data by providing default NaN get argument
+                val = np.array(
+                    [res[m][i].get(k, np.zeros(self.roc.n_sample_units) * np.nan) for i in range(len(res[m]))]
+                )
+                this_res[k] = val
             # overwrite with new restructured results
             res[m] = this_res
-        res['cumulative_crime_max'] = ccm
+        # finally, only keep one cumulative_crime_max copy by making the others references
+        for m in methods:
+            if m not in res:
+                continue
+            if 'cumulative_crime_max' in res[m]:
+                res['cumulative_crime_max'] = res[m].pop('cumulative_crime_max')
 
 
 class SeppValidationIntegration(validation.ValidationIntegration, SeppValidation):
