@@ -23,6 +23,7 @@ start_day_number = 366  # number of days (after start date) on which first predi
 model_kwargs = {
     'number_nn': 15,
     'parallel': True,
+    'ncpu': 2,
 }
 
 ## DEBUGGING:
@@ -94,18 +95,14 @@ def run_me(data, data_index, domain, out_dir, run_name):
             pickle.dump(res, f)
 
 
-if __name__ == '__main__':
-    assert len(sys.argv) == 3, "Two input arguments required"
-
-    # arg 1: region (chicago_south, chicago_northwest, ...)
+def main(region, crime_type):
     poly_file = os.path.join(IN_DIR, 'boundaries.pickle')
+
     with open(poly_file, 'r') as f:
         boundaries = pickle.load(f)
-        domain = boundaries[sys.argv[1]]
+        domain = boundaries[region]
 
-    # arg 2: crime type (burglary, assault, motor_vehicle_theft, ...)
-    crime_type = sys.argv[2]
-    data_infile = os.path.join(IN_DIR, 'chicago', sys.argv[1], '%s.pickle' % sys.argv[2])
+    data_infile = os.path.join(IN_DIR, 'chicago', region, '%s.pickle' % crime_type)
     with open(data_infile, 'r') as f:
         data, t0, cid = pickle.load(f)
 
@@ -115,7 +112,12 @@ if __name__ == '__main__':
     data = data[(data[:, 0] >= sd) & (data[:, 0] < ed + 1)]
     data[:, 0] -= min(data[:, 0])
 
-    out_dir = os.path.join(OUT_DIR, OUT_SUBDIR, sys.argv[1], sys.argv[2])
-    run_name = '%s-%s' % tuple(sys.argv[1:3])
+    out_dir = os.path.join(OUT_DIR, OUT_SUBDIR, region, crime_type)
+    run_name = '%s-%s' % (region, crime_type)
 
     run_me(data, cid, domain, out_dir, run_name)
+
+
+if __name__ == '__main__':
+    assert len(sys.argv) == 3, "Two input arguments required"
+    sys.exit(main(sys.argv[1], sys.argv[2]))
