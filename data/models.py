@@ -191,7 +191,7 @@ class DataArray(object):
                 warn("Adding data with no original shape - it will be coerced into the existing shape")
             if obj.original_shape != self.original_shape and self.original_shape is not None:
                 raise AttributeError("Attempting to add data with incompatible original shape.  Set strict=False to bypass this check.")
-        new_obj = dest_cls(np.hstack((self.data, obj)))
+        new_obj = dest_cls(np.hstack((self.data, obj.data)))
         new_obj.original_shape = self.original_shape
         return new_obj
 

@@ -64,6 +64,32 @@ class STKernelBase(object):
         raise NotImplementedError()
 
 
+class STGaussianNn(STKernelBase):
+    data_class = CartesianSpaceTimeData
+    kde_class = VariableBandwidthNnKde
+
+    def __init__(self, **kde_kwargs):
+        super(STGaussianNn, self).__init__()
+        self.kde = None
+        self.kde_kwargs = kde_kwargs
+
+    def set_data(self, data):
+        self.data = self.data_class(data)
+
+    def set_kde(self):
+        self.kde = self.kde_class(self.data, **self.kde_kwargs)
+
+    def train(self, data):
+        self.set_data(data)
+        self.set_kde()
+
+    def predict(self, time, space_array):
+        # combine time with space dimension
+        space_array = DataArray(space_array, copy=False)
+        time_array = DataArray(np.ones(space_array.ndata) * time)
+        target_data = time_array.adddim(space_array, type=self.data_class)
+        return self.kde.pdf(target_data)
+
 
 class STLinearSpaceExponentialTime(STKernelBase):
 
