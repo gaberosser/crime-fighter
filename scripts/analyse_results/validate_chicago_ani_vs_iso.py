@@ -301,6 +301,54 @@ def plot_hit_rate_array(res, max_cover=0.2, min_difference=0.01):
             chicago.plot_domain(chicago_poly, sub_domain=domains[domain_mapping[REGIONS[i]]], ax=inset_ax)
 
 
+def plot_spatial_ellipse_array(res, icdf=0.95):
+    """
+    Plot the ellipsoids containing icdf of the spatial triggering density
+    :param res: Results dict, including model
+    :param icdf: The proportion of spatial density in each dimension contained within the ellipse boundary
+    :return:
+    """
+    domains = chicago.get_chicago_side_polys(as_shapely=True)
+    colour_mapping = {
+        # 'ani_norm': 'k',
+        'ani_refl': 'r',
+        'iso_refl': 'k',
+    }
+
+    t = 0.95
+
+    for ct in CRIME_TYPES:
+        fig, axs = plt.subplots(3, 3, sharex=True, sharey=True)
+        max_d = 0
+        for i, r in enumerate(REGIONS):
+            ax_i = np.mod(i, 3)
+            ax_j = i / 3
+            ax = axs[ax_i, ax_j]
+            dom = domains[domain_mapping[r]]
+            for m in ('ani_refl', 'iso_refl'):
+                try:
+                    k = res[r][ct][m]['model'].trigger_kde
+                    if k.ndim == 3:
+                        a = k.marginal_icdf(t, dim=1)
+                        b = k.marginal_icdf(t, dim=2)
+                        coords = get_ellipse_coords(a=a, b=b)
+                        max_d = max(max(a, b), max_d)
+                    else:
+                        a = k.marginal_icdf(t, dim=1)
+                        coords = get_ellipse_coords(a, a)
+                        max_d = max(a, max_d)
+                    ax.plot(coords[:, 0], coords[:, 1], colour_mapping[m])
+
+                except Exception as exc:
+                    print repr(exc)
+            ax.title.set_text(domain_mapping[r])
+
+        max_d *= 1.02
+        for ax in axs.flat:
+            ax.set_xlim([-max_d, max_d])
+            ax.set_ylim([-max_d, max_d])
+            ax.set_aspect('equal')
+
 
 if __name__ == '__main__':
     dist_between = 0.4
@@ -308,9 +356,9 @@ if __name__ == '__main__':
     crime_labels = [t.replace('_', ' ') for t in CRIME_TYPES]
     method_labels = [t.replace('_', ' ') for t in METHODS]
 
-    # INFILE = 'validate_chicago_ani_vs_iso.pickle'
-    # with open(INFILE, 'r') as f:
-    #     res = dill.load(f)
+    INFILE = 'validate_chicago_ani_vs_iso.pickle'
+    with open(INFILE, 'r') as f:
+        res = dill.load(f)
 
     # category -> number
     crime_cat = dict([(k, i) for i, k in enumerate(CRIME_TYPES)])
