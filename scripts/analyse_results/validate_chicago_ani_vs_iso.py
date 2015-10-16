@@ -42,6 +42,19 @@ CRIME_TYPES = (
     # 'motor_vehicle_theft',
 )
 
+domain_mapping = {
+    'chicago_south': 'South',
+    'chicago_southwest': 'Southwest',
+    'chicago_west': 'West',
+    'chicago_northwest': 'Northwest',
+    'chicago_north': 'North',
+    'chicago_central': 'Central',
+    'chicago_far_north': 'Far North',
+    'chicago_far_southwest': 'Far Southwest',
+    'chicago_far_southeast': 'Far Southeast',
+}
+
+
 def load_results_all_methods(region,
                              crime_type,
                              indir=INDIR,
@@ -125,6 +138,29 @@ def wilcoxon_analysis(this_res):
             except Exception:
                 pass
     return out
+
+
+def bar_triggering_fractions(res, save=True):
+    method_map = ('ani_refl', 'iso_refl')
+    for ct in CRIME_TYPES:
+        y = []
+        for r in REGIONS:
+            for m in method_map:
+                try:
+                    y.append(res[r][ct][m]['frac_trigger'])
+                except KeyError:
+                    y.append(None)
+        y = np.array(y, dtype=float)
+        x = np.arange(len(y)) / 2.
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.bar(x[::2], y[::2], 0.5, fc='k')
+        ax.bar(x[1::2], y[1::2], 0.5, fc='b')
+        ax.set_xticks(x[1::2])
+        ax.set_xticklabels(domain_mapping.values(), rotation=45)
+        ax.set_ylabel('Fraction triggering')
+        ax.legend(('Anisotropic', 'Isotropic'), loc='upper right')
+        
 
 
 def plot_mean_hit_rate(this_res, cutoff=0.2, ax=None, legend=True):
