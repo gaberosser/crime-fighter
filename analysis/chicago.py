@@ -145,6 +145,36 @@ def get_crimes_by_type(crime_type='burglary',
     return res, t0, cid
 
 
+def crime_numbers_by_side(crime_types=('burglary', 'assault'),
+                            start_date=datetime.date(2011, 3, 1),
+                            end_date=datetime.date(2012, 3, 1)):
+    domains = get_chicago_side_polys(as_shapely=True)
+    ndata = collections.defaultdict(dict)
+    for ct in crime_types:
+        n = []
+        for k in domains:
+            domain = domains[k]
+            data, _, _ = get_crimes_by_type(ct, start_date=start_date, end_date=end_date, domain=domain)
+            n.append(len(data))
+        ndata[ct] = np.array(n)
+
+    return ndata, domains.keys()
+
+
+def crime_numbers_by_side_bar(ndata, domain_labels, buffer=0.05):
+    colour_cycle = ('b', 'k', 'r', 'g', 'y')
+    crime_types = ndata.keys()
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    for i, ct in enumerate(crime_types):
+        c = colour_cycle[np.mod(i, len(colour_cycle))]
+        x = np.arange(len(domain_labels)) + buffer + (1. - 2 * buffer) * float(i)/len(crime_types)
+        ax.bar(x, ndata[ct], width=(1. - 2 * buffer)/len(crime_types), facecolor=c, edgecolor=c)
+    ax.set_xticks(np.arange(len(domain_labels)) + 0.5)
+    ax.set_xticklabels(domain_labels, rotation=45)
+    ax.set_ylabel('Crime count')
+    ax.legend(crime_types)
+
 
 def spatial_repeat_analysis(crime_type='burglary', domain=None, plot_osm=False, **kwargs):
     data, t0, cid = get_crimes_by_type(crime_type=crime_type, domain=domain, **kwargs)

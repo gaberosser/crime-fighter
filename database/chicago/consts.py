@@ -2,15 +2,9 @@ __author__ = 'gabriel'
 
 
 REGIONS = (
-    'South',
-    'Southwest',
-    'West',
-    'Northwest',
-    'North',
-    'Central',
-    'Far North',
-    'Far Southwest',
-    'Far Southeast',
+    'Northwest',    'Far North',        'North',
+    'West',         'Central',          'South',
+    'Southwest',    'Far Southwest',    'Far Southeast',
 )
 
 CRIME_TYPES = (
