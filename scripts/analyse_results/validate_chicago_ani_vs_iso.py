@@ -319,8 +319,8 @@ def plot_spatial_ellipse_array(res, icdf=0.95, save=True):
         fig, axs = plt.subplots(3, 3, sharex=True, sharey=True)
         max_d = 0
         for i, r in enumerate(REGIONS):
-            ax_i = np.mod(i, 3)
-            ax_j = i / 3
+            ax_j = np.mod(i, 3)
+            ax_i = i / 3
             ax = axs[ax_i, ax_j]
             dom = domains[r]
             for m in ('ani_refl', 'iso_refl'):
