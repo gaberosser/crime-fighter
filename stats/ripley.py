@@ -1,5 +1,6 @@
 __author__ = 'gabriel'
 from analysis import chicago, spatial
+from database.chicago import consts as chicago_consts
 import datetime
 import numpy as np
 from time import time
@@ -355,40 +356,14 @@ def clock_plot(u, phi, k_obs, k_sim=None,
         big_ax.set_title(title)
 
 
-def anisotropy_array_plot(save=True, max_d=None):
+def anisotropy_array_plot(save=True, max_d=None, add_rose=True):
     """
     Not really a flexible method, more a way to isolate this plotting function
     If max_d is not specified, the full range is used.
     """
-    OUTDIR = '/home/gabriel/Dropbox/research/output/'
+    OUTDIR = '/home/gabriel/Dropbox/research/output/ripley_anisotropy/'
     domains = chicago.get_chicago_side_polys(as_shapely=True)
     chicago_poly = chicago.compute_chicago_region(as_shapely=True).simplify(1000)
-
-    domain_mapping = {
-        'chicago_south': 'South',
-        'chicago_southwest': 'Southwest',
-        'chicago_west': 'West',
-        'chicago_northwest': 'Northwest',
-        'chicago_north': 'North',
-        'chicago_central': 'Central',
-        'chicago_far_north': 'Far North',
-        'chicago_far_southwest': 'Far Southwest',
-        'chicago_far_southeast': 'Far Southeast',
-    }
-
-    REGIONS = (
-        'chicago_central',
-        'chicago_southwest',
-        'chicago_south',
-
-        'chicago_far_southwest',
-        'chicago_far_southeast',
-        'chicago_west',
-
-        'chicago_northwest',
-        'chicago_north',
-        'chicago_far_north',
-    )
 
     CRIME_TYPES = (
         'burglary',
@@ -413,11 +388,12 @@ def anisotropy_array_plot(save=True, max_d=None):
         fig, axs = plt.subplots(3, 3, figsize=(10, 8))
 
         running_max = 0
-        for i, r in enumerate(REGIONS):
-            ax_i = np.mod(i, 3)
-            ax_j = i / 3
+        for i, r in enumerate(chicago_consts.REGIONS):
+            rff = chicago_consts.FILE_FRIENDLY_REGIONS[r]
+            ax_j = np.mod(i, 3)
+            ax_i = i / 3
             ax = axs[ax_i, ax_j]
-            infile = os.path.join(OUTDIR, 'ripley_%s_%s.pickle' % (r, ct))
+            infile = os.path.join(OUTDIR, 'ripley_%s_%s.pickle' % (rff, ct))
             with open(infile, 'r') as f:
                 res = dill.load(f)
             k_obs_dict[ct][r] = res['k_obs']
@@ -452,7 +428,7 @@ def anisotropy_array_plot(save=True, max_d=None):
                 ax.set_yticklabels([])
 
 
-        for i in range(len(REGIONS)):
+        for i in range(len(chicago_consts.REGIONS)):
             axs.flat[i].set_ylim([0, running_max * 1.02])
             # axs.flat[i].text(3, 0.9 * running_max, domain_mapping[REGIONS[i]])
 
@@ -475,9 +451,9 @@ def anisotropy_array_plot(save=True, max_d=None):
         inset_width_ratio = 0.35
         inset_height_ratio = 0.55
 
-        for i in range(len(REGIONS)):
-            ax_i = np.mod(i, 3)
-            ax_j = i / 3
+        for i in range(len(chicago_consts.REGIONS)):
+            ax_j = np.mod(i, 3)
+            ax_i = i / 3
             ax = axs[ax_i, ax_j]
             ax_bbox = ax.get_position()
             inset_bbox = [
@@ -487,7 +463,21 @@ def anisotropy_array_plot(save=True, max_d=None):
                 inset_height_ratio * ax_bbox.height,
             ]
             inset_ax = fig.add_axes(inset_bbox)
-            chicago.plot_domain(chicago_poly, sub_domain=domains[domain_mapping[REGIONS[i]]], ax=inset_ax)
+            chicago.plot_domain(chicago_poly, sub_domain=domains[chicago_consts.REGIONS[i]], ax=inset_ax)
+
+        if add_rose:
+            rose_width = 0.45
+            phi = [((2 * i + 1) * np.pi / 8, np.pi / 4.) for i in range(8)]
+            ax = axs[0, 2]  # top right axis
+            ax_bbox = ax.get_position()
+            inset_bbox = [
+                ax_bbox.x1 - (inset_pad + rose_width) * ax_bbox.width,
+                ax_bbox.y1 - (inset_pad + rose_width) * ax_bbox.height,
+                rose_width * ax_bbox.width,
+                rose_width * ax_bbox.height,
+            ]
+            inset_ax = fig.add_axes(inset_bbox, projection='polar')
+            rose_plot(phi, combinations, ax=inset_ax)
 
         if save:
             fig.savefig('ripley_k_anisotropic_with_inset_%s.png' % ct, dpi=150)
@@ -507,7 +497,7 @@ def rose_plot(phi, combinations, ax=None):
     ax.plot(th, r_circ)
 
     for i, c in enumerate(combinations):
-        pff = lambda th: reduce(operator.__or__, (phi_filter_factory(*phi[i])(th) for i in c))
+        pff = lambda th: reduce(operator.__or__, (phi_filter_factory(*phi[j])(th) for j in c))
         this_segment = np.zeros_like(th)
         this_segment[pff(th)] = 1.
         ls = linestyles[i]

@@ -6,14 +6,16 @@ import dill
 import collections
 import operator
 from matplotlib import pyplot as plt
+import matplotlib.ticker as plticker
 from analysis import chicago
 from tools import get_ellipse_coords
+from database.chicago.consts import REGIONS, FILE_FRIENDLY_REGIONS
 
 
 # INDIR = os.path.join(OUT_DIR, 'validate_chicago_ani_vs_iso_refl')
 INDIR = os.path.join(OUT_DIR, 'validate_chicago_ani_vs_iso_refl_keep_coincident')
 
-REGIONS = (
+REGIONS_OLD = (
     'chicago_central',
     'chicago_southwest',
     'chicago_south',
@@ -28,8 +30,6 @@ REGIONS = (
 )
 
 METHODS = (
-    # 'ani',
-    # 'iso',
     'ani_refl',
     'iso_refl',
     'ani_norm',
@@ -37,9 +37,7 @@ METHODS = (
 
 CRIME_TYPES = (
     'burglary',
-    # 'robbery',
     'assault',
-    # 'motor_vehicle_theft',
 )
 
 domain_mapping = {
@@ -91,7 +89,7 @@ def load_results_all_methods(region,
 def load_all_results(include_model=False,
                      aggregate=True):
     res = {}
-    for r in REGIONS:
+    for r in REGIONS_OLD:
         res[r] = {}
         for ct in CRIME_TYPES:
             res[r][ct] = load_results_all_methods(r, ct, indir=INDIR,
@@ -103,7 +101,7 @@ def load_all_results(include_model=False,
 
 def pickle_all_models():
     res = load_all_results(include_model=True)
-    for r in REGIONS:
+    for r in REGIONS_OLD:
         for ct in CRIME_TYPES:
             for m in METHODS:
                 try:
@@ -144,7 +142,7 @@ def bar_triggering_fractions(res, save=True):
     method_map = ('ani_refl', 'iso_refl')
     for ct in CRIME_TYPES:
         y = []
-        for r in REGIONS:
+        for r in REGIONS_OLD:
             for m in method_map:
                 try:
                     y.append(res[r][ct][m]['frac_trigger'])
@@ -247,7 +245,7 @@ def plot_hit_rate_array(res, max_cover=0.2, min_difference=0.01):
 
         fig, axs = plt.subplots(3, 3, figsize=(10, 8), sharex=False, sharey=False)
 
-        for i, r in enumerate(REGIONS):
+        for i, r in enumerate(REGIONS_OLD):
             ax_i = np.mod(i, 3)
             ax_j = i / 3
             ax = axs[ax_i, ax_j]
@@ -263,7 +261,7 @@ def plot_hit_rate_array(res, max_cover=0.2, min_difference=0.01):
             if ax_j != 0:
                 ax.set_yticks([])
 
-        for i in range(len(REGIONS)):
+        for i in range(len(REGIONS_OLD)):
             axs.flat[i].set_xlim([0., max_cover])
             axs.flat[i].set_ylim([0., 1.])
 
@@ -286,7 +284,7 @@ def plot_hit_rate_array(res, max_cover=0.2, min_difference=0.01):
         inset_width_ratio = 0.35
         inset_height_ratio = 0.55
 
-        for i in range(len(REGIONS)):
+        for i in range(len(REGIONS_OLD)):
             ax_i = np.mod(i, 3)
             ax_j = i / 3
             ax = axs[ax_i, ax_j]
@@ -298,24 +296,24 @@ def plot_hit_rate_array(res, max_cover=0.2, min_difference=0.01):
                 inset_height_ratio * ax_bbox.height,
             ]
             inset_ax = fig.add_axes(inset_bbox)
-            chicago.plot_domain(chicago_poly, sub_domain=domains[domain_mapping[REGIONS[i]]], ax=inset_ax)
+            chicago.plot_domain(chicago_poly, sub_domain=domains[domain_mapping[REGIONS_OLD[i]]], ax=inset_ax)
 
 
-def plot_spatial_ellipse_array(res, icdf=0.95):
+def plot_spatial_ellipse_array(res, icdf=0.95, save=True):
     """
     Plot the ellipsoids containing icdf of the spatial triggering density
     :param res: Results dict, including model
     :param icdf: The proportion of spatial density in each dimension contained within the ellipse boundary
     :return:
     """
+    icdf_two_tailed = 0.5 + icdf / 2.
     domains = chicago.get_chicago_side_polys(as_shapely=True)
     colour_mapping = {
         # 'ani_norm': 'k',
         'ani_refl': 'r',
         'iso_refl': 'k',
     }
-
-    t = 0.95
+    loc = plticker.MultipleLocator(base=400.0) # this locator puts ticks at regular intervals
 
     for ct in CRIME_TYPES:
         fig, axs = plt.subplots(3, 3, sharex=True, sharey=True)
@@ -324,30 +322,38 @@ def plot_spatial_ellipse_array(res, icdf=0.95):
             ax_i = np.mod(i, 3)
             ax_j = i / 3
             ax = axs[ax_i, ax_j]
-            dom = domains[domain_mapping[r]]
+            dom = domains[r]
             for m in ('ani_refl', 'iso_refl'):
                 try:
-                    k = res[r][ct][m]['model'].trigger_kde
+                    k = res[FILE_FRIENDLY_REGIONS[r]][ct][m]['model'].trigger_kde
                     if k.ndim == 3:
-                        a = k.marginal_icdf(t, dim=1)
-                        b = k.marginal_icdf(t, dim=2)
+                        a = k.marginal_icdf(icdf_two_tailed, dim=1)
+                        b = k.marginal_icdf(icdf_two_tailed, dim=2)
                         coords = get_ellipse_coords(a=a, b=b)
                         max_d = max(max(a, b), max_d)
                     else:
-                        a = k.marginal_icdf(t, dim=1)
+                        a = k.marginal_icdf(icdf, dim=1)
                         coords = get_ellipse_coords(a, a)
                         max_d = max(a, max_d)
                     ax.plot(coords[:, 0], coords[:, 1], colour_mapping[m])
 
                 except Exception as exc:
                     print repr(exc)
-            ax.title.set_text(domain_mapping[r])
+            ax.title.set_text(r)
 
         max_d *= 1.02
+        max_d = 800.
         for ax in axs.flat:
             ax.set_xlim([-max_d, max_d])
             ax.set_ylim([-max_d, max_d])
+            ax.xaxis.set_major_locator(loc)
+            ax.yaxis.set_major_locator(loc)
             ax.set_aspect('equal')
+
+        if save:
+            filename = "chicago_triggering_spatial_ellipse_%s" % ct
+            fig.savefig(filename + '.png', dpi=200)
+            fig.savefig(filename + '.pdf')
 
 
 if __name__ == '__main__':
@@ -419,7 +425,7 @@ if __name__ == '__main__':
         x_pos_all = []
         x_label = []
         i = 1.
-        for r in REGIONS:
+        for r in REGIONS_OLD:
             try:
                 frac_trigger_ani.append(res[r][ct]['ani_refl']['frac_trigger'])
             except Exception as exc:
@@ -482,7 +488,7 @@ if __name__ == '__main__':
     for ct in CRIME_TYPES:
         fig, axs = plt.subplots(3, 3, sharex=True, sharey=True)
         i = 0
-        for r in REGIONS:
+        for r in REGIONS_OLD:
             dom = domains[domain_mapping[r]]
             for m in METHODS:
                 try:
@@ -505,7 +511,7 @@ if __name__ == '__main__':
     for ct in CRIME_TYPES:
         fig, axs = plt.subplots(3, 3, sharex=True, sharey=True)
         i = 0
-        for r in REGIONS:
+        for r in REGIONS_OLD:
             plot_mean_hit_rate(res[r][ct], ax=axs.flat[i], legend=(i == 0))
             axs.flat[i].set_title(domain_mapping[r])
             i += 1
@@ -513,7 +519,7 @@ if __name__ == '__main__':
 
     from plotting.spatiotemporal import pairwise_distance_histogram
     for ct in CRIME_TYPES:
-        for r in REGIONS:
+        for r in REGIONS_OLD:
             try:
                 data = res[r][ct]['ani_refl']['model'].data
                 pairwise_distance_histogram(data, max_t=120, max_d=500, fmax=0.99)
