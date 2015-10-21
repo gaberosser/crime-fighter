@@ -23,3 +23,15 @@ FILE_FRIENDLY_REGIONS = {
     'Far Southwest': 'chicago_far_southwest',
     'Far Southeast': 'chicago_far_southeast',
 }
+
+ABBREVIATED_REGIONS = {
+    'South': 'S',
+    'Southwest': 'SW',
+    'West': 'W',
+    'Northwest': 'NW',
+    'North': 'N',
+    'Central': 'C',
+    'Far North': 'FN',
+    'Far Southwest': 'FSW',
+    'Far Southeast': 'FSE',
+}

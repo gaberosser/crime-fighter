@@ -9,7 +9,7 @@ from matplotlib import pyplot as plt
 import matplotlib.ticker as plticker
 from analysis import chicago
 from tools import get_ellipse_coords
-from database.chicago.consts import REGIONS, FILE_FRIENDLY_REGIONS
+from database.chicago.consts import REGIONS, FILE_FRIENDLY_REGIONS, ABBREVIATED_REGIONS
 
 
 # INDIR = os.path.join(OUT_DIR, 'validate_chicago_ani_vs_iso_refl')
@@ -32,7 +32,7 @@ REGIONS_OLD = (
 METHODS = (
     'ani_refl',
     'iso_refl',
-    'ani_norm',
+    # 'ani_norm',
 )
 
 CRIME_TYPES = (
@@ -140,24 +140,32 @@ def wilcoxon_analysis(this_res):
 
 def bar_triggering_fractions(res, save=True):
     method_map = ('ani_refl', 'iso_refl')
+    bar_pad = 0.05
     for ct in CRIME_TYPES:
         y = []
-        for r in REGIONS_OLD:
+        for r in REGIONS:
             for m in method_map:
                 try:
-                    y.append(res[r][ct][m]['frac_trigger'])
+                    y.append(res[FILE_FRIENDLY_REGIONS[r]][ct][m]['frac_trigger'])
                 except KeyError:
                     y.append(None)
         y = np.array(y, dtype=float)
         x = np.arange(len(y)) / 2.
-        fig = plt.figure()
+        fig = plt.figure(figsize=(6, 4))
         ax = fig.add_subplot(111)
-        ax.bar(x[::2], y[::2], 0.5, fc='k')
-        ax.bar(x[1::2], y[1::2], 0.5, fc='b')
+        ax.bar(x[::2] + bar_pad, y[::2], 0.5 * (1 - 2 * bar_pad), fc='k')
+        ax.bar(x[1::2], y[1::2], 0.5 * (1 - 2 * bar_pad), fc='b')
         ax.set_xticks(x[1::2])
-        ax.set_xticklabels(domain_mapping.values(), rotation=45)
+        ax.set_xticklabels([ABBREVIATED_REGIONS[r] for r in REGIONS], rotation=45)
         ax.set_ylabel('Fraction triggering')
         ax.legend(('Anisotropic', 'Isotropic'), loc='upper right')
+        ax.set_ylim([0, 1.])
+        plt.tight_layout()
+
+        if save:
+            filename = "chicago_%s_proportion_triggering" % ct
+            fig.savefig(filename + '.png', dpi=200)
+            fig.savefig(filename + '.pdf')
         
 
 
@@ -299,11 +307,13 @@ def plot_hit_rate_array(res, max_cover=0.2, min_difference=0.01):
             chicago.plot_domain(chicago_poly, sub_domain=domains[domain_mapping[REGIONS_OLD[i]]], ax=inset_ax)
 
 
-def plot_spatial_ellipse_array(res, icdf=0.95, save=True):
+def plot_spatial_ellipse_array(res, icdf=0.95, max_d=800., save=True):
     """
     Plot the ellipsoids containing icdf of the spatial triggering density
     :param res: Results dict, including model
     :param icdf: The proportion of spatial density in each dimension contained within the ellipse boundary
+    :param max_d: The axis maximum value. This is increased automatically if it is too small to contain any of the
+    ellipses.
     :return:
     """
     icdf_two_tailed = 0.5 + icdf / 2.
@@ -314,10 +324,20 @@ def plot_spatial_ellipse_array(res, icdf=0.95, save=True):
         'iso_refl': 'k',
     }
     loc = plticker.MultipleLocator(base=400.0) # this locator puts ticks at regular intervals
+    abbreviated_regions = {
+        'South': 'S',
+        'Southwest': 'SW',
+        'West': 'W',
+        'Northwest': 'NW',
+        'North': 'N',
+        'Central': 'C',
+        'Far North': 'FN',
+        'Far Southwest': 'FSW',
+        'Far Southeast': 'FSE',
+    }
 
     for ct in CRIME_TYPES:
-        fig, axs = plt.subplots(3, 3, sharex=True, sharey=True)
-        max_d = 0
+        fig, axs = plt.subplots(3, 3, sharex=True, sharey=True, figsize=(8, 8))
         for i, r in enumerate(REGIONS):
             ax_j = np.mod(i, 3)
             ax_i = i / 3
@@ -339,16 +359,30 @@ def plot_spatial_ellipse_array(res, icdf=0.95, save=True):
 
                 except Exception as exc:
                     print repr(exc)
-            ax.title.set_text(r)
+            ax.text(0.04, 0.86, abbreviated_regions[r], fontsize=14, transform=ax.transAxes)
 
-        max_d *= 1.02
-        max_d = 800.
         for ax in axs.flat:
             ax.set_xlim([-max_d, max_d])
             ax.set_ylim([-max_d, max_d])
             ax.xaxis.set_major_locator(loc)
             ax.yaxis.set_major_locator(loc)
-            ax.set_aspect('equal')
+            ax.set_aspect('equal', adjustable='box-forced')
+
+        plt.tight_layout(h_pad=0.2, w_pad=0.2)
+
+        big_ax = fig.add_subplot(111)
+        big_ax.spines['top'].set_color('none')
+        big_ax.spines['bottom'].set_color('none')
+        big_ax.spines['left'].set_color('none')
+        big_ax.spines['right'].set_color('none')
+        big_ax.set_xticks([])
+        big_ax.set_yticks([])
+        big_ax.tick_params(labelcolor='w', top='off', bottom='off', left='off', right='off')
+        big_ax.set_xlabel(r'$\Delta x$')
+        big_ax.set_ylabel(r'$\Delta y$')
+        big_ax.patch.set_visible(False)
+
+        big_ax.set_position([0.05, 0.05, 0.95, 0.9])
 
         if save:
             filename = "chicago_triggering_spatial_ellipse_%s" % ct

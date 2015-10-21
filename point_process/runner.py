@@ -248,7 +248,7 @@ if __name__ == '__main__':
 
 
     pp_class = models.SeppStochasticNn
-    pp_class.trigger_kde_class = kde_models.VariableBandwidthNnTimeGteZeroKde
+    # pp_class.trigger_kde_class = kde_models.VariableBandwidthNnTimeGteZeroKde
 
     r = pp_class(data=data, max_delta_d=max_delta_d, max_delta_t=max_delta_t,
                                 bg_kde_kwargs=bg_kde_kwargs, trigger_kde_kwargs=trigger_kde_kwargs)
