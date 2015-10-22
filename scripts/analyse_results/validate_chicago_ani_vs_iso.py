@@ -233,32 +233,20 @@ def plot_wilcox_test_hit_rate(this_res, ax=None,
                     facecolor='r', edgecolor='none', alpha=0.3, interpolate=True)
 
 
-def plot_hit_rate_array(res, max_cover=0.2, min_difference=0.01):
+def plot_hit_rate_array(res, max_cover=0.2, min_difference=0.01, save=True):
     domains = chicago.get_chicago_side_polys(as_shapely=True)
     chicago_poly = chicago.compute_chicago_region(as_shapely=True).simplify(1000)
-
-    domain_mapping = {
-        'chicago_south': 'South',
-        'chicago_southwest': 'Southwest',
-        'chicago_west': 'West',
-        'chicago_northwest': 'Northwest',
-        'chicago_north': 'North',
-        'chicago_central': 'Central',
-        'chicago_far_north': 'Far North',
-        'chicago_far_southwest': 'Far Southwest',
-        'chicago_far_southeast': 'Far Southeast',
-    }
 
     for ct in CRIME_TYPES:
 
         fig, axs = plt.subplots(3, 3, figsize=(10, 8), sharex=False, sharey=False)
 
-        for i, r in enumerate(REGIONS_OLD):
-            ax_i = np.mod(i, 3)
-            ax_j = i / 3
+        for i, r in enumerate(REGIONS):
+            ax_j = np.mod(i, 3)
+            ax_i = i / 3
             ax = axs[ax_i, ax_j]
 
-            this_res = res[r][ct]
+            this_res = res[FILE_FRIENDLY_REGIONS[r]][ct]
             try:
                 plot_wilcox_test_hit_rate(this_res, ax=ax, max_cover=max_cover, min_difference=min_difference)
             except KeyError:
@@ -269,7 +257,7 @@ def plot_hit_rate_array(res, max_cover=0.2, min_difference=0.01):
             if ax_j != 0:
                 ax.set_yticks([])
 
-        for i in range(len(REGIONS_OLD)):
+        for i in range(len(REGIONS)):
             axs.flat[i].set_xlim([0., max_cover])
             axs.flat[i].set_ylim([0., 1.])
 
@@ -292,9 +280,9 @@ def plot_hit_rate_array(res, max_cover=0.2, min_difference=0.01):
         inset_width_ratio = 0.35
         inset_height_ratio = 0.55
 
-        for i in range(len(REGIONS_OLD)):
-            ax_i = np.mod(i, 3)
-            ax_j = i / 3
+        for i, r in enumerate(REGIONS):
+            ax_j = np.mod(i, 3)
+            ax_i = i / 3
             ax = axs[ax_i, ax_j]
             ax_bbox = ax.get_position()
             inset_bbox = [
@@ -304,7 +292,12 @@ def plot_hit_rate_array(res, max_cover=0.2, min_difference=0.01):
                 inset_height_ratio * ax_bbox.height,
             ]
             inset_ax = fig.add_axes(inset_bbox)
-            chicago.plot_domain(chicago_poly, sub_domain=domains[domain_mapping[REGIONS_OLD[i]]], ax=inset_ax)
+            chicago.plot_domain(chicago_poly, sub_domain=domains[r], ax=inset_ax)
+
+        if save:
+            filename = 'chicago_ani_iso_kde_hit_rate_%s' % ct
+            fig.savefig(filename + '.png', dpi=200)
+            fig.savefig(filename + '.pdf')
 
 
 def plot_spatial_ellipse_array(res, icdf=0.95, max_d=800., save=True):

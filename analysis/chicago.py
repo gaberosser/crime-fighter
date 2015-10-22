@@ -176,6 +176,28 @@ def crime_numbers_by_side_bar(ndata, domain_labels, buffer=0.05):
     ax.legend(crime_types)
 
 
+def crime_density_by_side_bar(ndata, domain_labels, buffer=0.05):
+    domains = get_chicago_side_polys(as_shapely=True)
+    a = np.array([domains[k].area for k in domain_labels]) / 1e6  # km ^ 2
+    colour_cycle = ('b', 'k', 'r', 'g', 'y')
+    crime_types = ndata.keys()
+    fig = plt.figure(figsize=(6, 4))
+    ax = fig.add_subplot(111)
+    max_y = 0
+    for i, ct in enumerate(crime_types):
+        c = colour_cycle[np.mod(i, len(colour_cycle))]
+        x = np.arange(len(domain_labels)) + buffer + (1. - 2 * buffer) * float(i)/len(crime_types)
+        y = ndata[ct] / a
+        max_y = max(max_y, y.max())
+        ax.bar(x, y, width=(1. - 2 * buffer)/len(crime_types), facecolor=c, edgecolor=c)
+    ax.set_xticks(np.arange(len(domain_labels)) + 0.5)
+    ax.set_xticklabels(domain_labels, rotation=45)
+    ax.set_ylabel(r'Crimes km$^{-2}$')
+    ax.legend(crime_types)
+    ax.set_ylim([0, max_y * 1.4])  # leave some space for the legend
+    plt.tight_layout()
+
+
 def spatial_repeat_analysis(crime_type='burglary', domain=None, plot_osm=False, **kwargs):
     data, t0, cid = get_crimes_by_type(crime_type=crime_type, domain=domain, **kwargs)
     xy = data[:, 1:]
