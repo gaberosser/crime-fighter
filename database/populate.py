@@ -14,8 +14,9 @@ from django.contrib.gis.gdal import DataSource
 from django.db import transaction
 from django.db.models.signals import pre_save
 from django.db import connection
-import gc
+import re
 import shapefile
+import fiona  # nicer way to interact with shapefiles
 
 UK_TZ = pytz.timezone('Europe/London')
 USCENTRAL_TZ = pytz.timezone('US/Central')
@@ -775,9 +776,6 @@ def san_francisco(verbose=True, chunksize=50000, limit=None):
     obj = models.SanFrancisco()
     obj.rewrite_table()
 
-    ## FIXME: it's slow looking up ids in a list. Instead, use a dictionary with id as key then convert via values() when required.
-    ## This will auto-ignore duplicate IDs.
-
     DATADIR = os.path.join(settings.DATA_DIR, 'san_francisco')
     count = 1
     with open(os.path.join(DATADIR, 'san_fran_crime_from_1_jan_2003.csv'), 'r') as f:
@@ -792,9 +790,10 @@ def san_francisco(verbose=True, chunksize=50000, limit=None):
                     row['Date'].split(' ')[0],
                     row['Time']
                 ),
-                'location': "ST_Transform(ST_SetSRID(ST_Point({0}, {1}), 4326), 26943)".format(
+                'location': "ST_Transform(ST_SetSRID(ST_Point({0}, {1}), 4326), {2})".format(
                     float(row['X']),
-                    float(row['Y'])
+                    float(row['Y']),
+                    models.SRID['san francisco']
                 ),
                 'category': "'%s'" % row['Category'],
             }
@@ -804,16 +803,29 @@ def san_francisco(verbose=True, chunksize=50000, limit=None):
                 obj.insert_many(res)
                 res = []
     obj.insert_many(res)
-    print count
+    if verbose:
+        print "Saved %d crime records" % count
+
+
+def san_francisco_boundary():
+    import json
+    DATADIR = os.path.join(settings.DATA_DIR, 'san_francisco')
+    fin = os.path.join(DATADIR, 'boundary', 'san_francisco_boundary.shp')
+    obj = models.SanFranciscoDivision()
+    with fiona.open(fin, 'r') as s:
+        res = s[0]['geometry']  # geojson format
+        insert_sql = {
+            'name': sql_quote('San Francisco'),
+            'type': sql_quote('city boundary'),
+            'mpoly': "ST_SetSRID(ST_GeomFromGeoJSON('%s'), %d)" % (json.dumps(res), models.SRID['san francisco']),
+        }
+        obj.insert(**insert_sql)
 
 
 def los_angeles(verbose=True, chunksize=50000, limit=None):
     obj = models.LosAngeles()
     obj.rewrite_table()
-    srid = 26945
-
-    ## FIXME: it's slow looking up ids in a list. Instead, use a dictionary with id as key then convert via values() when required.
-    ## This will auto-ignore duplicate IDs.
+    srid = models.SRID['los angeles']
 
     DATADIR = os.path.join(settings.DATA_DIR, 'los_angeles')
     count = 1
@@ -848,4 +860,49 @@ def los_angeles(verbose=True, chunksize=50000, limit=None):
                 obj.insert_many(res)
                 res = []
     obj.insert_many(res)
-    print count
+    if verbose:
+        print "Inserted %d records" % count
+
+
+def birmingham(verbose=True, chunksize=50000, limit=None):
+    obj = models.Birmingham()
+    obj.rewrite_table()
+    srid = models.SRID['uk']
+
+    in_file = os.path.join(settings.DATA_DIR, 'birmingham', 'data_090301_140831_matched.csv')
+    count = 1
+    with open(in_file, 'r') as f:
+        c = csv.DictReader(f)
+        res = []
+        for row in c:
+            if limit and count > limit:
+                break
+            t = {
+                'crime_number': sql_quote(row['CRIME_NO']),
+                'offence': sql_quote(row['OFFENCE']),
+                'datetime_start': "to_timestamp('{} {:02d}{:02d}', 'DD/MM/YYYY HH24MI')".format(
+                    row['DATE_START'],
+                    int(row['HR_START']),
+                    int(row['MIN_START']),
+                ),
+                'datetime_end': "to_timestamp('{} {:02d}{:02d}', 'DD/MM/YYYY HH24MI')".format(
+                    row['DATE_END'],
+                    int(row['HR_END']),
+                    int(row['MIN_END']),
+                ),
+                'location': "ST_SetSRID(ST_Point({0}, {1}), {2})".format(
+                    row['EASTING'],
+                    row['NORTHING'],
+                    srid
+                ),
+                'address': sql_quote(row['FULL_LOC'].replace("'", "")),
+                'officer_statement': sql_quote(re.sub(r'[^\x00-\x7f]', r'', row['MO']).replace("'", ""))
+            }
+            res.append(t)
+            count += 1
+            if (count % chunksize) == 0 and count:
+                obj.insert_many(res)
+                res = []
+    obj.insert_many(res)
+    if verbose:
+        print "Inserted %d records" % count

@@ -7,6 +7,8 @@ import datetime
 from time import time
 from database import models
 from point_process import estimation, models as pp_models, validate
+from analysis import spatial
+from shapely import wkb
 import settings
 import os
 from django.db import connection
@@ -91,6 +93,25 @@ def get_crimes_by_type(crime_type='burglary',
     cid = cid[sort_idx]
 
     return res, t0, cid
+
+
+def get_boundary():
+    obj = models.SanFranciscoDivision()
+    wkb_hex_str = obj.select(fields=('mpoly',))[0]['mpoly']
+    mpoly = wkb.loads(wkb_hex_str, hex=True)
+    return mpoly
+
+
+def create_grid_squares_shapefile(outfile, side_length=250):
+    mpoly = get_boundary()
+    ipoly, fpoly, full = spatial.create_spatial_grid(mpoly, side_length)
+    field_description = {'id': {'fieldType': 'N'}}
+    id = range(1, len(fpoly) + 1)
+    full_polys = [spatial.shapely_rectangle_from_vertices(*t) for t in fpoly]
+    spatial.write_polygons_to_shapefile(outfile,
+                                        full_polys,
+                                        field_description=field_description,
+                                        id=id)
 
 
 if __name__ == "__main__":

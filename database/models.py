@@ -29,6 +29,13 @@ GRADE_CHOICES = (
     ('P', 'Police generated'),
 )
 
+SRID = {
+    'uk': 27700,
+    'san francisco': 26910,
+    'los angeles': 26910,
+    'chicago': 26916,  ## TODO: check this
+}
+
 ## standalone (non-Django) table class
 ## TODO: connection is currently specified by Django settings, but can even eliminate this if required.
 
@@ -370,7 +377,7 @@ class SanFrancisco(GeosTable):
         'id SERIAL PRIMARY KEY',
         'incident_number VARCHAR(9)',
         'datetime TIMESTAMP',
-        'location GEOMETRY(POINT, 26943)',  # US NAD 83 zone 3
+        'location GEOMETRY(POINT, %d)' % SRID['san francisco'],  # US NAD 83 zone 3
         'category VARCHAR(32) NOT NULL',
     )
 
@@ -385,7 +392,7 @@ class LosAngeles(GeosTable):
         'id SERIAL PRIMARY KEY',
         'incident_number VARCHAR(9)',
         'datetime TIMESTAMP',
-        'location GEOMETRY(POINT, 26945)',  # US NAD 83 zone 5
+        'location GEOMETRY(POINT, %d)' % SRID['los angeles'],  # US NAD 83 zone 10N
         'category VARCHAR(64) NOT NULL',
     )
 
@@ -407,6 +414,35 @@ class Chic(GeosTable):
         'arrest_made BOOLEAN'
     )
 
+    spatial_indices = {
+        'gix': 'location'
+    }
+
+
+class SanFranciscoDivision(GeosTable):
+    table_name = "sanfrancisco_division"
+    schema = (
+        'id SERIAL PRIMARY KEY',
+        'name VARCHAR(64)',
+        'type VARCHAR(32)',
+        'mpoly GEOMETRY(MULTIPOLYGON, %d)' % SRID['san francisco']
+    )
+    spatial_indices = {
+        'gix': 'location'
+    }
+
+
+class Birmingham(GeosTable):
+    table_name = "birmingham"
+    schema = (
+        'crime_number VARCHAR(16) PRIMARY KEY',
+        'offence VARCHAR(64)',
+        'datetime_start TIMESTAMP',
+        'datetime_end TIMESTAMP',
+        'location GEOMETRY(POINT, %d)' % SRID['uk'],
+        'address TEXT',
+        'officer_statement TEXT',
+    )
     spatial_indices = {
         'gix': 'location'
     }
