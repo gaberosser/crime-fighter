@@ -6,6 +6,7 @@ import settings
 import datetime
 import time
 import pytz
+import json
 import models
 import numpy as np
 from django.contrib.gis.geos import Point, Polygon, MultiPolygon
@@ -808,7 +809,6 @@ def san_francisco(verbose=True, chunksize=50000, limit=None):
 
 
 def san_francisco_boundary():
-    import json
     DATADIR = os.path.join(settings.DATA_DIR, 'san_francisco')
     fin = os.path.join(DATADIR, 'boundary', 'san_francisco_boundary.shp')
     obj = models.SanFranciscoDivision()
@@ -906,3 +906,23 @@ def birmingham(verbose=True, chunksize=50000, limit=None):
     obj.insert_many(res)
     if verbose:
         print "Inserted %d records" % count
+
+
+def birmingham_boundary():
+
+    DATADIR = os.path.join(settings.DATA_DIR, 'birmingham')
+    fin = os.path.join(DATADIR, 'boundary', 'birmingham_district_borough.shp')
+    input_srid = 27700
+    obj = models.ArealUnit()
+    with fiona.open(fin, 'r') as s:
+        res = s[0]['geometry']  # geojson format
+        insert_sql = {
+            'name': sql_quote('Birmingham'),
+            'type': sql_quote('city boundary'),
+            'planar_srid': models.SRID['uk'],
+            'mpoly': "ST_Multi(ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON('%s'), %d), %d))" % (
+                json.dumps(res),
+                input_srid,
+                4326),
+        }
+        obj.insert(**insert_sql)

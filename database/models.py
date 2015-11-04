@@ -69,8 +69,17 @@ class GeosTable(object):
     schema = None
     schema_name = 'public'
     table_name = None
-    dependencies = None
-    spatial_indices = None
+    indices = None
+
+    @property
+    def schema(self):
+        # making this a property defers any imports
+        return None
+
+    @property
+    def dependencies(self):
+        # making this a property defers the imports
+        return None
 
     def __init__(self):
         self.cur = connection.cursor().cursor
@@ -91,58 +100,96 @@ class GeosTable(object):
         $$ LANGUAGE plpgsql;
         """
 
-    def create_spatial_index(self):
-        if self.spatial_indices is None:
-            return
-        qry = ''
-        for ix, col in self.spatial_indices.items():
-            qry = """
-            DO $$
-            BEGIN
-            IF NOT EXISTS (
-                SELECT 1
-                FROM   pg_class c
-                JOIN   pg_namespace n ON n.oid = c.relnamespace
-                WHERE  c.relname = '{0}'
-                AND    n.nspname = '{1}' -- 'public' by default
-                ) THEN
-                CREATE INDEX {0} ON {1}.{2} USING GIST ({3});
-            END IF;
-
-            END$$;
+    def create_index_qry(self, ix_name, ix_col, unique=False, using=None):
+        qry = """
+              DO $$
+              BEGIN
+              IF NOT EXISTS (
+                  SELECT 1
+                  FROM   pg_class c
+                  JOIN   pg_namespace n ON n.oid = c.relnamespace
+                  WHERE  c.relname = '{0}'
+                  AND    n.nspname = '{1}' -- 'public' by default
+                  ) THEN
+              """.format(
+                ix_name,
+                self.schema_name
+        )
+        if using:
+            qry += """
+                CREATE INDEX {0} ON {1}.{2} USING {3} ({4});
             """.format(
-                ix,
+                ix_name,
                 self.schema_name,
                 self.table_name,
-                col
+                using.upper(),
+                ix_col
             )
-        self.cur.execute(qry)
+        else:
+            qry += """
+                CREATE {0} INDEX {1} ON {2}.{3} ({4});
+            """.format(
+                'UNIQUE' if unique else '',
+                ix_name,
+                self.schema_name,
+                self.table_name,
+                ix_col
+            )
+        qry += """
+                END IF;
+            END$$;
+            """
+        return qry
 
-    def cluster_by_index(self, idx=0):
+    def create_indexes(self):
+        if self.indices is None:
+            return
+        for ix in self.indices:
+            # copy dict to avoid removing attributes permanently
+            cix = dict(ix)
+            ix_name = cix.pop('name')
+            ix_col = cix.pop('col')
+            qry = self.create_index_qry(ix_name, ix_col, **cix)
+            self.cur.execute(qry)
+
+    def cluster_by_index(self, ix_name=None):
         """
         Cluster the data in the table using the index specified by idx
-        :param idx: Default=0, the lookup index for the db index to use (only use in the event that >1 index exists)
+        :param ix_name: the name of the index to use (only necessary in the event that >1 index exists). Default behaviour
+        is to use a GIST index where possible
         """
-        if self.spatial_indices is None:
-            raise AttributeError("No spatial indices have been declared, unable to cluster data.")
+        if self.indices is None:
+            raise AttributeError("No indices have been declared, unable to cluster data.")
+
+        if ix_name is None:
+            # first try to find a GIST index
+            for ix in self.indices:
+                if ix.get('using', '').lower() == 'gist':
+                    ix_name = ix['name']
+                    break
+
+        if ix_name is None:
+            # now fallback to the first index we can find
+            ix_name = self.indices[0]['name']
+
         qry = """
         CLUSTER {0} USING {1};
         """.format(
             self.table_name,
-            self.spatial_indices.keys()[idx]
+            ix_name
         )
         self.cur.execute(qry)
 
-    def recreate_spatial_index(self):
-        if self.spatial_indices is None:
+    def recreate_indexes(self):
+        if self.indices is None:
             return
         qry = ''
-        for ix in self.spatial_indices.keys():
+        for ix in self.indices:
             qry += """
-            DROP INDEX IF EXISTS {0}
-            """.format(ix)
+            DROP INDEX IF EXISTS {0};
+            """.format(ix['name'])
         self.cur.execute(qry)
-        self.create_spatial_index()
+        self.create_indexes()
 
     def bind_or_create(self):
         # test for table
@@ -165,7 +212,7 @@ class GeosTable(object):
             """.format(self.table_name, ','.join(self.schema))
             self.cur.execute(qry)
 
-            self.create_spatial_index()
+            self.create_indexes()
 
             if self.post_init_query:
                 self.cur.execute(self.post_init_query)
@@ -373,79 +420,147 @@ class GeosTable(object):
 
 class SanFrancisco(GeosTable):
     table_name = 'sanfrancisco'
-    schema = (
-        'id SERIAL PRIMARY KEY',
-        'incident_number VARCHAR(9)',
-        'datetime TIMESTAMP',
-        'location GEOMETRY(POINT, %d)' % SRID['san francisco'],  # US NAD 83 zone 3
-        'category VARCHAR(32) NOT NULL',
-    )
 
-    spatial_indices = {
-        'gix': 'location'
-    }
+    @property
+    def schema(self):
+        return (
+            'id SERIAL PRIMARY KEY',
+            'incident_number VARCHAR(9)',
+            'datetime TIMESTAMP',
+            'location GEOMETRY(POINT, %d)' % SRID['san francisco'],  # US NAD 83 zone 3
+            'category VARCHAR(32) NOT NULL',
+        )
+
+    indices = [
+        {
+            'name': 'gix',
+            'col': 'location',
+            'using': 'gist',
+        }
+    ]
 
 
 class LosAngeles(GeosTable):
     table_name = 'losangeles'
-    schema = (
-        'id SERIAL PRIMARY KEY',
-        'incident_number VARCHAR(9)',
-        'datetime TIMESTAMP',
-        'location GEOMETRY(POINT, %d)' % SRID['los angeles'],  # US NAD 83 zone 10N
-        'category VARCHAR(64) NOT NULL',
-    )
 
-    spatial_indices = {
-        'gix': 'location'
-    }
+    @property
+    def schema(self):
+        return (
+            'id SERIAL PRIMARY KEY',
+            'incident_number VARCHAR(9)',
+            'datetime TIMESTAMP',
+            'location GEOMETRY(POINT, %d)' % SRID['los angeles'],  # US NAD 83 zone 10N
+            'category VARCHAR(64) NOT NULL',
+        )
+
+    indices = [
+        {
+            'name': 'gix',
+            'col': 'location',
+            'using': 'gist',
+        }
+    ]
 
 
 class Chic(GeosTable):
     # TODO: replace Chicago table with this one
     table_name = 'chicago'
-    schema = (
-        'id INTEGER PRIMARY KEY',
-        'case_number VARCHAR(16)',
-        'datetime TIMESTAMP',
-        'location GEOMETRY(POINT, 2028)',  # TODO: switch to 26916, US NAD 83 zone 16
-        'primary_type VARCHAR(64)',
-        'description VARCHAR(128)',
-        'arrest_made BOOLEAN'
-    )
 
-    spatial_indices = {
-        'gix': 'location'
-    }
+    @property
+    def schema(self):
+        return (
+            'id INTEGER PRIMARY KEY',
+            'case_number VARCHAR(16)',
+            'datetime TIMESTAMP',
+            'location GEOMETRY(POINT, 2028)',  # TODO: switch to 26916, US NAD 83 zone 16
+            'primary_type VARCHAR(64)',
+            'description VARCHAR(128)',
+            'arrest_made BOOLEAN'
+        )
+
+    indices = [
+        {
+            'name': 'gix',
+            'col': 'location',
+            'using': 'gist',
+        }
+    ]
 
 
 class SanFranciscoDivision(GeosTable):
     table_name = "sanfrancisco_division"
-    schema = (
-        'id SERIAL PRIMARY KEY',
-        'name VARCHAR(64)',
-        'type VARCHAR(32)',
-        'mpoly GEOMETRY(MULTIPOLYGON, %d)' % SRID['san francisco']
-    )
-    spatial_indices = {
-        'gix': 'location'
-    }
+
+    @property
+    def schema(self): return\
+        (
+            'id SERIAL PRIMARY KEY',
+            'name VARCHAR(64)',
+            'type VARCHAR(32)',
+            'mpoly GEOMETRY(MULTIPOLYGON, %d)' % SRID['san francisco']
+        )
+
+    indices = [
+        {
+            'name': 'gix',
+            'col': 'mpoly',
+            'using': 'gist',
+        }
+    ]
 
 
 class Birmingham(GeosTable):
     table_name = "birmingham"
-    schema = (
-        'crime_number VARCHAR(16) PRIMARY KEY',
-        'offence VARCHAR(64)',
-        'datetime_start TIMESTAMP',
-        'datetime_end TIMESTAMP',
-        'location GEOMETRY(POINT, %d)' % SRID['uk'],
-        'address TEXT',
-        'officer_statement TEXT',
-    )
-    spatial_indices = {
-        'gix': 'location'
-    }
+
+    @property
+    def schema(self):
+        return (
+            'crime_number VARCHAR(16) PRIMARY KEY',
+            'offence VARCHAR(64)',
+            'datetime_start TIMESTAMP',
+            'datetime_end TIMESTAMP',
+            'location GEOMETRY(POINT, %d)' % SRID['uk'],
+            'address TEXT',
+            'officer_statement TEXT',
+        )
+
+    indices = [
+        {
+            'name': 'gix',
+            'col': 'location',
+            'using': 'gist',
+        }
+    ]
+
+
+class ArealUnit(GeosTable):
+    table_name = 'areal_unit'
+
+    @property
+    def schema(self):
+        return(
+            'id SERIAL PRIMARY KEY',
+            'name VARCHAR(128) NOT NULL',
+            'type VARCHAR(64) NOT NULL',
+            'country VARCHAR(64)',
+            'planar_srid INTEGER',
+            'mpoly GEOMETRY(MULTIPOLYGON, 4326) NOT NULL',
+        )
+
+    indices = [
+        {
+            'name': 'gix',
+            'col': 'mpoly',
+            'using': 'gist',
+        },
+        {
+            'name': 'country_ix',
+            'col': 'country',
+        },
+        {
+            'name': 'type_ix',
+            'col': 'type',
+        },
+    ]
 
 
 class Ocu(models.Model):
