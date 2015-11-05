@@ -870,6 +870,15 @@ def birmingham(verbose=True, chunksize=50000, limit=None):
     srid = models.SRID['uk']
 
     in_file = os.path.join(settings.DATA_DIR, 'birmingham', 'data_090301_140831_matched.csv')
+    os_file = os.path.join(settings.DATA_DIR, 'birmingham', 'address_points_V2_dwelling_snap.csv')
+
+    # the OS file gives more precise locations based on full addresses
+    with open(os_file, 'r') as f:
+        c = csv.DictReader(f)
+        lookup = dict(
+            [(t['TOID'], (t['EastingNEW'], t['NorthingNEW'])) for t in c]
+        )
+
     count = 1
     with open(in_file, 'r') as f:
         c = csv.DictReader(f)
@@ -891,8 +900,8 @@ def birmingham(verbose=True, chunksize=50000, limit=None):
                     int(row['MIN_END']),
                 ),
                 'location': "ST_SetSRID(ST_Point({0}, {1}), {2})".format(
-                    row['EASTING'],
-                    row['NORTHING'],
+                    lookup[row['TRUE_TOID']][0],
+                    lookup[row['TRUE_TOID']][1],
                     srid
                 ),
                 'address': sql_quote(row['FULL_LOC'].replace("'", "")),

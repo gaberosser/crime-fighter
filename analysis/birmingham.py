@@ -1,8 +1,23 @@
 __author__ = 'gabriel'
 import datetime
 from database import models
+from shapely import wkb
 import numpy as np
 SRID = models.SRID['uk']
+
+
+def get_boundary(srid=SRID):
+    obj = models.ArealUnit()
+    if srid is not None:
+        fields = ('ST_Transform(mpoly, {0})'.format(srid),)
+    else:
+        fields = ('mpoly',)
+    res = obj.select(
+        where_dict={'name': "'Birmingham'", 'type': "'city boundary'"},
+        fields=fields,
+        convert_to_dict=False)
+    return wkb.loads(res[0][0], hex=True)
+
 
 
 def get_crimes(crime_type=None,

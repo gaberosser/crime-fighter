@@ -111,7 +111,9 @@ def plot_shapely_multipolygon(obj, ax, **kwargs):
     return [plot_shapely_polygon(t, ax, **kwargs) for t in obj]
 
 
-def plot_shapely_geos(shapes, ax=None, **kwargs):
+def plot_shapely_geos(shapes, ax=None, set_axes=False, **kwargs):
+
+    ax = ax or plt.gca()
 
     plotters = {
         shapely_geometry.Point: plot_shapely_point,
@@ -125,10 +127,18 @@ def plot_shapely_geos(shapes, ax=None, **kwargs):
 
     if issubclass(shapes.__class__, shapely_geometry.base.BaseGeometry):
         # single GEOS geometry supplied
-        return plotters[shapes.__class__](shapes, ax, **kwargs)
+        res = plotters[shapes.__class__](shapes, ax, **kwargs)
 
     ## TODO: may wish to combine plotting of points for efficiency?
-    return [plotters[t.__class__](t, ax, **kwargs) for t in shapes]
+    else:
+        res = [plotters[t.__class__](t, ax, **kwargs) for t in shapes]
+
+    if set_axes:
+        plt.autoscale()
+        plt.axis('equal')
+
+    return res
+
 
 
 def plot_shaded_regions(polys,
