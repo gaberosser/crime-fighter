@@ -91,6 +91,11 @@ def plot_wilcox_test_hit_rate(this_res,
                     facecolor='k', edgecolor='none', alpha=0.3, interpolate=True)
     ax.fill_between(x, 0, 1, (pvals < sign_level) & (outcomes == -1) & ((y_ani_mean - y_iso_mean) >= min_difference),
                     facecolor='r', edgecolor='none', alpha=0.3, interpolate=True)
+    # TODO: make this more rigorous. Add darker shading for double min_difference
+    ax.fill_between(x, 0, 1, (pvals < sign_level) & (outcomes == 1) & ((y_iso_mean - y_ani_mean) >= 2 * min_difference),
+                    facecolor='k', edgecolor='none', alpha=0.3, interpolate=True)
+    ax.fill_between(x, 0, 1, (pvals < sign_level) & (outcomes == -1) & ((y_ani_mean - y_iso_mean) >= 2 * min_difference),
+                    facecolor='r', edgecolor='none', alpha=0.3, interpolate=True)
 
 
 def plot_hit_rate_array(res, max_cover=0.2, min_difference=0.01, save=True):

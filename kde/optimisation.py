@@ -42,7 +42,6 @@ def compute_log_likelihood_surface_fixed_bandwidth(data,
 
     try:
         for i in range(niter):
-            this_res = []
             training = data[data[:, 0] < (start_day + i)]
             testing_idx = (data[:, 0] >= (start_day + i)) & (data[:, 0] < (start_day + i + 1))
             testing = data[testing_idx]
@@ -55,12 +54,45 @@ def compute_log_likelihood_surface_fixed_bandwidth(data,
             pool.close()
             this_res = q.get(1e100)
             res[:, :, i] = np.array(this_res).reshape((npts, npts))
+            print "Completed iteration %d / %d" % (i + 1, niter)
 
-    except Exception as exc:
+    except (Exception, KeyboardInterrupt) as exc:
         print "Terminating early due to Exception:"
         print repr(exc)
 
     return ss, tt, res
+
+
+def plot_total_likelihood_surface(ss, tt, ll,
+                                  ax=None,
+                                  fmin=None,
+                                  fmax=None,
+                                  **kwargs):
+    """
+    Plot a surface showing the total log likelihood, evaluated over multiple windows
+    :param ss: Spatial bandwidths
+    :param tt: Temporal bandwidths
+    :param ll: Log likelihoods
+    :return:
+    """
+    from matplotlib import pyplot as plt
+    fmin = fmin if fmin is not None else 0.25
+    fmax = fmax if fmax is not None else 0.98
+    if ax is None:
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+    ll_total = ll.sum(axis=2)
+    # get caxis limits
+    v = ll_total.flatten()
+    v.sort()
+    vmin = v[int(len(v) * fmin)]
+    vmax = v[int(len(v) * fmax)]
+    h = ax.pcolor(ss, tt, ll_total,
+                  vmin=vmin, vmax=vmax, **kwargs)
+    return h
+
+
+
 
 
 def compute_log_likelihood_surface_variable_bandwidth(data,

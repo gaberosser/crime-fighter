@@ -51,14 +51,16 @@ def get_crimes(crime_type=None,
     if crime_type:
         where_dict['LOWER(type)'] = "*LIKE '{0}'".format(crime_type.lower())
     if start_date:
-        where_dict['datetime_end'] = "*>= '{0}'".format(start_date.strftime('%Y-%m-%d %H:%M:%S'))
+        # where_dict['datetime_end'] = "*>= '{0}'".format(start_date.strftime('%Y-%m-%d %H:%M:%S'))
+        where_dict['datetime_start'] = "*>= '{0}'".format(start_date.strftime('%Y-%m-%d %H:%M:%S'))
     if end_date:
         where_dict['"datetime_start"'] = "*<= '{0}'".format(end_date.strftime('%Y-%m-%d %H:%M:%S'))
     if domain:
         s = "ST_Intersects(location, ST_GeomFromText('{0}', {1}))".format(domain.wkt, SRID)
         where_dict[s] = '*'
     where_dict.update(where_kwargs)
-    fields = ('crime_number', 'datetime_start', 'datetime_end', 'ST_X(location)', 'ST_Y(location)')
+    # fields = ('crime_number', 'datetime_start', 'datetime_end', 'ST_X(location)', 'ST_Y(location)')
+    fields = ('crime_number', 'datetime_start', 'ST_X(location)', 'ST_Y(location)')
     res = obj.select(where_dict=where_dict or None, fields=fields)
 
     if len(res) == 0:
@@ -76,12 +78,12 @@ def get_crimes(crime_type=None,
     t = []
     for x in res:
         sd = x['datetime_start']
-        ed = x['datetime_end']
-        dt = datetime.timedelta(seconds=(ed - sd).total_seconds() * 0.5)
+        # ed = x['datetime_end']
+        # dt = datetime.timedelta(seconds=(ed - sd).total_seconds() * 0.5)
         if convert_dates:
-            t.append([((sd + dt) - t0).total_seconds() / float(60 * 60 * 24)])
+            t.append([(sd - t0).total_seconds() / float(60 * 60 * 24)])
         else:
-            t.append([sd + dt])
+            t.append([sd])
     t = np.array(t)
     res = np.hstack((t, xy))
 
