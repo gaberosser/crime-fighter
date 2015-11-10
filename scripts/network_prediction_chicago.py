@@ -23,7 +23,7 @@ def network_from_db(domain, srid=None, buffer=None):
     from database.models import SRID
     if buffer:
         assert srid is not None, "If buffering is required, an SRID must be specified"
-        
+
 
 def load_network_and_pickle(domain, domain_name):
 

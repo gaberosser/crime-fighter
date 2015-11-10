@@ -198,7 +198,7 @@ def plot_shaded_regions(polys,
     for p,v in zip(polys, values):
         if v < vmin:
             continue
-        plot_shapely_geos(p, ax=ax, fc=sm.to_rgba(v), ec='black')
+        plot_shapely_geos(p, ax=ax, fc=sm.to_rgba(v), ec='black', alpha=alpha)
 
     if colorbar:
         cax = mpl.colorbar.make_axes(ax, location='bottom', pad=0.02, fraction=0.05, shrink=0.9)
