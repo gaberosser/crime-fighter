@@ -6,7 +6,8 @@ import shapefile
 import collections
 from data.models import CartesianData
 from tools import pairwise_differences_indices
-
+from functools import partial
+import csv
 
 try:
     from django.contrib.gis import geos
@@ -273,3 +274,29 @@ def spatial_linkages(data_source,
         link_d.extend(dd[mask])
 
     return np.array(link_i), np.array(link_j), np.array(link_d)
+
+
+def shapely_polygon_to_osm_poly(poly, name, srid=None):
+    if srid is not None and srid != 900913:
+        import pyproj
+        from shapely.ops import transform
+        project = partial(
+            pyproj.transform,
+            pyproj.Proj(init='epsg:%d' % srid),  # source coordinate system
+            pyproj.Proj(init='epsg:900913')  # destination coordinate system
+        )
+        poly = transform(project, poly)
+    outer = poly.exterior
+    poly_arr = [name, '1']
+    for x, y in outer.coords:
+        poly_arr.append("%f %f" % (x, y))
+    poly_arr.append('END')
+    for i, t in enumerate(poly.interiors):
+        poly_arr.append('!%d' % (i + 2))
+        for x, y in t.coords:
+            poly_arr.append("%f %f" % (x, y))
+        poly_arr.append('END')
+    poly_arr.append('END')
+
+    with open("%s.poly" % name, 'w') as f:
+        f.writelines([t + "\n" for t in poly_arr])
