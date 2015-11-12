@@ -4,6 +4,7 @@ from matplotlib import pyplot as plt
 from matplotlib import cm
 import matplotlib.patches as mpatches
 import matplotlib.path as mpath
+from matplotlib import colors
 import numpy as np
 
 
@@ -35,6 +36,26 @@ def colour_mapper(data,
     cmap = cm.get_cmap(cmap)
     norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
     return cm.ScalarMappable(norm=norm, cmap=cmap)
+
+
+def transparent_colour_map(cmap='Reds', reverse=False):
+    """
+    Add alpha data to the supplied colour map. Alpha is ramped linearly from 0 -> 1
+    :param cmap: String or cm instance
+    :param reverse: If True, alpha channel has opposite direction
+    :return: LinearSegmentedColormap
+    """
+    if isinstance(cmap, str):
+        cmap = cm.get_cmap(cmap)
+
+    data = cmap.__dict__['_segmentdata']
+    n = len(data['red'])
+    if reverse:
+        alphas = np.linspace(0., 1., n)[::-1]
+    else:
+        alphas = np.linspace(0., 1., n)
+    data['alpha'] = [(i, i, i) for i in alphas]
+    return colors.LinearSegmentedColormap("%s_t" % cmap.name, data)
 
 
 def mask_outside_polygon(poly_verts, ax=None):
