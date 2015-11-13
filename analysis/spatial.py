@@ -283,18 +283,19 @@ def shapely_polygon_to_osm_poly(poly, name, srid=None):
         project = partial(
             pyproj.transform,
             pyproj.Proj(init='epsg:%d' % srid),  # source coordinate system
-            pyproj.Proj(init='epsg:900913')  # destination coordinate system
+            # pyproj.Proj(init='epsg:900913')  # destination coordinate system
+            pyproj.Proj(init='epsg:4326')  # destination coordinate system
         )
         poly = transform(project, poly)
     outer = poly.exterior
     poly_arr = [name, '1']
     for x, y in outer.coords:
-        poly_arr.append("%f %f" % (x, y))
+        poly_arr.append("    %f     %f" % (x, y))
     poly_arr.append('END')
     for i, t in enumerate(poly.interiors):
         poly_arr.append('!%d' % (i + 2))
         for x, y in t.coords:
-            poly_arr.append("%f %f" % (x, y))
+            poly_arr.append("    %f    %f" % (x, y))
         poly_arr.append('END')
     poly_arr.append('END')
 
