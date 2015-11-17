@@ -2,12 +2,14 @@ from network.itn import read_gml, ITNStreetNet
 from data import models
 import os
 import pickle
+import dill
 from shapely import geometry
 import settings
 import numpy as np
 from matplotlib import pyplot as plt
 from validation import validation, hotspot, roc
 import plotting.spatial
+from scripts import OUT_DIR, IN_DIR
 
 INITAL_CUTOFF = 211
 
@@ -19,8 +21,8 @@ def camden_boundary():
 
 
 def network_from_pickle():
-    IN_FILE = 'camden_clipped.pickle'
-    itn_net_reduced = ITNStreetNet.from_pickle(IN_FILE)
+    infile = os.path.join(IN_DIR, 'networks', 'camden_clipped.net')
+    itn_net_reduced = ITNStreetNet.from_pickle(infile)
     return itn_net_reduced
 
 
@@ -34,8 +36,9 @@ def load_network_and_pickle():
     camden = camden_boundary()
 
     itn_net_reduced = itn_net.within_boundary(camden.buffer(100))
-    itn_net.save('camden.pickle')
-    itn_net_reduced.save('camden_clipped.pickle')
+    outdir = os.path.join(IN_DIR, 'networks')
+    itn_net.save(os.path.join(outdir, 'camden.net'))
+    itn_net_reduced.save(os.path.join(outdir, 'camden_clipped.net'))
 
 
 def camden_network_plot():
@@ -45,12 +48,6 @@ def camden_network_plot():
     itn_net_reduced.plot_network()
     camden = camden_boundary()
     plotting.spatial.plot_shapely_geos(camden, ec='r', fc='none', lw=3)
-
-
-def load_burglary():
-    with open(os.path.join(settings.DATA_DIR, 'cad', 'burglary.pickle'), 'r') as f:
-        burglary = pickle.load(f)
-    return burglary
 
 
 def jiggle_points(data):
@@ -75,11 +72,7 @@ def jiggle_points(data):
     return snapped, snapped_jiggled, free
 
 
-def snap_to_network(itn_net=None, data=None):
-    if itn_net is None:
-        itn_net = network_from_pickle()
-    if data is None:
-        data = load_burglary()
+def snap_to_network(itn_net, data):
     snapped, snapped_jiggled, free = jiggle_points(data)
     free = models.CartesianSpaceTimeData(free)
     snapped_jiggled = models.CartesianSpaceTimeData(snapped_jiggled)
@@ -148,14 +141,9 @@ def network_heatmap(model,
 
 
 if __name__ == "__main__":
+    from analysis import cad
 
     itn_net = network_from_pickle()
-    data = load_burglary()
-    free, post_snap, post_snap_jiggled = snap_to_network(itn_net, data)
-    # combine
-    all_data = models.NetworkSpaceTimeData(np.vstack((post_snap_jiggled.data, post_snap.data)))
-
-    psx, psy = all_data.space.to_cartesian().separate
 
     n_test = 100  # number of testing days
     h = 200 # metres
@@ -163,39 +151,64 @@ if __name__ == "__main__":
     grid_length = 250
     n_samples = 20
 
-    sk = hotspot.STNetworkLinearSpaceExponentialTime(radius=h, time_decay=t_decay)
-    vb = validation.NetworkValidationMean(all_data, sk, spatial_domain=None, include_predictions=True)
-    vb.set_t_cutoff(INITAL_CUTOFF)
-    vb.set_sample_units(None, n_samples)  # 2nd argument refers to interval between sample points
+    CRIME_TYPES = {
+        'burglary': 3,
+        'violence': 1,
+        'shoplifting': 13,
+    }
 
-    import time
-    tic = time.time()
-    vb_res = vb.run(1, n_iter=n_test)
-    toc = time.time()
-    print toc - tic
+    for ct in CRIME_TYPES:
+        print ct
 
-    # compare with grid-based method with same parameters
-    cb_poly = camden_boundary()
-    data_txy = all_data.time.adddim(all_data.space.to_cartesian(), type=models.CartesianSpaceTimeData)
-    sk_planar = hotspot.STLinearSpaceExponentialTime(radius=h, mean_time=t_decay)
-    vb_planar = validation.ValidationIntegration(data_txy, sk_planar, spatial_domain=cb_poly, include_predictions=True)
-    vb_planar.set_t_cutoff(INITAL_CUTOFF)
-    vb_planar.set_sample_units(grid_length, n_samples)
+        data, t0, cid = cad.get_crimes_by_type(nicl_type=CRIME_TYPES[ct])
+        free, post_snap, post_snap_jiggled = snap_to_network(itn_net, data)
+        # combine
+        all_data = models.NetworkSpaceTimeData(np.vstack((post_snap_jiggled.data, post_snap.data)))
 
-    tic = time.time()
-    vb_res_planar = vb_planar.run(1, n_iter=n_test)
-    toc = time.time()
-    print toc - tic
+        psx, psy = all_data.space.to_cartesian().separate
 
+        sk = hotspot.STNetworkLinearSpaceExponentialTime(radius=h, time_decay=t_decay)
+        vb = validation.NetworkValidationMean(all_data, sk, spatial_domain=None, include_predictions=True)
+        vb.set_t_cutoff(INITAL_CUTOFF)
+        vb.set_sample_units(None, n_samples)  # 2nd argument refers to interval between sample points
 
-    # compare with grid-based method using intersecting network segments to measure sample unit size
-    vb_planar_segment = validation.ValidationIntegrationByNetworkSegment(
-        data_txy, sk_planar, spatial_domain=cb_poly, graph=itn_net
-    )
-    vb_planar_segment.set_t_cutoff(INITAL_CUTOFF)
-    vb_planar_segment.set_sample_units(grid_length, n_samples)
+        import time
+        tic = time.time()
+        vb_res = vb.run(1, n_iter=n_test)
+        toc = time.time()
+        print toc - tic
 
-    tic = time.time()
-    vb_res_planar_segment = vb_planar_segment.run(1, n_iter=n_test)
-    toc = time.time()
-    print toc - tic
+        # compare with grid-based method with same parameters
+        cb_poly = camden_boundary()
+        data_txy = all_data.time.adddim(all_data.space.to_cartesian(), type=models.CartesianSpaceTimeData)
+        sk_planar = hotspot.STLinearSpaceExponentialTime(radius=h, mean_time=t_decay)
+        vb_planar = validation.ValidationIntegration(data_txy, sk_planar, spatial_domain=cb_poly, include_predictions=True)
+        vb_planar.set_t_cutoff(INITAL_CUTOFF)
+        vb_planar.set_sample_units(grid_length, n_samples)
+
+        tic = time.time()
+        vb_res_planar = vb_planar.run(1, n_iter=n_test)
+        toc = time.time()
+        print toc - tic
+
+        # compare with grid-based method using intersecting network segments to measure sample unit size
+        vb_planar_segment = validation.ValidationIntegrationByNetworkSegment(
+            data_txy, sk_planar, spatial_domain=cb_poly, graph=itn_net
+        )
+        vb_planar_segment.set_t_cutoff(INITAL_CUTOFF)
+        vb_planar_segment.set_sample_units(grid_length, n_samples)
+
+        tic = time.time()
+        vb_res_planar_segment = vb_planar_segment.run(1, n_iter=n_test)
+        toc = time.time()
+        print toc - tic
+
+        # dump to pickle file
+        out = {
+            'network_kde': vb_res,
+            'planar_kde': vb_res_planar,
+            'planar_kde_by_road_length': vb_res_planar_segment
+        }
+        outfile = os.path.join(OUT_DIR, 'network_vs_planar', 'camden_%s.pickle' % (ct.replace(' ', '_')))
+        with open(outfile, 'w') as f:
+            dill.dump(out, f)
