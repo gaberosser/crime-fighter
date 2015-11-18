@@ -3,12 +3,15 @@ from data import models
 import os
 import pickle
 import dill
+import bisect
 from shapely import geometry
 import settings
 import numpy as np
 from matplotlib import pyplot as plt
 from validation import validation, hotspot, roc
 import plotting.spatial
+from analysis.spatial import shapely_rectangle_from_vertices
+from network import plots as net_plots
 from scripts import OUT_DIR, IN_DIR
 
 INITAL_CUTOFF = 211
@@ -137,6 +140,151 @@ def network_heatmap(model,
     # plt.scatter(*training.space.to_cartesian().separate, s=ss, facecolors='none', edgecolors='k', alpha=0.6, zorder=11)
 
     plt.tight_layout()
+
+
+def plot_compare_network_planar(net_v,
+                                planar_v,
+                                cutoff_t=None,
+                                poly=None,
+                                training=None,
+                                testing=None,
+                                cmap='Reds',
+                                fmax=0.99,
+                                bounds=None,
+                                show_grid_ranking=False):
+    """
+    Produce plots comparing network and grid-based prediction methods.
+    :param net_v: Validation object
+    :param planar_v: Validation object
+    :param cutoff_t: cutoff time, defaults to whatever is currently assigned
+    :param poly: If supplied, plot the boundary poly
+    :param training: If supplied, plot training data (i.e. past crimes)
+    :param testing: If supplied, plot testing data (i.e. future crimes)
+    :param cmap:
+    :param fmax: Maximum colour level as a percentile
+    :param bounds: If supplied, zoom plot to this region
+    :param show_grid_ranking: If True, overlay numbers to show the order in which grid squares will be selected
+    :return:
+    """
+    net_obj = net_v.data.graph
+
+    # compute grid and net based prediction values
+    net_z = net_v.model.predict(cutoff_t + 1., net_v.sample_points)
+    planar_z = planar_v.predict(cutoff_t + 1.)
+    # aggregate to grid - this is stolen directly from the ROC code
+    planar_grid_values = []
+    tally = 0
+    for n in planar_v.roc.n_sample_point_per_unit:
+        planar_grid_values.append(np.mean(planar_z[tally:tally + n]))
+        tally += n
+    planar_grid_values = np.array(planar_grid_values)
+
+    # get max values
+    idx = bisect.bisect_left(np.linspace(0, 1, net_z.size), fmax)
+    net_vmax = sorted(net_z)[idx]
+    idx = bisect.bisect_left(np.linspace(0, 1, planar_grid_values.size), fmax)
+    planar_vmax = sorted(planar_grid_values)[idx]
+
+    # get training data sizes if applicable
+    # these are proportional to the time component
+    if training:
+        training_x = training.toarray(1)
+        training_y = training.toarray(2)
+        training_t = training.toarray(0)
+        training_size = 500 * np.exp(-(cutoff_t - training_t) / 28.)
+
+    # get testing data sizes if applicable
+    if testing:
+        testing_x = testing.toarray(1)
+        testing_y = testing.toarray(2)
+        testing_t = testing.toarray(0)
+        testing_size = 500 * np.exp(-(testing_t - cutoff_t) / 3.)
+
+    fig, axs = plt.subplots(1, 2, sharex=True, sharey=True, figsize=(15, 7))
+
+    # left hand plot
+    # plot basic network structure
+    net_plots.plot_network_edge_lines(net_obj.lines_iter(), ax=axs[0])
+    # overlay shaded grid
+    grid = [shapely_rectangle_from_vertices(*t) for t in planar_v.roc.sample_units]
+    plotting.spatial.plot_shaded_regions(grid,
+                                         planar_grid_values,
+                                         ax=axs[0],
+                                         fmax=fmax,
+                                         cmap=cmap,
+                                         alpha=0.8,
+                                         colorbar=False,
+                                         scale_bar=None)
+    if poly:
+        plotting.spatial.plot_shapely_geos(poly, fc='none', ec='b', lw=1.5, ax=axs[0])
+    if training:
+        # zorder to elevate above the grid surface
+        axs[0].scatter(training_x,
+                       training_y,
+                       edgecolors='b',
+                       facecolors='none',
+                       s=training_size,
+                       lw=1.5,
+                       zorder=10)
+    if testing:
+        # zorder to elevate above the grid surface
+        axs[0].scatter(testing_x,
+                       testing_y,
+                       edgecolors='g',
+                       facecolors='none',
+                       s=testing_size,
+                       lw=1.5,
+                       zorder=10)
+
+
+
+    # right hand plot
+    axs[1].axis('off')
+    # unfilled grid
+    plotting.spatial.plot_shapely_geos(grid, fc='None', ec='k', alpha=0.8, ax=axs[1])
+    # scatter density
+    xy = net_v.sample_points.to_cartesian()
+    axs[1].scatter(xy.toarray(0), xy.toarray(1), c=net_z,
+                   s=20,
+                   cmap=cmap,
+                   edgecolor='none')
+    net_plots.plot_network_edge_lines(net_obj.lines_iter(), ax=axs[1])
+
+    if poly:
+        plotting.spatial.plot_shapely_geos(poly, fc='none', ec='b', lw=1.5, ax=axs[1])
+    if training:
+        axs[1].scatter(training_x,
+                       training_y,
+                       edgecolors='b',
+                       facecolors='none',
+                       s=training_size,
+                       lw=1.5)
+    if testing:
+        axs[1].scatter(testing_x,
+                       testing_y,
+                       edgecolors='g',
+                       facecolors='none',
+                       s=testing_size,
+                       lw=1.5)
+
+    plt.tight_layout(pad=0., h_pad=0., w_pad=0., rect=(0, 0, 1, 1))
+    if bounds is not None:
+        axs[0].axis(bounds)
+
+    if show_grid_ranking:
+        # compute ranking
+        grid_ranking = np.argsort(planar_grid_values)
+        for i in range(grid_ranking.size):
+            c = grid[i].centroid
+            axs[0].text(c.x,
+                        c.y,
+                        str(i + 1),
+                        fontsize=20,
+                        color='k',
+                        zorder=11,
+                        horizontalalignment='center',
+                        verticalalignment='center',
+                        clip_on=True)
 
 
 

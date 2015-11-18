@@ -201,9 +201,13 @@ class ValidationBase(object):
 
         # conditional likelihood
         # compute the intensity at the test points
-        # TODO: adding a small eps here to avoid log(0), but is this justifiable?
-        intensity_at_test_points = self.model.predict(prediction_t, testing_data.space) + 1e-12
-        res['conditional_likelihood'] = sum(np.log(intensity_at_test_points))
+        # skip if no data
+        if testing_data.ndata == 0:
+            res['conditional_likelihood'] = np.nan
+        else:
+            # adding a small eps here to avoid log(0), but is this justifiable?
+            intensity_at_test_points = self.model.predict(prediction_t, testing_data.space) + 1e-12
+            res['conditional_likelihood'] = sum(np.log(intensity_at_test_points))
 
         return res
 
