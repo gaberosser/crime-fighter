@@ -125,6 +125,22 @@ def network_heatmap(model,
     plt.tight_layout()
 
 
+def plot_check_network(net, n=100):
+    from plotting.spatial import plot_shapely_geos
+    net.plot_network()
+    ax = plt.gca()
+    cs = ['r', 'b', 'g', 'y', 'c', 'm']
+    ms = ['o', 'x', 'd', 'v', '^', 's', '*']
+    edges = net.edges()
+    for i in range(n):
+        l = edges[i].linestring
+        c = cs[np.mod(i, len(cs))]
+        m = ms[np.mod(i, len(ms))]
+        # get points
+        pts = [l.interpolate(t, normalized=True) for t in [0.1, 0.5, 0.9]]
+        x = [t.x for t in pts]
+        y = [t.y for t in pts]
+        ax.scatter(x, y, facecolors=c, marker=m, edgecolors=None, s=30)
 
 
 
