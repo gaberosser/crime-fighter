@@ -1,5 +1,6 @@
 __author__ = 'gabriel'
 import models
+import netmodels
 import numpy as np
 import multiprocessing as mp
 import datetime
@@ -25,42 +26,16 @@ def _compute_log_likelihood_variable(training, testing, nn):
     return np.sum(np.log(z))
 
 
-def compute_log_likelihood_surface_fixed_bandwidth(data,
-                                                   start_day,
-                                                   niter,
-                                                   min_d=10.,
-                                                   max_d=500,
-                                                   min_t=1.,
-                                                   max_t=180.,
-                                                   npts=20):
+def _log_likelihood_fixed_network_wrapper(args):
+    return _compute_log_likelihood_fixed_network(*args)
 
-    res = np.zeros((npts, npts, niter))
-    ss, tt = np.meshgrid(
-        np.linspace(min_d, max_d, npts),
-        np.linspace(min_t, max_t, npts),
-    )
 
-    try:
-        for i in range(niter):
-            training = data[data[:, 0] < (start_day + i)]
-            testing_idx = (data[:, 0] >= (start_day + i)) & (data[:, 0] < (start_day + i + 1))
-            testing = data[testing_idx]
-
-            pool = mp.Pool()
-            q = pool.map_async(
-                _log_likelihood_fixed_wrapper,
-                ((training, testing, (s, s, t)) for (s, t) in zip(ss.flat, tt.flat))
-            )
-            pool.close()
-            this_res = q.get(1e100)
-            res[:, :, i] = np.array(this_res).reshape((npts, npts))
-            print "Completed iteration %d / %d" % (i + 1, niter)
-
-    except (Exception, KeyboardInterrupt) as exc:
-        print "Terminating early due to Exception:"
-        print repr(exc)
-
-    return ss, tt, res
+def _compute_log_likelihood_fixed_network(training, testing, bandwidths):
+    k = netmodels.NetworkTemporalKde(training,
+                                     bandwidths=bandwidths,
+                                     cutoffs=[bandwidths[0] * 7., bandwidths[1]])
+    z = k.pdf(testing)
+    return np.sum(np.log(z))
 
 
 def plot_total_likelihood_surface(ss, tt, ll,
@@ -81,7 +56,7 @@ def plot_total_likelihood_surface(ss, tt, ll,
     if ax is None:
         fig = plt.figure()
         ax = fig.add_subplot(111)
-    ll_total = ll.sum(axis=2)
+    ll_total = ll.sum(axis=0)
     # get caxis limits
     v = ll_total.flatten()
     v.sort()
@@ -92,7 +67,46 @@ def plot_total_likelihood_surface(ss, tt, ll,
     return h
 
 
+def compute_log_likelihood_surface_fixed_bandwidth(data,
+                                                   start_day,
+                                                   niter,
+                                                   min_d=10.,
+                                                   max_d=500,
+                                                   min_t=1.,
+                                                   max_t=180.,
+                                                   npts=20):
 
+    # res = np.zeros((npts, npts + 1, niter))
+    res = []
+    tt, ss = np.meshgrid(
+        np.linspace(min_t, max_t, npts),
+        np.linspace(min_d, max_d, npts + 1),
+    )
+
+    try:
+        for i in range(niter):
+            training = data[data[:, 0] < (start_day + i)]
+            testing_idx = (data[:, 0] >= (start_day + i)) & (data[:, 0] < (start_day + i + 1))
+            testing = data[testing_idx]
+
+            pool = mp.Pool()
+            q = pool.map_async(
+                _log_likelihood_fixed_wrapper,
+                ((training, testing, (tt.flat[j], ss.flat[j], ss.flat[j])) for j in range(ss.size))
+            )
+            pool.close()
+            this_res = q.get(1e100)
+            res.append(np.array(this_res).reshape((npts + 1, npts)))
+            # for j in range(ss.size):
+                # res[:, :, i].flat[j] = this_res[j]
+            print "Completed iteration %d / %d" % (i + 1, niter)
+
+    except (Exception, KeyboardInterrupt) as exc:
+        print "Terminating early due to Exception:"
+        print repr(exc)
+
+    res = np.array(res)
+    return ss, tt, res
 
 
 def compute_log_likelihood_surface_variable_bandwidth(data,
@@ -126,6 +140,44 @@ def compute_log_likelihood_surface_variable_bandwidth(data,
         print repr(exc)
 
     return nn, res
+
+
+def compute_log_likelihood_surface_network_fixed_bandwidth(data,
+                                                           start_day,
+                                                           niter,
+                                                           min_d=10.,
+                                                           max_d=500,
+                                                           min_t=1.,
+                                                           max_t=180.,
+                                                           npts=20):
+
+    res = np.zeros((npts, npts, niter))
+    ss, tt = np.meshgrid(
+        np.linspace(min_d, max_d, npts),
+        np.linspace(min_t, max_t, npts),
+    )
+
+    try:
+        for i in range(niter):
+            training = data.getrows(data.time.toarray() < (start_day + i))
+            testing_idx = (data.time.toarray() >= (start_day + i)) & (data.time.toarray() < (start_day + i + 1))
+            testing = data.getrows(testing_idx)
+
+            pool = mp.Pool()
+            q = pool.map_async(
+                _log_likelihood_fixed_network_wrapper,
+                ((training, testing, (t, s)) for (s, t) in zip(ss.flat, tt.flat))
+            )
+            pool.close()
+            this_res = q.get(1e100)
+            res[:, :, i] = np.array(this_res).reshape((npts, npts))
+            print "Completed iteration %d / %d" % (i + 1, niter)
+
+    except (Exception, KeyboardInterrupt) as exc:
+        print "Terminating early due to Exception:"
+        print repr(exc)
+
+    return ss, tt, res
 
 
 if __name__ == '__main__':
