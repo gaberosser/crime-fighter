@@ -1,13 +1,17 @@
 from validation import roc, hotspot
 
 __author__ = 'gabriel'
-import cad
+import cad, chicago
+from network import osm
 import datetime
 import shapefile
+import os
 from django.contrib.gis import geos
+from settings import DATA_DIR
+from database.chicago import consts
 
-if __name__ == "__main__":
 
+def create_grid_centroid_hotspots_shapefile(grid_spacing=25):
     grid_spacing = 25  # distance between centroids in metres
 
     res, t0, cid = cad.get_crimes_by_type(nicl_type=range(1, 17))
@@ -50,3 +54,33 @@ if __name__ == "__main__":
         w.record(risk=y)
     w.save(out_shp)
     print "Done."
+
+
+if __name__ == "__main__":
+    # load network, count crimes in 6mo and 12mo window, output shapefile
+    start_date = datetime.date(2011, 3, 1)
+    domain_name = 'South'
+    domains = chicago.get_chicago_side_polys()
+    domain = domains[domain_name]
+
+    end_date = start_date + datetime.timedelta(days=365)
+    crime_types = (
+        'THEFT',
+        'BURGLARY',
+        'HOMICIDE',
+        'BATTERY',
+        'ARSON',
+        'MOTOR VEHICLE THEFT',
+        'ASSAULT',
+        'ROBBERY',
+    )
+    # get crime data
+    data, t0, cid = chicago.get_crimes_by_type(crime_type=crime_types,
+                                               start_date=start_date,
+                                               end_date=end_date,
+                                               domain=domain)
+
+    # get network
+    osm_file = os.path.join(DATA_DIR, 'osm_chicago', '%s_clipped.net' % consts.FILE_FRIENDLY_REGIONS[domain_name])
+    net = osm.OSMStreetNet.from_pickle(osm_file)
+

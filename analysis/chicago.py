@@ -96,7 +96,7 @@ def get_crimes_by_type(crime_type='burglary',
                        **where_strs):
     """
     Get all matching crimes from the Chicago dataset
-    :param crime_type:
+    :param crime_type: String or an iterable of strings corresponding to the primary_type field (case insensitive).
     :param start_date:
     :param end_date:
     :param domain: geos.GEOSGeometry object
@@ -113,8 +113,11 @@ def get_crimes_by_type(crime_type='burglary',
         end_date = datetime.datetime.combine(end_date, datetime.time(0)) - datetime.timedelta(seconds=1)
 
     cursor = connection.cursor()
-    sql = """ SELECT "number", datetime, ST_X(location), ST_Y(location) FROM database_chicago
-              WHERE LOWER(primary_type) LIKE '%{0}%' """.format(crime_type.lower())
+    sql = """ SELECT "number", datetime, ST_X(location), ST_Y(location) FROM database_chicago """
+    if hasattr(crime_type, '__iter__'):
+        sql += """WHERE LOWER(primary_type) IN ({0}) """.format(','.join(["'%s'" % t.lower() for t in crime_type]))
+    else:
+        sql += """WHERE LOWER(primary_type) LIKE '%{0}%' """.format(crime_type.lower())
     if start_date:
         sql += """AND datetime >= '{0}' """.format(start_date.strftime('%Y-%m-%d %H:%M:%S'))
     if end_date:
