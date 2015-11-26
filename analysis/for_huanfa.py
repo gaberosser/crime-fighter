@@ -3,12 +3,14 @@ from validation import roc, hotspot
 __author__ = 'gabriel'
 import cad, chicago
 from network import osm
+import collections
 import datetime
 import shapefile
 import os
 from django.contrib.gis import geos
 from settings import DATA_DIR
 from database.chicago import consts
+from data.models import NetworkData, NetworkSpaceTimeData, DataArray
 
 
 def create_grid_centroid_hotspots_shapefile(grid_spacing=25):
@@ -56,10 +58,10 @@ def create_grid_centroid_hotspots_shapefile(grid_spacing=25):
     print "Done."
 
 
-if __name__ == "__main__":
+def create_network_with_crime_counts(start_date=datetime.date(2011, 3, 1),
+                                     domain_name='South'):
+
     # load network, count crimes in 6mo and 12mo window, output shapefile
-    start_date = datetime.date(2011, 3, 1)
-    domain_name = 'South'
     domains = chicago.get_chicago_side_polys()
     domain = domains[domain_name]
 
@@ -74,6 +76,12 @@ if __name__ == "__main__":
         'ASSAULT',
         'ROBBERY',
     )
+
+    time_window_filters = {
+        '6mo': lambda t: t <= 183,
+        '12mo': lambda t: t <= 365,
+    }
+
     # get crime data
     data, t0, cid = chicago.get_crimes_by_type(crime_type=crime_types,
                                                start_date=start_date,
@@ -84,3 +92,29 @@ if __name__ == "__main__":
     osm_file = os.path.join(DATA_DIR, 'osm_chicago', '%s_clipped.net' % consts.FILE_FRIENDLY_REGIONS[domain_name])
     net = osm.OSMStreetNet.from_pickle(osm_file)
 
+    # snap crime data to network with maximum distance cutoff
+    netdata, failed = NetworkData.from_cartesian(net, data[:, 1:], radius=50, return_failure_idx=True)
+    # get non-failed times
+    idx = sorted(set(range(data.shape[0])) - set(failed))
+    netdata = DataArray(data[idx, 0]).adddim(netdata, type=NetworkSpaceTimeData)
+
+    # run over edges, count crimes in the two time windows
+    filters = {}
+    for filt_name, filt_func in time_window_filters.items():
+        filters[filt_name] = filt_func(netdata.toarray(0)).astype(int)
+
+    # add count attributes to all edges
+    for e in net.edges():
+        e.attrs['crimes_6mo'] = 0
+        e.attrs['crimes_12mo'] = 0
+
+    edge_counts = {}
+    for i, t in enumerate(netdata.space.toarray()):
+        t.edge.attrs['crimes_6mo'] += filters['6mo'][i]
+        t.edge.attrs['crimes_12mo'] += filters['12mo'][i]
+
+    net.save(consts.FILE_FRIENDLY_REGIONS[domain_name] + '_network_crime_counts', fmt='shp')
+
+
+if __name__ == "__main__":
+    pass

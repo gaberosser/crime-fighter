@@ -369,12 +369,15 @@ class NetworkData(DataArray):
             return None
 
     @classmethod
-    def from_cartesian(cls, net, data, grid_size=50):
+    def from_cartesian(cls, net, data, grid_size=50, radius=None, return_failure_idx=False):
         """
         Generate a NetworkData object for the (x, y) coordinates in data.
         :param net: The StreetNet object that will be used to snap network points.
         :param data: Either a 2D DataArray object or data that can be used to instantiate one.
         :param grid_size: The size of the grid used to index the network. This is used to speed up snapping.
+        :param radius: Optionally supply a maximum snapping distance.
+        :param return_failure_idx: If True, output includes the index of points that did not snap. Otherwise, failed
+        snaps are removed silently from the array.
         :return: NetworkData object
         """
         data = DataArray(data)
@@ -382,9 +385,21 @@ class NetworkData(DataArray):
             raise AttributeError("Input data must be 2D")
         grid_edge_index = net.build_grid_edge_index(grid_size)
         net_points = []
-        for x, y in data:
-            net_points.append(NetPoint.from_cartesian(net, x, y, grid_edge_index=grid_edge_index))
-        return cls(net_points)
+        fail_idx = []
+        for i, (x, y) in enumerate(data):
+            t = NetPoint.from_cartesian(net, x, y,
+                                        grid_edge_index=grid_edge_index,
+                                        radius=radius)
+            if t is None:
+                if return_failure_idx:
+                    fail_idx.append(i)
+            else:
+                net_points.append(t)
+        obj = cls(net_points)
+        if return_failure_idx:
+            return obj, fail_idx
+        else:
+            return obj
 
     def to_cartesian(self):
         """
