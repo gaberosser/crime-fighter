@@ -568,8 +568,8 @@ class NetworkKernelEqualSplitLinear(BaseKernel):
         # iterate over all possible paths from this source to targets
         for t_idx, p in paths.iteritems():
             for path in p:
-                dist = path[1]
-                norm = path[-1]
+                dist = path[1]  # source-target distance
+                norm = path[-1]  # number of splits
                 res[t_idx] += self.net_kernel.pdf(dist) / norm
         return res
 

@@ -29,7 +29,7 @@ def central_network_point(graph):
     xmin, ymin, xmax, ymax = graph.extent
     x = (xmax + xmin)/2.0
     y = (ymax + ymin)/2.0
-    return graph.closest_segments_euclidean_brute_force(x, y)[0]
+    return graph.closest_edges_euclidean_brute_force(x, y)[0]
 
 
 def network_centroid(graph):
@@ -516,7 +516,7 @@ class SenpSimulation(object):
         # senp: snap points back onto the network
         net_points = []
         for x, y in res[:, 2:4]:
-            net_points.append(self.graph.closest_segments_euclidean_brute_force(x, y)[0])
+            net_points.append(self.graph.closest_edges_euclidean_brute_force(x, y)[0])
 
         return np.hstack((res[:, :2], np.array(net_points, dtype=object).reshape((len(net_points), 1)), res[:, 4:]))
 
