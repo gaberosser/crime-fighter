@@ -1,6 +1,7 @@
 __author__ = 'gabriel'
 from django.test import SimpleTestCase
 import models
+import iterator
 import numpy as np
 import ipdb
 
@@ -196,4 +197,42 @@ class TestCartesianData(SimpleTestCase):
     # test distance method
     pass
 
+
+class TestIterator(SimpleTestCase):
+
+    def test_rolling_iteration(self):
+        t = np.arange(200) / 2.
+        data = np.array(zip(t,
+                            np.random.rand(200, 1),
+                            np.random.rand(200, 1)))
+        obj = iterator.RollingOrigin(data=data, initial_cutoff_t=50)
+
+        # class of data
+        self.assertIsInstance(obj.data, models.DataArray)
+
+        # train / test split
+        self.assertTrue((obj.training == data[t < 50.]).all())
+        test_idx = (t >= 50.) & (t < 51.)
+        self.assertTrue((obj.testing == data[test_idx]).all())
+        self.assertTrue((obj.testing_index == np.array([100, 101])).all())
+
+        # data_index
+        data_index = np.random.randint(1, 1000, 200)
+        obj = iterator.RollingOrigin(data=data, data_index=data_index, initial_cutoff_t=50)
+        self.assertTrue((obj.testing_data_index == data_index[[100, 101]]).all())
+
+        # iteration
+        expected_testing_data = [data[(t >= 50. + i) & (t < 51. + i)] for i in range(50)]
+        # max iterations
+        for i, t in enumerate(obj.iterator()):
+            self.assertTrue((t.testing == expected_testing_data[i]).all())
+        self.assertEqual(i, 48)
+        # should be at max cutoff now
+        self.assertEqual(obj.cutoff_t, 99)
+
+        obj.cutoff_t = 50.
+        with self.assertRaises(AssertionError):
+            obj.iterator(niter=51)  # request too many iterations
+        res = list(obj.iterator(niter=25))
+        self.assertEqual(len(res), 25)
 

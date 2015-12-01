@@ -9,6 +9,7 @@ from scipy.stats import norm, multivariate_normal
 from scipy.integrate import quad, dblquad, tplquad
 from scipy.special import erf
 from functools import partial
+from optimisation import PlanarFixedBandwidth
 import ipdb
 
 
@@ -632,3 +633,12 @@ class TestFixedBandwidthSeparableKde(unittest.TestCase):
         self.assertAlmostEqual(q[0], 10.0, places=4)
         q = quad(partial(quad_pdf_fun, func=ks.marginal_pdf, dim=2, normed=False), -15, 15)
         self.assertAlmostEqual(q[0], 10.0, places=4)
+
+
+    class TestOptimisation(unittest.TestCase):
+        def test_operation(self):
+            data = np.array(zip(
+                np.arange(100), np.random.rand(100), np.random.rand(100)
+            ))
+            obj = PlanarFixedBandwidth(data, initial_cutoff=50)
+            self.assertEqual(obj.roller.cutoff_t, 50)

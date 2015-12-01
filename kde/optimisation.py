@@ -4,6 +4,8 @@ import netmodels
 import numpy as np
 import multiprocessing as mp
 import datetime
+from functools import partial
+import contextlib
 
 
 def _log_likelihood_fixed_wrapper(args):
@@ -178,6 +180,142 @@ def compute_log_likelihood_surface_network_fixed_bandwidth(data,
         print repr(exc)
 
     return ss, tt, res
+
+
+from data import iterator
+
+
+class ForwardChainingValidationBase(object):
+
+    ll_func = None
+    MIN_N_PARAM = None
+    MAX_N_PARAM = None
+
+    def __init__(self,
+                 data,
+                 data_index=None,
+                 initial_cutoff=None,
+                 data_class=None,
+                 parallel=True):
+
+        self.roller = iterator.RollingOrigin(data,
+                                             data_index=data_index,
+                                             initial_cutoff_t=initial_cutoff,
+                                             data_class=data_class)
+        self.data = self.roller.data
+        self.data_index = self.roller.data_index
+        self.grid = None
+        self.res_arr = None
+        self.parallel = parallel
+        self.nparam = None
+
+    def set_parameter_grid(self, npt=10, *args):
+        """
+        :param npt: The number of points to include in each dimension
+        :param args: (xmin, xmax, ymin, ymax, ...)
+        The parameter grid has (ndim + 1) dimensions, with the first axis being of length ndim.
+        """
+        assert len(args) % 2 == 0, "Number of args must be even (xmin, xmax, ymin, ymax, ...)"
+        ndim = len(args) / 2
+        if self.MAX_N_PARAM is not None and ndim > self.MAX_N_PARAM:
+            raise AttributeError("Maximum number of permissible parameters is %d, but %d were supplied" % (
+                self.MAX_N_PARAM, ndim
+            ))
+        if self.MIN_N_PARAM is not None and ndim < self.MIN_N_PARAM:
+            raise AttributeError("Minimum number of permissible parameters is %d, but %d were supplied" % (
+                self.MIN_N_PARAM, ndim
+            ))
+        x = []
+        slices = []
+        for i in range(ndim):
+            x.append(np.linspace(args[2 * i], args[2 * i + 1], npt))
+            slices.append(slice(0, npt))
+        grid_idx = np.mgrid[slices]
+        self.grid = np.array([x[i][grid_idx[i]] for i in range(ndim)])
+        self.nparam = npt ** ndim if ndim else 0
+
+    def initial_setup(self):
+        """
+        If any of the models need to be initialised / trained before the main run, do so here.
+        :return:
+        """
+        self.res_arr = []
+
+    def args_kwargs_generator(self, *args, **kwargs):
+        """
+        Prepare the *args and **kwargs that will be passed to the method along with training and testing data.
+        :return: generator of tuples (args (iterable), kwargs (dict)), one per parameter combination
+        """
+        raise NotImplementedError()
+
+    def run_one_timestep(self, training, testing, *args, **kwargs):
+        raise NotImplementedError()
+
+    def run(self, niter=None):
+        self.initial_setup()
+        for obj in self.roller.iterator(niter=niter):
+            self.res_arr.append(self.run_one_timestep(obj.training, obj.testing))
+
+
+def kde_wrapper(training, testing, kde_class, args_kwargs):
+    k = kde_class(training, *args_kwargs[0], **args_kwargs[1])
+    z = k.pdf(testing)
+    return np.sum(np.log(z))
+
+
+class PlanarFixedBandwidth(ForwardChainingValidationBase):
+
+    ll_func = kde_wrapper
+
+    def args_kwargs_generator(self, *args, **kwargs):
+        """
+        Prepare the *args and **kwargs that will be passed to the method along with training and testing data.
+        :return: generator of tuples (args (iterable), kwargs (dict)), one per parameter combination
+        """
+        ndim = self.grid.ndim - 1
+        data_getter = ([self.grid[i].flat[j] for i in range(ndim)] for j in range(self.nparam))
+        for x in data_getter:
+            yield ((), {'bandwidths': x, 'parallel': False})
+
+    def run_one_timestep(self, training, testing, *args, **kwargs):
+        shape = self.grid.shape[1:]
+        the_func = partial(kde_wrapper, training, testing, models.FixedBandwidthKde)
+        param_gen = self.args_kwargs_generator()
+        if self.parallel:
+            with contextlib.closing(mp.Pool()) as pool:
+                z = np.array(pool.map(the_func, param_gen))
+        else:
+            z = np.array(map(the_func, param_gen))
+        return z.reshape(shape)
+
+
+class PlanarFixedBandwidthSpatialSymm(PlanarFixedBandwidth):
+    """
+    Supply only TWO dims when setting the grid and the spatial bandwidth is automatically copied
+    """
+    MAX_N_PARAM = 2
+    MIN_N_PARAM = 2
+
+    def args_kwargs_generator(self, *args, **kwargs):
+        """
+        Prepare the *args and **kwargs that will be passed to the method along with training and testing data.
+        :return: generator of tuples (args (iterable), kwargs (dict)), one per parameter combination
+        """
+        ndim = self.grid.ndim - 1
+        assert ndim == 2
+        data_getter = ([self.grid[0].flat[j],
+                        self.grid[1].flat[j],
+                        self.grid[1].flat[j]] for j in range(self.nparam))
+        for x in data_getter:
+            yield ((), {'bandwidths': x, 'parallel': False})
+
+
+class NetworkFixedBandwidth(ForwardChainingValidationBase):
+
+    ll_func = kde_wrapper
+    MAX_N_PARAM = 2
+    MIN_N_PARAM = 2
+
 
 
 if __name__ == '__main__':
