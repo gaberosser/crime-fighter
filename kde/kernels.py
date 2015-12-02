@@ -615,7 +615,7 @@ class NetworkTemporalKernelEqualSplit(NetworkKernelEqualSplitLinear):
             # time component
             if target_times is None:
                 raise AttributeError("Must supply target times if time component is required")
-            t = target_times.toarray(0) - self.loc[0]
+            t = target_times.toarray() - self.loc[0]
             res_t = np.exp(-t / self.bandwidth[0]) * (t > 0) / self.bandwidth[0]
             if self.time_cutoff is not None:
                 res_t *= (t <= self.time_cutoff)

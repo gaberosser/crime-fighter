@@ -143,6 +143,8 @@ if __name__ == '__main__':
     y_pts = np.random.rand(num_pts) * (ymax - ymin) + ymin
     xy = CartesianData.from_args(x_pts, y_pts)
     sources = NetworkData.from_cartesian(itn_net, xy, grid_size=50)  # grid_size defaults to 50
+    # not all points necessarily snap successfully
+    num_pts = sources.ndata
 
     radius = 200.
 
@@ -187,7 +189,7 @@ if __name__ == '__main__':
                 c=this_sources_st.time.toarray(),
                 s=50, vmax=1., vmin=0.5)
 
-    this_sources_st = sources_st.getrows(range(50, 100))
+    this_sources_st = sources_st.getrows(range(50, num_pts))
     kk.update_source_data(this_sources_st)
     y = kk.pdf()
     yn = y / max(y)
