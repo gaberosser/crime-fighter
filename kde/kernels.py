@@ -546,6 +546,10 @@ class NetworkKernelEqualSplitLinear(BaseKernel):
         self.net_kernel = self.kernel_class(self.bandwidth, one_sided=True)
 
     @property
+    def spatial_bandwidth(self):
+        return self.bandwidth
+
+    @property
     def ndim(self):
         return 1
 
@@ -563,13 +567,13 @@ class NetworkKernelEqualSplitLinear(BaseKernel):
         self.walker = walker
 
     def net_pdf(self, source):
-        paths = self.walker.source_to_targets(source)
+        paths = self.walker.source_to_targets(source, max_distance=self.spatial_bandwidth)
         res = np.zeros(self.n_targets)
         # iterate over all possible paths from this source to targets
         for t_idx, p in paths.iteritems():
             for path in p:
-                dist = path[1]  # source-target distance
-                norm = path[-1]  # number of splits
+                dist = path.distance_total  # source-target distance
+                norm = path.splits_total  # number of splits
                 res[t_idx] += self.net_kernel.pdf(dist) / norm
         return res
 
@@ -593,6 +597,10 @@ class NetworkTemporalKernelEqualSplit(NetworkKernelEqualSplitLinear):
         """
         self.time_cutoff = time_cutoff
         super(NetworkTemporalKernelEqualSplit, self).__init__(loc, bandwidths)
+
+    @property
+    def spatial_bandwidth(self):
+        return self.bandwidth[1]
 
     @property
     def ndim(self):

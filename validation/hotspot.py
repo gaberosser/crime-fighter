@@ -356,7 +356,7 @@ class STNetworkLinearSpaceExponentialTime(STNetworkKernelBase):
         This is important: updating the spatial sample points loses all cached net paths.
         """
         if self.kde.targets_set and not force_update:
-            self.kde.update_target_times_single_time(time)
+            self.kde.update_target_times(time)
             return self.kde.pdf()
         else:
             space_array = self.space_class(space_array, copy=False)

@@ -106,13 +106,18 @@ class NetworkTemporalKde(KernelCluster):
         return list(self.iter_operate(funcstr, targets=targets, **kwargs))
 
     def update_target_times(self, target_times):
-        target_times = DataArray(target_times, copy=False)
-        if target_times.ndata != self.targets.ndata:
-            raise AttributeError("The number of data points does not match existing data in the supplied array")
-        self.targets.time = target_times
-
-    def update_target_times_single_time(self, t):
-        self.targets.data[:, 0] = t
+        """
+        Update the times attached to the (spatial) targets.
+        :param target_times: Either an iterable (in which case it must be possible to cast to a DataArray) or a scalar
+        (in which case all target times are set to this value)
+        """
+        if hasattr(target_times, '__iter__'):
+            target_times = DataArray(target_times, copy=False)
+            if target_times.ndata != self.targets.ndata:
+                raise AttributeError("The number of data points does not match existing data in the supplied array")
+            self.targets.time = target_times
+        else:
+            self.targets.data[:, 0] = t
 
     def pdf(self, targets=None, **kwargs):
         normed = kwargs.pop('normed', True)
