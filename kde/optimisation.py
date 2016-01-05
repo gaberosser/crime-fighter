@@ -6,7 +6,8 @@ import multiprocessing as mp
 import datetime
 from functools import partial
 import contextlib
-
+import logging
+from time import time
 
 def _log_likelihood_fixed_wrapper(args):
     return _compute_log_likelihood_fixed(*args)
@@ -208,6 +209,24 @@ class ForwardChainingValidationBase(object):
         self.res_arr = None
         self.parallel = parallel
         self.nparam = None
+        self.logger = None
+
+    def set_logger(self, logger=None, verbose=True):
+        if logger is None:
+            if self.logger:
+                self.logger = logging.getLogger(__name__)
+                self.logger.handlers = []
+            else:
+                self.logger = logging.getLogger(__name__)
+                self.logger.handlers = []
+                if verbose:
+                    self.logger.setLevel(logging.DEBUG)
+                    ch = logging.StreamHandler()
+                    ch.setLevel(logging.INFO)
+                    self.logger.addHandler(ch)
+        else:
+            self.logger = logger
+
 
     def set_parameter_grid(self, npt=10, *args):
         """
@@ -253,12 +272,19 @@ class ForwardChainingValidationBase(object):
 
     def run(self, niter=None):
         self.initial_setup()
+        count = 1
         try:
             for obj in self.roller.iterator(niter=niter):
+                self.logger.info("Iteration %d", count)
+                tic = time()
                 self.res_arr.append(self.run_one_timestep(obj.training, obj.testing))
+                self.logger.info("Completed in %f s", time() - tic)
+                count += 1
         except KeyboardInterrupt:
             # stop wherever we got to
-            return
+            count -= 1
+            self.logger.info("Interrupted. Quitting gracefully.")
+        self.logger.info("Stopping after %d iterations", count)
 
 
 def kde_wrapper(training, testing, kde_class, args_kwargs):
@@ -378,6 +404,7 @@ if __name__ == '__main__':
     # load some Chicago South data for testing purposes
 
     from analysis import chicago
+    npt = 5  # number of points PER DIM to use when optimising bandwidths
     num_validation = 100  # number of predict - assess cycles
     start_date = datetime.datetime(2011, 3, 1)  # first date for which data are required
     start_day_number = 366  # number of days (after start date) on which first prediction is made
@@ -398,9 +425,10 @@ if __name__ == '__main__':
     snapped_data, snap_fail_idx = NetworkSpaceTimeData.from_cartesian(net, data=data, return_failure_idx=True)
 
     opt = NetworkFixedBandwidth(snapped_data, parallel=False, initial_cutoff=100.)
-    opt.set_parameter_grid(100, 1, 120, 50, 2000)
-    roller_gen = opt.roller.iterator(100)
-    roller_one = roller_gen.next()
-    training = roller_one.training
-    testing = roller_one.testing
+    opt.set_logger(verbose=True)
+    opt.set_parameter_grid(npt, 1, 60, 100, 2000)
+    # roller_gen = opt.roller.iterator(100)
+    # roller_one = roller_gen.next()
+    # training = roller_one.training
+    # testing = roller_one.testing
     opt.run(niter=20)
