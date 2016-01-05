@@ -12,7 +12,7 @@ class NetworkTemporalKde(KernelCluster):
     def __init__(self, source_data, bandwidths,
                  ktype=NetworkTemporalKernelEqualSplit,
                  targets=None,
-                 cutoffs=None,
+                 cutoff_tol=1e-4,
                  max_net_split=1e4,
                  **kwargs):
         source_data = self.data_class(source_data)
@@ -21,10 +21,12 @@ class NetworkTemporalKde(KernelCluster):
         # objects for all classes?
         # super(NetworkTimeKernelCluster, self).__init__(source_data, bandwidths, ktype)
         self.ktype = ktype
+        self.kernels = []
         self.data = source_data
         self.bandwidths = None
+        self.cutoff_tol = cutoff_tol
         self.cutoffs = None
-        self.set_bandwidths_and_cutoffs(bandwidths, cutoffs=cutoffs)
+        self.set_bandwidths_and_cutoffs(bandwidths)
         self.kernels = self.create_kernels()
 
         self.targets = None
@@ -44,21 +46,35 @@ class NetworkTemporalKde(KernelCluster):
     def norm_constant(self):
         return float(self.ndata)
 
-    def set_bandwidths_and_cutoffs(self, bandwidths, cutoffs=None):
+    def compute_cutoffs_from_bandwidth(self, bandwidths, tol=1e-4):
+        """
+        Use this routine to compute the cutoff values automatically from the bandwidths.
+        In the case of the spatial component, this is a hard cutoff equal to the bandwidth
+        In the case of the temporal component, this depends on the tolerance
+        :param bandwidths: Bandwidths, iterable
+        :param tol: Specifies the numerical tolerance for cutoff in the time domain
+        :return: Cutoffs, iterable, same length as bandwidths
+        """
+        return self.ktype.compute_cutoffs(bandwidths, tol=tol)
+
+    def set_bandwidths_and_cutoffs(self, bandwidths):
+        """
+        Verify that the supplied bandwidths are valid. Compute the cutoffs automatically using the tolerance already
+        supplied.
+        This makes use of the class method compute_bandwidths that should be available from all kernel classes.
+        """
         if not hasattr(bandwidths, '__iter__'):
             bandwidths = [bandwidths] * self.ndim
 
         if len(bandwidths) != self.ndim:
             raise AttributeError("Number of supplied bandwidths does not match the dimensionality of the data")
-        if cutoffs is not None:
-            if len(cutoffs) != self.ndim:
-                raise AttributeError("Number of supplied cutoffs does not match the dimensionality of the data")
-            else:
-                self.cutoffs = cutoffs
-        if cutoffs is None:
-            self.cutoffs = bandwidths
 
         self.bandwidths = bandwidths
+        self.cutoffs = self.ktype.compute_cutoffs(bandwidths, tol=self.cutoff_tol)
+        # if kernels have already been set, update them
+        if len(self.kernels):
+            for k in self.kernels:
+                k.update_bandwidths(self.bandwidths, time_cutoff=self.cutoffs[0])
 
     def set_targets(self, targets):
         self.targets = self.data_class(targets, copy=False)

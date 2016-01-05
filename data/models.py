@@ -383,7 +383,7 @@ class NetworkData(DataArray):
         data = DataArray(data)
         if data.nd != 2:
             raise AttributeError("Input data must be 2D")
-        grid_edge_index = net.build_grid_edge_index(grid_size)
+        grid_edge_index = net.build_grid_edge_index(grid_size) if grid_size else None
         net_points = []
         fail_idx = []
         for i, (x, y) in enumerate(data):
@@ -436,3 +436,22 @@ class NetworkSpaceTimeData(SpaceTimeDataArray):
     @property
     def graph(self):
         return self.space.graph
+
+    @classmethod
+    def from_cartesian(cls, net, data, return_failure_idx=False, **kwargs):
+        """
+        Generate a network-time data array from the input data, which should be castable to SpaceTimeDataArray
+        Parameters are exactly as for NetworkData.from_cartesian
+        :return: NetworkSpaceTimeData array where data have been snapped spatially to the network. If no snap was
+        found, these points are skipped.
+        If return_failure_idx is True, an index listing failed snaps is returned too.
+        """
+        data = SpaceTimeDataArray(data)
+        snapped, fail_idx = cls.space_class.from_cartesian(net, data.space, return_failure_idx=True, **kwargs)
+        success_idx = np.array(list(set(range(data.ndata)) - set(fail_idx)))
+        time = data.time.getrows(success_idx)
+        new_array = time.adddim(snapped, type=cls)
+        if return_failure_idx:
+            return new_array, fail_idx
+        else:
+            return new_array

@@ -580,6 +580,10 @@ class NetworkKernelEqualSplitLinear(BaseKernel):
     def pdf(self, *args, **kwargs):
         return self.net_pdf(self.loc)
 
+    def update_bandwidths(self, bandwidth, **kwargs):
+        """ In order to retain the net walker cache, update the bandwidth rather than creating a new instance """
+        self.bandwidth = bandwidth
+
 
 class NetworkTemporalKernelEqualSplit(NetworkKernelEqualSplitLinear):
 
@@ -598,9 +602,30 @@ class NetworkTemporalKernelEqualSplit(NetworkKernelEqualSplitLinear):
         self.time_cutoff = time_cutoff
         super(NetworkTemporalKernelEqualSplit, self).__init__(loc, bandwidths)
 
+    @classmethod
+    def compute_cutoffs(cls, bandwidths, tol=1e-4):
+        """
+        Compute the upper cutoffs coresponding to the supplied tolerance and bandwidths
+        This is called by the parent KDE, NOT the kernel instance.
+        :param bandwidths:
+        :param tol:
+        :return: Iterable of the same length as bandwidths
+        """
+        assert len(bandwidths) == 2, "Wrong number of bandwidths supplied"
+        t_cutoff = -bandwidths[0] * np.log(bandwidths[0] * tol)
+        assert t_cutoff > 0, "Tolerance is too large: time cutoff is negative"
+        d_cutoff = bandwidths[1]
+        return [t_cutoff, d_cutoff]
+
     @property
     def spatial_bandwidth(self):
         return self.bandwidth[1]
+
+    def update_bandwidths(self, bandwidths, time_cutoff=None, **kwargs):
+        """ In order to retain the net walker cache, update bandwidths/cutoff rather than creating a new instance """
+        assert len(bandwidths) == self.ndim, "Wrong number of bandwidths supplied"
+        self.bandwidth = bandwidths
+        self.time_cutoff = time_cutoff
 
     @property
     def ndim(self):
