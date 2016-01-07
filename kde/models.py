@@ -934,6 +934,11 @@ class FixedBandwidthRadialKde(FixedBandwidthKde):
     ## TODO: can we (easily) add a marginal_pdf in Cartesian coordinates, so that the multiplots method works?
 
 
+## FIXME: broken.
+class FixedBandwidthLinearRadialSpaceExponentialTimeKde(FixedBandwidthRadialKde):
+    kernel_class = kernels.LinearRadialSpaceExponentialTime
+
+
 class VariableBandwidthRadialKde(FixedBandwidthRadialKde, VariableBandwidthKde):
     pass
 
@@ -944,6 +949,9 @@ class VariableBandwidthNnRadialKde(FixedBandwidthRadialKde, VariableBandwidthNnK
 class VariableBandwidthNnRadialReflectedKde(VariableBandwidthNnRadialKde):
 
     kernel_class = kernels.RadialReflectedTemporal
+
+
+# TODO: add exponential time linear radial space KDE
 
 
 class NetworkFixedBandwidthKde(FixedBandwidthKde):

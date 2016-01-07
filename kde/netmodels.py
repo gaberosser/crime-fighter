@@ -12,10 +12,11 @@ fmt = logging.Formatter(fmt='%(levelname)s - %(name)s %(asctime)s %(module)s %(f
 fh.setFormatter(fmt)
 logger_kde.addHandler(fh)
 
-fh_nw = logging.FileHandler('NetworkWalker.log', mode='w')
-fh_nw.setFormatter(fmt)
+# fh_nw = logging.FileHandler('NetworkWalker.log', mode='w')
+# fh_nw.setFormatter(fmt)
 logger_nw = logging.getLogger('NetworkWalker')
-logger_nw.addHandler(fh_nw)
+# logger_nw.addHandler(fh_nw)
+logger_nw.addHandler(logging.NullHandler())
 
 class NetworkTemporalKde(KernelCluster):
     data_class = NetworkSpaceTimeData

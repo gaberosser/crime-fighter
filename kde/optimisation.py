@@ -207,7 +207,14 @@ class ForwardChainingValidationBase(object):
         self.data_index = self.roller.data_index
         self.grid = None
         self.res_arr = None
-        self.parallel = parallel
+        self.parallel = False
+        self.ncpu = None
+        if parallel:
+            self.parallel = True
+            if isinstance(parallel, int):
+                self.ncpu = parallel
+            else:
+                self.ncpu = mp.cpu_count()
         self.nparam = None
         self.logger = None
 
@@ -312,7 +319,7 @@ class PlanarFixedBandwidth(ForwardChainingValidationBase):
         the_func = partial(kde_wrapper, training, testing, models.FixedBandwidthKde)
         param_gen = self.args_kwargs_generator()
         if self.parallel:
-            with contextlib.closing(mp.Pool()) as pool:
+            with contextlib.closing(mp.Pool(processes=self.ncpu)) as pool:
                 z = np.array(pool.map(the_func, param_gen))
         else:
             z = np.array(map(the_func, param_gen))

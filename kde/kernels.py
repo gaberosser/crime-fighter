@@ -22,6 +22,10 @@ class BaseKernel(object):
     """
     data_class = DataArray
 
+    def __init__(self, *args, **kwargs):
+        # will raise a NotImplementedError
+        self.int_constants = self.normalisation_constants()
+
     @property
     def ndim(self):
         raise NotImplementedError()
@@ -64,7 +68,7 @@ class MultivariateNormal(BaseKernel):
     def __init__(self, mean, stdevs):
         self.mean = np.array(mean, dtype=float)
         self.stdevs = np.array(stdevs, dtype=float)
-        self.int_constants = self.normalisation_constants()
+        super(MultivariateNormal, self).__init__()
 
     @property
     def vars(self):
@@ -134,8 +138,6 @@ class RadialTemporal(MultivariateNormal):
         if len(mean) != 2 or len(stdevs) != 2:
             raise AttributeError("Length of means and vars array must be 2")
         super(RadialTemporal, self).__init__(mean, stdevs)
-        # set up norming here
-        self.int_constants = self.normalisation_constants()
 
     def normalisation_constants(self):
         # time component
@@ -231,9 +233,14 @@ class SpaceNormalTimeExponential(BaseKernel):
         # construct a sub-kernel from MultivariateNormal
         self.mvn = MultivariateNormal(self.mean, self.stdevs)
 
+        super(SpaceNormalTimeExponential, self).__init__()
+
     @property
     def ndim(self):
         return self.mean.size
+
+    def normalisation_constants(self):
+        return self.stdevs[0]
 
     def pdf(self, x, dims=None):
 
@@ -248,7 +255,7 @@ class SpaceNormalTimeExponential(BaseKernel):
         # test whether temporal dimension was included
         if 0 in dims:
             scale = self.stdevs[0]
-            t = np.exp((self.mean[0] - x.getdim(0)) / scale) / scale
+            t = np.exp((self.mean[0] - x.getdim(0)) / scale) / self.int_constants
             t = t.toarray(0)
             t0 = x.toarray(0) < self.mean[0]
             t[t0] = 0.
@@ -367,38 +374,6 @@ class RadialReflectedTemporal(SpaceTimeNormalReflective, RadialTemporal):
     pass
 
 
-    # def pdf(self, x, dims=None):
-    #     """ Input is an ndarray of dims N x ndim.
-    #         This may be a data class or just a plain array.
-    #         If dims is specified, it is an array of the dims to include in the calculation """
-    #
-    #     if dims:
-    #         ndim = len(dims)
-    #     else:
-    #         dims = range(self.ndim)
-    #         ndim = self.ndim
-    #
-    #     x = self.prep_input(x, ndim)
-    #     res = super(RadialReflectedTemporal, self).pdf(x, dims=dims)
-    #
-    #     # test whether temporal dimension was included
-    #     if 0 in dims:
-    #         new_x = SpaceTimeNormalReflective.time_reversed_array(x)
-    #         res += super(RadialReflectedTemporal, self).pdf(new_x, dims=dims)
-    #         res[x.toarray(0) < 0] = 0.
-    #     return res
-    #
-    # def marginal_cdf(self, x, dim=0):
-    #     if dim == 0:
-    #         x = self.prep_input(x, 1).toarray(0)
-    #         res = special.erf((x - self.mean[0]) / (math.sqrt(2) * self.stdevs[0]))
-    #         res -= special.erf((-x - self.mean[0]) / (math.sqrt(2) * self.stdevs[0]))
-    #         res[x < 0] = 0.
-    #         return 0.5 * res
-    #     else:
-    #         return super(RadialReflectedTemporal, self).marginal_cdf(x, dim=dim)
-
-
 class LinearKernel1D(BaseKernel):
 
     """
@@ -416,7 +391,7 @@ class LinearKernel1D(BaseKernel):
         self.h = float(h)
         self.loc = loc
         self.one_sided = one_sided
-        self.int_constant = self.normalisation_constants()
+        super(LinearKernel1D, self).__init__()
 
     @property
     def ndim(self):
@@ -428,10 +403,38 @@ class LinearKernel1D(BaseKernel):
     def pdf(self, x, **kwargs):
         if self.one_sided:
             t = x - self.loc
-            return 2 * (self.h - t) * (t >= 0) * (t <= self.h) / self.int_constant
+            return 2 * (self.h - t) * (t >= 0) * (t <= self.h) / self.int_constants
         else:
             t = np.abs(x - self.loc)
-            return (self.h - t) * (t <= self.h) / self.int_constant
+            return (self.h - t) * (t <= self.h) / self.int_constants
+
+
+class ExponentialKernel1D(BaseKernel):
+    """
+    Exponential kernel in 1D
+    """
+    def __init__(self, loc, width):
+        """
+        :param loc: The location of the kernel
+        :param width: The mean of the kernel, after translation to loc=0
+        :return:
+        """
+        self.loc = loc
+        self.h = width
+        super(ExponentialKernel1D, self).__init__()
+
+        @property
+        def ndim(self):
+            return 1
+
+    def normalisation_constants(self):
+        return self.h
+
+    def pdf(self, x, **kwargs):
+        t = x - self.loc
+        return np.exp(-t / self.h) * (t >= 0) / self.int_constants
+
+
 
 
 class LinearRadialKernel(BaseKernel):
@@ -440,7 +443,7 @@ class LinearRadialKernel(BaseKernel):
     def __init__(self, loc, radius):
         self.loc = np.array(list(loc))
         self.radius = radius
-        self.int_constant = self.normalisation_constants()
+        super(LinearRadialKernel, self).__init__()
 
     @property
     def ndim(self):
@@ -462,25 +465,34 @@ class LinearRadialKernel(BaseKernel):
         x = self.prep_input(x, self.ndim)
         loc = self.data_class(np.tile(self.loc, (x.ndata, 1)))
         d = x.distance(loc)
-        res = (self.radius - d) * (d <= self.radius) / self.int_constant
+        # the strange double negative here is required to maintain datatype (self.radius - d returns a regular array)
+        res = -(d - self.radius) * (d <= self.radius) / self.int_constants
 
         return res.toarray()
 
 
-class LinearSpaceExponentialTime(BaseKernel):
+class LinearRadialSpaceExponentialTime(BaseKernel):
 
     data_class = CartesianSpaceTimeData
 
     def __init__(self, loc, scale):
         # first element of mean is actually the LOCATION of the exponential distribution
         # first element of vars is actually the MEAN of the exponential distribution
+        assert len(loc) == 3, "Class only supports 3D case (time + planar space)"
+        assert len(scale) == 2, "Scale must be of length 2: (mean time decay, spatial radius)"
         self.loc = np.array(loc, dtype=float)
         self.scale = np.array(scale, dtype=float)
-        self.linear_kernel = LinearKernel1D
+        self.space_kernel = LinearRadialKernel(self.loc[1:], radius=self.scale[1])
+        self.time_kernel = ExponentialKernel1D(self.loc[0], self.scale[0])
+        super(LinearRadialSpaceExponentialTime, self).__init__()
 
     @property
     def ndim(self):
         return self.loc.size
+
+    def normalisation_constants(self):
+        # not needed here: composition
+        return
 
     def pdf(self, x, dims=None):
 
@@ -492,37 +504,35 @@ class LinearSpaceExponentialTime(BaseKernel):
 
         x = self.prep_input(x, ndim)
 
-        # test whether temporal dimension was included
+        # temporal dimension
         if 0 in dims:
-            scale = self.scale[0]
-            mean = self.loc[0]
             t = x.time.toarray()
-            res_t = np.exp((mean - t) / scale) / scale * (t > mean)
+            res_t = self.time_kernel.pdf(t)
+            # scale = self.scale[0]
+            # mean = self.loc[0]
+            # t = x.time.toarray()
+            # res_t = np.exp((mean - t) / scale) / scale * (t > mean)
             dims.remove(0)
         else:
             res_t = 1
 
-        # if dims are left over, these are the spatial components
+        # spatial dimension
         if len(dims):
             s = x.space
-            res_s = self.mvn.pdf(s, dims=dims)
+            res_s = self.space_kernel.pdf(s)
         else:
-            s = 1
+            res_s = 1
 
-        return t * s
+        return res_t * res_s
 
     def marginal_cdf(self, x, dim=0):
         x = self.prep_input(x, 1)
         if dim == 0:
-            scale = self.stdevs[0]
-            c = 1 - np.exp((self.mean[0] - x) / scale)
-            c[c < 0] = 0.
-            return c
+            return self.time_kernel.marginal_cdf(x, dim=dim)
         else:
-            return self.mvn.marginal_cdf(x, dim=dim)
+            ## TODO: is this needed?
+            raise NotImplementedError("marginal CDF has no well-defined meaning for the radial spatial component.")
 
-    def partial_marginal_pdf(self, x, dim=0):
-        raise NotImplementedError()
 
 class NetworkKernelEqualSplitLinear(BaseKernel):
     """ Okabe equal split spatial network kernel """
