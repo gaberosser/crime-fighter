@@ -367,6 +367,10 @@ class NetworkFixedBandwidth(ForwardChainingValidationBase):
 
     def __init__(self, *args, **kwargs):
         super(NetworkFixedBandwidth, self).__init__(*args, **kwargs)
+        ## TODO: parallelising would help but it needs to work differently
+        # instead of doing parallel loop over parameters, we need parallel loop over successive days.
+        # Disabling for now.
+        self.parallel = False
         self.kde = None
 
     def args_kwargs_generator(self, *args, **kwargs):
@@ -384,30 +388,36 @@ class NetworkFixedBandwidth(ForwardChainingValidationBase):
         max_bandwidths = []
         for i in range(self.grid.shape[0]):
             max_bandwidths.append(np.max(self.grid[i, :]))
-        the_kde = self.kde_class(training, max_bandwidths, targets=testing)
+        the_kde = self.kde_class(training, max_bandwidths, targets=testing, verbose=False)
         # precompute network paths by calling pdf now.
         # this will ensure they are computed with a maximum cutoff value, so that all other bandwidths will result in
         # the original paths being used.
         # it will be fast to recompute this when we actually need to in the loop below.
         the_kde.pdf()
-        the_func = partial(kde_persistent_wrapper, the_kde)
+        # the_func = partial(kde_persistent_wrapper, the_kde)
         param_gen = self.args_kwargs_generator()
-        if self.parallel:
-            with contextlib.closing(mp.Pool()) as pool:
-                z = np.array(pool.map(the_func, param_gen))
-        else:
-            z = np.array(map(the_func, param_gen))
-        return z.reshape(shape)
+        # if self.parallel:
+        #     with contextlib.closing(mp.Pool()) as pool:
+        #         z = np.array(pool.map(the_func, param_gen))
+        # else:
+        full_results = []
+        for bd in param_gen:
+            the_kde.set_bandwidths_and_cutoffs(bd)
+            full_results.append(the_kde.pdf())
+        return full_results
+        # z = np.array(map(the_func, param_gen))
+        # return z.reshape(shape)
 
 
 if __name__ == '__main__':
     # load some Chicago South data for testing purposes
 
     from analysis import chicago
-    npt = 5  # number of points PER DIM to use when optimising bandwidths
-    num_validation = 100  # number of predict - assess cycles
+    npt = 10  # number of points PER DIM to use when optimising bandwidths
+    num_validation = 20  # number of prediction time windows
+    param_extent = (1., 60., 50., 2000.)
     start_date = datetime.datetime(2011, 3, 1)  # first date for which data are required
-    start_day_number = 366  # number of days (after start date) on which first prediction is made
+    start_day_number = 50  # number of days (after start date) on which first prediction is made
     end_date = start_date + datetime.timedelta(days=start_day_number + num_validation)
 
     all_domains = chicago.get_chicago_side_polys(as_shapely=True)
@@ -424,11 +434,26 @@ if __name__ == '__main__':
     # snap crimes to network to obtain array
     snapped_data, snap_fail_idx = NetworkSpaceTimeData.from_cartesian(net, data=data, return_failure_idx=True)
 
-    opt = NetworkFixedBandwidth(snapped_data, parallel=False, initial_cutoff=100.)
+    opt = NetworkFixedBandwidth(snapped_data, parallel=False, initial_cutoff=start_day_number)
     opt.set_logger(verbose=True)
-    opt.set_parameter_grid(npt, 1, 60, 100, 2000)
-    # roller_gen = opt.roller.iterator(100)
-    # roller_one = roller_gen.next()
+    opt.set_parameter_grid(npt, *param_extent)
+    opt.run(niter=num_validation)
+
+    # debugging code
+
+    # roller_one = opt.roller.iterator(1).next()
     # training = roller_one.training
     # testing = roller_one.testing
-    opt.run(niter=20)
+    # res_arr = opt.run_one_timestep(training=training, testing=testing)
+
+    # compute one timestep manually so the KDE is available for testing
+    # max_bandwidths = []
+    # for i in range(opt.grid.shape[0]):
+    #     max_bandwidths.append(np.max(opt.grid[i, :]))
+    # the_kde = opt.kde_class(training, max_bandwidths, targets=testing, verbose=False)
+    # the_kde.pdf()
+    # param_gen = opt.args_kwargs_generator()
+    # full_results = []
+    # for bd in param_gen:
+    #     the_kde.set_bandwidths_and_cutoffs(bd)
+    #     full_results.append(the_kde.pdf())

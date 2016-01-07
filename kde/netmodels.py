@@ -4,7 +4,18 @@ from data.models import NetworkSpaceTimeData
 from network.utils import NetworkWalker
 from kernels import NetworkTemporalKernelEqualSplit
 import operator
+import logging
 
+logger_kde = logging.getLogger('NetworkTemporalKde')
+fh = logging.FileHandler('netmodels.NetworkTemporalKde.log', mode='w')
+fmt = logging.Formatter(fmt='%(levelname)s - %(name)s %(asctime)s %(module)s %(funcName)s [%(process)d %(thread)d] %(message)s')
+fh.setFormatter(fmt)
+logger_kde.addHandler(fh)
+
+fh_nw = logging.FileHandler('NetworkWalker.log', mode='w')
+fh_nw.setFormatter(fmt)
+logger_nw = logging.getLogger('NetworkWalker')
+logger_nw.addHandler(fh_nw)
 
 class NetworkTemporalKde(KernelCluster):
     data_class = NetworkSpaceTimeData
@@ -15,6 +26,13 @@ class NetworkTemporalKde(KernelCluster):
                  cutoff_tol=1e-4,
                  max_net_split=1e4,
                  **kwargs):
+        self.verbose = kwargs.get('verbose', False)
+        self.logger = logger_kde
+        if self.verbose:
+            self.logger.setLevel(logging.DEBUG)
+        else:
+            self.logger.setLevel(logging.INFO)
+        self.logger.info("NetworkTemporalKde __init__")
         source_data = self.data_class(source_data)
         self.max_net_split = max_net_split
         # TODO: can't call parent class __init__ because it assumes data are in an np array. Switch to using data
@@ -63,6 +81,7 @@ class NetworkTemporalKde(KernelCluster):
         supplied.
         This makes use of the class method compute_bandwidths that should be available from all kernel classes.
         """
+        self.logger.info("set_bandwidths_and_cutoffs with bandwidths=%s", str(bandwidths))
         if not hasattr(bandwidths, '__iter__'):
             bandwidths = [bandwidths] * self.ndim
 
@@ -77,11 +96,14 @@ class NetworkTemporalKde(KernelCluster):
                 k.update_bandwidths(self.bandwidths, time_cutoff=self.cutoffs[0])
 
     def set_targets(self, targets):
+        self.logger.info("set_targets")
         self.targets = self.data_class(targets, copy=False)
         self.walker = NetworkWalker(self.data.graph,
                                     targets=self.targets.space,
                                     max_distance=self.cutoffs[1],
-                                    max_split=self.max_net_split)
+                                    max_split=self.max_net_split,
+                                    verbose=self.verbose,
+                                    logger=logger_nw)
         [k.set_walker(self.walker) for k in self.kernels]
 
     @property
@@ -89,10 +111,12 @@ class NetworkTemporalKde(KernelCluster):
         return self.targets is not None
 
     def create_kernels(self):
+        self.logger.info("create_kernels creating %d kernels", self.ndata)
         return [self.ktype(self.data[i], self.bandwidths, time_cutoff=self.cutoffs[0]) for i in range(self.ndata)]
 
     def update_source_data(self, new_source_data, new_bandwidths=None):
         new_source_data = self.data_class(new_source_data, copy=False)
+        self.logger.info("update_source_data with %d sources", new_source_data.ndata)
         if new_bandwidths is None:
             new_bandwidths = self.bandwidths
         self.data = new_source_data
@@ -110,6 +134,9 @@ class NetworkTemporalKde(KernelCluster):
         if targets is not None:
             # reset the network walker
             self.set_targets(targets)
+            self.logger.info("iter_operate with new targets set")
+        else:
+            self.logger.info("iter_operate with no new targets")
         # need to send the target times to the kernel, since net walker only stores the spatial (net) targets
         target_times = self.targets.time
         return (getattr(x, funcstr)(target_times=target_times, **kwargs) for x in self.kernels)
@@ -129,13 +156,16 @@ class NetworkTemporalKde(KernelCluster):
         """
         if hasattr(target_times, '__iter__'):
             target_times = DataArray(target_times, copy=False)
+            self.logger.info("update_target_times with an iterable of len %d", target_times.ndata)
             if target_times.ndata != self.targets.ndata:
                 raise AttributeError("The number of data points does not match existing data in the supplied array")
             self.targets.time = target_times
         else:
-            self.targets.data[:, 0] = t
+            self.logger.info("update_target_times with a fixed time %f", target_times)
+            self.targets.data[:, 0] = target_times
 
     def pdf(self, targets=None, **kwargs):
+        self.logger.info("pdf")
         normed = kwargs.pop('normed', True)
         z = self.additive_operation('pdf', targets=targets)
 

@@ -542,8 +542,9 @@ class NetworkKernelEqualSplitLinear(BaseKernel):
         self.walker = None
 
     def set_net_kernel(self):
-        # one-sided kernel = only ever get positive network distances
-        self.net_kernel = self.kernel_class(self.bandwidth, one_sided=True)
+        # two-sided kernel - we are in effect computing an absolute distance, so the integral over all space
+        # includes both 'positive and negative distance'
+        self.net_kernel = self.kernel_class(self.bandwidth, one_sided=False)
 
     @property
     def spatial_bandwidth(self):
@@ -583,6 +584,7 @@ class NetworkKernelEqualSplitLinear(BaseKernel):
     def update_bandwidths(self, bandwidth, **kwargs):
         """ In order to retain the net walker cache, update the bandwidth rather than creating a new instance """
         self.bandwidth = bandwidth
+        self.set_net_kernel()
 
 
 class NetworkTemporalKernelEqualSplit(NetworkKernelEqualSplitLinear):
@@ -624,16 +626,16 @@ class NetworkTemporalKernelEqualSplit(NetworkKernelEqualSplitLinear):
     def update_bandwidths(self, bandwidths, time_cutoff=None, **kwargs):
         """ In order to retain the net walker cache, update bandwidths/cutoff rather than creating a new instance """
         assert len(bandwidths) == self.ndim, "Wrong number of bandwidths supplied"
-        self.bandwidth = bandwidths
+        # self.bandwidth = bandwidths
+        super(NetworkTemporalKernelEqualSplit, self).update_bandwidths(bandwidths)
         self.time_cutoff = time_cutoff
+
+    def set_net_kernel(self):
+        self.net_kernel = self.kernel_class(self.spatial_bandwidth, one_sided=False)
 
     @property
     def ndim(self):
         return 2
-
-    def set_net_kernel(self):
-        # one-sided kernel = only ever get positive network distances
-        self.net_kernel = self.kernel_class(self.bandwidth[1], one_sided=True)
 
     def pdf(self, target_times=None, dims=None):
         if dims is not None:
