@@ -449,6 +449,7 @@ class NetworkSpaceTimeData(SpaceTimeDataArray):
         data = SpaceTimeDataArray(data)
         snapped, fail_idx = cls.space_class.from_cartesian(net, data.space, return_failure_idx=True, **kwargs)
         success_idx = np.array(list(set(range(data.ndata)) - set(fail_idx)))
+        success_idx.sort()
         time = data.time.getrows(success_idx)
         new_array = time.adddim(snapped, type=cls)
         if return_failure_idx:

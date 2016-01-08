@@ -4,16 +4,20 @@ from database.birmingham.loader import load_network, BirminghamCrimeLoader
 import dill
 import numpy as np
 import datetime
+import sys
 
 
 START_DATE = datetime.datetime(2013, 7, 1)  # first date for which data are required
-START_DAY_NUMBER = 180  # number of days (after start date) on which first prediction is made
-NUM_VALIDATION = 60  # number of prediction time windows
+# START_DAY_NUMBER = 180  # number of days (after start date) on which first prediction is made
+# NUM_VALIDATION = 10  # number of prediction time windows
 N_PT = 50  # numer of parameter values in each dimension
 PARAM_EXTENT = (1., 90., 50., 2000.)  # tmin, tmax, dmin, dmax
-NCPU = 4  # use maximum number of CPUs for parallel processing
+NCPU = False  # use maximum number of CPUs for parallel processing
 
 if __name__ == "__main__":
+
+    START_DAY_NUMBER = int(sys.argv[1])
+    NUM_VALIDATION = int(sys.argv[2])
 
     # load crime data
     end_date = START_DATE + datetime.timedelta(days=START_DAY_NUMBER + NUM_VALIDATION + 1)
@@ -33,7 +37,10 @@ if __name__ == "__main__":
     tt = tt[0]
     dd = dd[0]
 
-    with open("planar_linearexponentialkde_start_2013_07_01_60_days.dill", 'w') as f:
+    with open(
+        "planar_linearexponentialkde_start_day_%d_%d_iterations.dill" % (START_DAY_NUMBER, NUM_VALIDATION),
+        'w'
+    ) as f:
         dill.dump({
             'tt': tt,
             'dd': dd,

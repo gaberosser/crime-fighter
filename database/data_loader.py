@@ -27,7 +27,7 @@ class DataLoaderBase(object):
     def load_raw_data(self, **kwargs):
         raise NotImplementedError()
 
-    def process_raw_data(self, raw):
+    def process_raw_data(self, raw, **kwargs):
         return raw
 
     def date_conversion(self, processed):
@@ -46,8 +46,10 @@ class DataLoaderBase(object):
         raise NotImplementedError
 
     def get_data(self, as_txy=True, **kwargs):
+        # send the same kwargs to both
+        # this only works because at present EITHER one OR the other method uses them
         res = self.load_raw_data(**kwargs)
-        res = self.process_raw_data(res)
+        res = self.process_raw_data(res, **kwargs)
         self.set_idx_field(res)
         if self.convert_dates:
             self.date_conversion(res)
@@ -56,10 +58,11 @@ class DataLoaderBase(object):
         return res, self.t0, self.idx
 
 
-
 class DataLoaderDB(DataLoaderBase):
 
-    model = None
+    @property
+    def model(self):
+        return None
 
     def __init__(self, *args, **kwargs):
         if NO_DB:
@@ -69,6 +72,7 @@ class DataLoaderDB(DataLoaderBase):
             self.cursor = connection.cursor()
 
     def sql_get(self, **kwargs):
+        # filtering happens here using kwargs
         raise NotImplementedError()
 
     def load_raw_data(self, **kwargs):
@@ -91,3 +95,7 @@ class DataLoaderFile(DataLoaderBase):
             if self.fmt.lower() == 'csv':
                 c = csv.DictReader(f)
                 return list(c)
+
+    def process_raw_data(self, raw, **kwargs):
+        # filtering happens here using kwargs
+        return super(DataLoaderFile, self).process_raw_data(raw, **kwargs)

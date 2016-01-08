@@ -6,10 +6,13 @@ try:
 except ImportError:
     # disable loading from DB
     NO_DB = True
+from database.consts import SRID
 import consts
 import datetime
 import re
 import numpy as np
+from shapely import wkb, geometry
+import fiona
 
 
 class BirminghamNetworkLoader(ITNLoader):
@@ -22,11 +25,40 @@ def load_network():
     return obj.load()
 
 
+def load_boundary_db(srid=SRID['uk']):
+    obj = models.ArealUnit()
+    if srid is not None:
+        fields = ('ST_Transform(mpoly, {0})'.format(srid),)
+    else:
+        fields = ('mpoly',)
+    res = obj.select(
+        where_dict={'name': "'Birmingham'", 'type': "'city boundary'"},
+        fields=fields,
+        convert_to_dict=False)
+    return wkb.loads(res[0][0], hex=True)
+
+
+def load_boundary_file():
+    ## TODO: doesn't support different projections at present
+    fin = consts.BOUNDARY_SHAPEFILE
+    with fiona.open(fin, 'r') as s:
+        rec = s[0]['geometry']  # geojson format
+    return geometry.shape(rec[0]['geometry'])
+
+
 class BirminghamCrimeFileLoader(DataLoaderFile):
     idx_field = 'crime_number'
 
-    def process_raw_data(self, raw, **kwargs):
+    def process_raw_data(self, raw,
+                         start_date=None,
+                         end_date=None):
+        if start_date and not isinstance(start_date, datetime.datetime):
+            start_date = datetime.datetime.combine(start_date, datetime.time())
+        if end_date and not isinstance(end_date, datetime.datetime):
+            end_date = end_date + datetime.timedelta(days=1)
+            end_date = datetime.datetime.combine(end_date, datetime.time()) - datetime.timedelta(seconds=1)
         res = []
+
         for row in raw:
             t = {
                 'crime_number': row['CRIME_NO'],
@@ -44,6 +76,10 @@ class BirminghamCrimeFileLoader(DataLoaderFile):
                 'address': row['FULL_LOC'].replace("'", ""),
                 'officer_statement': re.sub(r'[^\x00-\x7f]', r'', row['MO']).replace("'", "")
             }
+            if start_date and t['datetime_start'] < start_date:
+                continue
+            if end_date and t['datetime_start'] > end_date:
+                continue
             res.append(t)
         return res
 
@@ -113,7 +149,7 @@ class BirminghamCrimeLoader(DataLoaderDB):
         fields = ('crime_number', 'datetime_start', 'ST_X(location)', 'ST_Y(location)')
         return obj.select(where_dict=where_dict or None, fields=fields, order_by='datetime_start')
 
-    def process_raw_data(self, raw):
+    def process_raw_data(self, raw, **kwargs):
         res = []
         for row in raw:
             res.append({

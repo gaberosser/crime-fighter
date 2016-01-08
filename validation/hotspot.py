@@ -3,7 +3,7 @@ import numpy as np
 from scipy.stats import gaussian_kde
 from scipy import sparse
 from kde.kernels import LinearKernel1D
-from kde.models import FixedBandwidthKdeScott, VariableBandwidthNnKde
+from kde.models import FixedBandwidthKdeScott, VariableBandwidthNnKde, FixedBandwidthLinearSpaceExponentialTimeKde
 from kde.netmodels import NetworkTemporalKde
 from data.models import DataArray, CartesianSpaceTimeData, SpaceTimeDataArray, NetworkData, NetworkSpaceTimeData, \
     CartesianData
@@ -99,42 +99,58 @@ class STLinearSpaceExponentialTime(STKernelBase):
         """
         tol is the value below which links are cut (only applies to time dimension here as linear kernel cuts anyway
         """
+        # TODO: have disabled tol cutoff for now because it was inconsistent with the KDE framework
+        # reimplement
+
         self.radius = float(radius)
         self.mean_time = float(mean_time)
         self.tol = tol
+        self.kde = None
+        self.reset_kde()
         # cutoff time
-        self.dt_max = -mean_time * (np.log(mean_time) + np.log(tol))
+        # self.dt_max = -mean_time * (np.log(mean_time) + np.log(tol))
         super(STLinearSpaceExponentialTime, self).__init__()
 
-    def get_linkages(self, target_data):
-        def linkage_fun(dt, dd):
-            return (dd <= self.radius) & (dt <= self.dt_max)
+    # def get_linkages(self, target_data):
+    #     def linkage_fun(dt, dd):
+    #         return dd <= self.radius
+    #
+    #     link_i, link_j = linkages(self.data, linkage_fun, data_target=target_data)
+    #     return link_i, link_j
 
-        link_i, link_j = linkages(self.data, linkage_fun, data_target=target_data)
-        return link_i, link_j
+    def reset_kde(self):
+        self.kde = FixedBandwidthLinearSpaceExponentialTimeKde(self.data, bandwidths=(self.mean_time, self.radius))
 
     def predict(self, time, space_array):
         data_array = self.prediction_array(time, space_array)
-        link_i, link_j = self.get_linkages(data_array)
-        if not len(link_i):
-            return np.zeros(space_array.ndata)
-        dt = (data_array.time.getrows(link_j) - self.data.time.getrows(link_i))
-        dt = dt.toarray()
-        dd = data_array.space.getrows(link_j).distance(self.data.space.getrows(link_i))
-        dd = dd.toarray()
-        a = np.exp(-dt / self.mean_time) / self.mean_time
-        b = (self.radius - dd) / self.radius ** 2
-        # import ipdb; ipdb.set_trace()
-        m = sparse.lil_matrix((self.data.ndata, data_array.ndata))
+        return self.kde.pdf(data_array)
 
-        m[link_i, link_j] = a * b
+    # TODO: consider whether this kind of approach might help us in the fixed bandwidth KDE situation more generally
+    # I have disabled it for now because it essentially repeats all the same calls as KDE.
 
-        res = np.array(m.sum(axis=0).flat)
 
-        # reshape if necessary
-        if data_array.original_shape is not None:
-            res = res.reshape(data_array.original_shape)
-        return res
+    # def predict(self, time, space_array):
+    #     data_array = self.prediction_array(time, space_array)
+    #     link_i, link_j = self.get_linkages(data_array)
+    #     if not len(link_i):
+    #         return np.zeros(space_array.ndata)
+    #     dt = (data_array.time.getrows(link_j) - self.data.time.getrows(link_i))
+    #     dt = dt.toarray()
+    #     dd = data_array.space.getrows(link_j).distance(self.data.space.getrows(link_i))
+    #     dd = dd.toarray()
+    #     a = np.exp(-dt / self.mean_time) / self.mean_time
+    #     b = (self.radius - dd) / self.radius ** 2
+    #     # import ipdb; ipdb.set_trace()
+    #     m = sparse.lil_matrix((self.data.ndata, data_array.ndata))
+    #
+    #     m[link_i, link_j] = a * b
+    #
+    #     res = np.array(m.sum(axis=0).flat)
+    #
+    #     # reshape if necessary
+    #     if data_array.original_shape is not None:
+    #         res = res.reshape(data_array.original_shape)
+    #     return res
 
 
 class STKernelBowers(STKernelBase):
@@ -325,18 +341,9 @@ class STNetworkLinearSpaceExponentialTime(STNetworkKernelBase):
         self.kde = None
         super(STNetworkLinearSpaceExponentialTime, self).__init__()
 
-    @property
-    def spatial_upper_limit(self):
-        return self.radius
-
-    @property
-    def temporal_upper_limit(self):
-        return self.time_decay * 7.
-
     def reset_kde(self):
         """ Redefines the KDE, resetting any cached results """
         self.kde = NetworkTemporalKde(self.data,
-                                      cutoffs=[self.temporal_upper_limit, self.spatial_upper_limit],
                                       bandwidths=[self.time_decay, self.radius])
 
     def train(self, data):
