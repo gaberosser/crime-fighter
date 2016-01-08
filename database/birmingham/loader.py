@@ -67,8 +67,11 @@ class BirminghamCrimeFileLoader(DataLoaderFile):
 
 
 class BirminghamCrimeLoader(DataLoaderDB):
-    model = models.Birmingham
     idx_field = 'crime_number'
+
+    @property
+    def model(self):
+        return models.Birmingham
 
     def load_raw_data(self,
                       crime_type=None,
