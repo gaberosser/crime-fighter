@@ -1,9 +1,13 @@
 __author__ = 'gabriel'
 import csv
 import pickle
-from django.db import connection
 import numpy as np
-
+try:
+    from django.db import connection
+    NO_DB = False
+except ImportError:
+    # disable loading from DB
+    NO_DB = True
 
 def datetime_to_days(t0, dt):
     delta = dt - t0
@@ -58,8 +62,11 @@ class DataLoaderDB(DataLoaderBase):
     model = None
 
     def __init__(self, *args, **kwargs):
-        super(DataLoaderDB, self).__init__(*args, **kwargs)
-        self.cursor = connection.cursor()
+        if NO_DB:
+            raise NotImplementedError("No DB support on this system")
+        else:
+            super(DataLoaderDB, self).__init__(*args, **kwargs)
+            self.cursor = connection.cursor()
 
     def sql_get(self, **kwargs):
         raise NotImplementedError()

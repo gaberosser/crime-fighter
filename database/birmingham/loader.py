@@ -1,6 +1,11 @@
 from ..network_loader import ITNLoader
 from ..data_loader import DataLoaderFile, DataLoaderDB, datetime_to_days
-from database import models
+try:
+    from database import models
+    NO_DB = False
+except ImportError:
+    # disable loading from DB
+    NO_DB = True
 import consts
 import datetime
 import re
