@@ -65,17 +65,6 @@ class NetworkTemporalKde(KernelCluster):
     def norm_constant(self):
         return float(self.ndata)
 
-    def compute_cutoffs_from_bandwidth(self, bandwidths, tol=1e-4):
-        """
-        Use this routine to compute the cutoff values automatically from the bandwidths.
-        In the case of the spatial component, this is a hard cutoff equal to the bandwidth
-        In the case of the temporal component, this depends on the tolerance
-        :param bandwidths: Bandwidths, iterable
-        :param tol: Specifies the numerical tolerance for cutoff in the time domain
-        :return: Cutoffs, iterable, same length as bandwidths
-        """
-        return self.ktype.compute_cutoffs(bandwidths, tol=tol)
-
     def set_bandwidths_and_cutoffs(self, bandwidths):
         """
         Verify that the supplied bandwidths are valid. Compute the cutoffs automatically using the tolerance already
@@ -90,6 +79,8 @@ class NetworkTemporalKde(KernelCluster):
             raise AttributeError("Number of supplied bandwidths does not match the dimensionality of the data")
 
         self.bandwidths = bandwidths
+        # compute cutoffs directly from the kernel class method
+        # if tol is None, only non-arbitrary cutoffs are applied
         self.cutoffs = self.ktype.compute_cutoffs(bandwidths, tol=self.cutoff_tol)
         # if kernels have already been set, update them
         if len(self.kernels):

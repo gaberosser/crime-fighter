@@ -1,5 +1,5 @@
 __author__ = 'gabriel'
-from kde import optimisation
+from kde import optimisation, models
 from database.birmingham.loader import load_network, BirminghamCrimeLoader
 import dill
 import numpy as np
@@ -11,8 +11,7 @@ START_DAY_NUMBER = 180  # number of days (after start date) on which first predi
 NUM_VALIDATION = 60  # number of prediction time windows
 N_PT = 100  # numer of parameter values in each dimension
 PARAM_EXTENT = (1., 90., 50., 2000.)  # tmin, tmax, dmin, dmax
-NCPU = 3
-
+NCPU = True  # use maximum number of CPUs for parallel processing
 
 if __name__ == "__main__":
 
@@ -24,8 +23,8 @@ if __name__ == "__main__":
     data, t0, cid = obj.get_data(start_date=START_DATE,
                                  end_date=end_date)
 
-    opt = optimisation.PlanarFixedBandwidthSpatialSymm(data, data_index=cid, initial_cutoff=START_DAY_NUMBER,
-                                                       parallel=NCPU)
+    opt = optimisation.PlanarFixedBandwidth(data, data_index=cid, initial_cutoff=START_DAY_NUMBER,
+                                            parallel=NCPU, kde_class=models.FixedBandwidthLinearSpaceExponentialTimeKde)
     opt.set_logger(verbose=True)
     opt.set_parameter_grid(N_PT, *PARAM_EXTENT)
     opt.run(NUM_VALIDATION)

@@ -615,17 +615,20 @@ class NetworkTemporalKernelEqualSplit(NetworkKernelEqualSplitLinear):
         super(NetworkTemporalKernelEqualSplit, self).__init__(loc, bandwidths)
 
     @classmethod
-    def compute_cutoffs(cls, bandwidths, tol=1e-4):
+    def compute_cutoffs(cls, bandwidths, tol=None):
         """
         Compute the upper cutoffs coresponding to the supplied tolerance and bandwidths
         This is called by the parent KDE, NOT the kernel instance.
         :param bandwidths:
-        :param tol:
+        :param tol: Tolerance for time cutoff. If NOne, no time cutoff is applied.
         :return: Iterable of the same length as bandwidths
         """
         assert len(bandwidths) == 2, "Wrong number of bandwidths supplied"
-        t_cutoff = -bandwidths[0] * np.log(bandwidths[0] * tol)
-        assert t_cutoff > 0, "Tolerance is too large: time cutoff is negative"
+        if tol:
+            t_cutoff = -bandwidths[0] * np.log(bandwidths[0] * tol)
+            assert t_cutoff > 0, "Tolerance is too large: time cutoff is negative"
+        else:
+            t_cutoff = None
         d_cutoff = bandwidths[1]
         return [t_cutoff, d_cutoff]
 

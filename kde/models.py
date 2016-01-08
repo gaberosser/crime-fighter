@@ -228,9 +228,9 @@ def shared_process_init(arr_pt_to_populate, shp_to_populate):
 class KernelCluster(object):
     """ Class for holding a 'cluster' of kernels, useful for parallelisation. """
 
-    def __init__(self, data, bandwidths, ktype):
+    def __init__(self, data, bandwidths, ktype, check_dims=True):
         self.ktype = ktype
-        if data.shape != bandwidths.shape:
+        if check_dims and data.shape != bandwidths.shape:
             raise AttributeError("Dims of data and bandwidths do not match")
         self.data = data
         self.bandwidths = bandwidths
@@ -347,12 +347,12 @@ class KdeBase(object):
         indices.append((idx, self.ndata))
         return indices
 
-    def set_kernels(self):
+    def set_kernels(self, **kwargs):
         self.kernel_clusters = []
         for i, j in self.distributed_indices:
             this_data = self.data[i:j]
             this_bandwidths = self.bandwidths[i:j]
-            self.kernel_clusters.append(KernelCluster(this_data, this_bandwidths, ktype=self.kernel_class))
+            self.kernel_clusters.append(KernelCluster(this_data, this_bandwidths, ktype=self.kernel_class, **kwargs))
 
     def set_parallel(self, b_parallel):
         """
@@ -690,14 +690,14 @@ class WeightedFixedBandwidthKde(FixedBandwidthKde):
     def norm_constant(self):
         return self.weights.sum()
 
-    def set_kernels(self):
+    def set_kernels(self, **kwargs):
         self.kernel_clusters = []
         for i, j in self.distributed_indices:
             this_data = self.data[i:j]
             this_bandwidths = self.bandwidths[i:j]
             this_weights = self.weights[i:j]
             self.kernel_clusters.append(
-                WeightedKernelCluster(this_data, this_weights, this_bandwidths, ktype=self.kernel_class)
+                WeightedKernelCluster(this_data, this_weights, this_bandwidths, ktype=self.kernel_class,  *kwargs)
             )
 
     @property
@@ -934,9 +934,16 @@ class FixedBandwidthRadialKde(FixedBandwidthKde):
     ## TODO: can we (easily) add a marginal_pdf in Cartesian coordinates, so that the multiplots method works?
 
 
-## FIXME: broken.
-class FixedBandwidthLinearRadialSpaceExponentialTimeKde(FixedBandwidthRadialKde):
+## FIXME: partial_marginal_pdf is broken.
+class FixedBandwidthLinearSpaceExponentialTimeKde(FixedBandwidthKde):
     kernel_class = kernels.LinearRadialSpaceExponentialTime
+
+    def set_bandwidths(self, *args, **kwargs):
+        bandwidths = kwargs.pop('bandwidths')
+        self.bandwidths = np.tile(bandwidths, (self.ndata, 1))
+
+    def set_kernels(self, **kwargs):
+        super(FixedBandwidthLinearSpaceExponentialTimeKde, self).set_kernels(check_dims=False)
 
 
 class VariableBandwidthRadialKde(FixedBandwidthRadialKde, VariableBandwidthKde):

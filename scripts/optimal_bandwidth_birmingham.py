@@ -39,4 +39,3 @@ if __name__ == "__main__":
     filename = "birmingham_optimisation_start_day_%d_%d_iterations.dill" % (start_day_number, num_validation)
     with open(filename, 'w') as f:
         dill.dump(opt.res_arr, f)
-

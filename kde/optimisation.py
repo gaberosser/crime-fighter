@@ -211,10 +211,10 @@ class ForwardChainingValidationBase(object):
         self.ncpu = None
         if parallel:
             self.parallel = True
-            if isinstance(parallel, int):
-                self.ncpu = parallel
-            else:
+            if isinstance(parallel, bool):
                 self.ncpu = mp.cpu_count()
+            elif isinstance(parallel, int):
+                self.ncpu = parallel
         self.nparam = None
         self.logger = None
 
@@ -279,14 +279,14 @@ class ForwardChainingValidationBase(object):
 
     def run(self, niter=None):
         self.initial_setup()
-        count = 1
+        count = 0
         try:
             for obj in self.roller.iterator(niter=niter):
+                count += 1
                 self.logger.info("Iteration %d", count)
                 tic = time()
                 self.res_arr.append(self.run_one_timestep(obj.training, obj.testing))
                 self.logger.info("Completed in %f s", time() - tic)
-                count += 1
         except KeyboardInterrupt:
             # stop wherever we got to
             count -= 1
@@ -295,14 +295,19 @@ class ForwardChainingValidationBase(object):
 
 
 def kde_wrapper(training, testing, kde_class, args_kwargs):
-    k = kde_class(training, *args_kwargs[0], **args_kwargs[1])
-    z = k.pdf(testing)
-    return np.sum(np.log(z))
+    the_kde = kde_class(training, *args_kwargs[0], **args_kwargs[1])
+    # return the full array
+    z = the_kde.pdf(testing)
+    return z
 
 
 class PlanarFixedBandwidth(ForwardChainingValidationBase):
 
     ll_func = kde_wrapper
+
+    def __init__(self, data, kde_class=models.FixedBandwidthKde, *args, **kwargs):
+        super(PlanarFixedBandwidth, self).__init__(data, *args, **kwargs)
+        self.kde_class = kde_class
 
     def args_kwargs_generator(self, *args, **kwargs):
         """
@@ -316,14 +321,17 @@ class PlanarFixedBandwidth(ForwardChainingValidationBase):
 
     def run_one_timestep(self, training, testing, *args, **kwargs):
         shape = self.grid.shape[1:]
-        the_func = partial(kde_wrapper, training, testing, models.FixedBandwidthKde)
+        the_func = partial(kde_wrapper, training, testing, self.kde_class)
         param_gen = self.args_kwargs_generator()
         if self.parallel:
             with contextlib.closing(mp.Pool(processes=self.ncpu)) as pool:
-                z = np.array(pool.map(the_func, param_gen))
+                # z = np.array(pool.map(the_func, param_gen))
+                z = pool.map(the_func, param_gen)
         else:
-            z = np.array(map(the_func, param_gen))
-        return z.reshape(shape)
+            # z = np.array(map(the_func, param_gen))
+            z = map(the_func, param_gen)
+        # return z.reshape(shape)
+        return z
 
 
 class PlanarFixedBandwidthSpatialSymm(PlanarFixedBandwidth):
