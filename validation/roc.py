@@ -9,7 +9,11 @@ from analysis.spatial import (create_spatial_grid,
                               HAS_GEODJANGO)
 from data.models import DataArray, NetworkSpaceTimeData, NetworkData, NetPoint, CartesianData
 from shapely.geometry import Point, Polygon
+from rtree import index
 from network.utils import network_walker_uniform_sample_points
+from time import time
+import logging
+logger = logging.getLogger(__name__)
 
 # optional failure upon importing plotting routines for headless operation
 try:
@@ -645,14 +649,24 @@ class RocGridByNetworkLengthMean(RocGridMean):
         self.set_network_grid_intersection_lengths()
 
     def set_network_grid_intersection_lengths(self):
+        logger.debug("set_network_grid_intersection_lengths called")
         # segment the network into edges intersecting grid squares
         lines = list(self.graph.lines_iter())
+        # create an index ahead of time for fast lookups
+        geo_idx = index.Index()
+        logger.debug("Creating index")
+        for i, l in enumerate(lines):
+            geo_idx.insert(i, l.bounds)
         self.network_length_in_grid = []
-        for t in self.sample_units:
+        logger.debug("Starting iteration over %d sample units", self.n_sample_units)
+        tic = time()
+        for i, t in enumerate(self.sample_units):
             sq = shapely_rectangle_from_vertices(*t)
-            this_int = [sq.intersection(t) for t in lines if sq.intersects(t)]
-            this_length = sum([t.length for t in this_int])
-            self.network_length_in_grid.append(this_length)
+            length_tally = 0.
+            for j in geo_idx.intersection(sq.bounds):
+                length_tally += sq.intersection(lines[j]).length
+            self.network_length_in_grid.append(length_tally)
+        logger.debug("Complete in %f s", time() - tic)
         self.network_length_in_grid = np.array(self.network_length_in_grid)
 
     @property
@@ -804,27 +818,3 @@ class NetworkRocUniformSamplingGrid(NetworkRocSegments):
         # remove x and y ticks as these rarely add anything
         ax.set_xticks([])
         ax.set_yticks([])
-
-class HybridNetworkGridMean(SpatialRoc):
-    """
-    This class provides a common baseline for comparing network and free-space predictions.
-    Approach: divide the space into grid squares, as for the gridded method. Then intersect the network with the
-    grid to give network sections within each grid square. These are the sample units for comparison purposes.
-    """
-    grid_roc_class = RocGridMean
-    net_roc_class = NetworkRocSegmentsMean
-
-    def __init__(self,
-                 data=None,
-                 poly=None,
-                 data_index=None,
-                 **kwargs):
-        super(HybridNetworkGridMean, self).__init__(data=data,
-                                                    poly=poly,
-                                                    data_index=data_index,
-                                                    **kwargs)
-        # initialise two separate ROC classes
-        self.grid_roc = None
-        self.net_roc = None
-
-

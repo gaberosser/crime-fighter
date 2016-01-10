@@ -36,13 +36,16 @@ def generate_st_prediction_dataarray(time, space_arr, dtype=SpaceTimeDataArray):
     return res
 
 
-class STKernelBase(object):
+class STBase(object):
 
     data_class = SpaceTimeDataArray
     space_class = CartesianData
 
     def __init__(self):
         self.data = None
+
+    def set_data(self, data):
+        self.data = self.data_class(data)
 
     @property
     def ndata(self):
@@ -51,9 +54,10 @@ class STKernelBase(object):
         return self.data.ndata
 
     def train(self, data):
-        self.data = self.data_class(data)
+        self.set_data(data)
 
     def prediction_array(self, time, space_array):
+        # combine time with space dimension
         space_array = self.space_class(space_array, copy=False)
         t = DataArray(time * np.ones(space_array.ndata))
         if space_array.original_shape is not None:
@@ -64,52 +68,44 @@ class STKernelBase(object):
         raise NotImplementedError()
 
 
-class STGaussianNn(STKernelBase):
-    data_class = CartesianSpaceTimeData
-    kde_class = VariableBandwidthNnKde
+class STKDEBase(STBase):
+    kde_class = None
 
     def __init__(self, **kde_kwargs):
-        super(STGaussianNn, self).__init__()
+        super(STKDEBase, self).__init__()
         self.kde = None
         self.kde_kwargs = kde_kwargs
-
-    def set_data(self, data):
-        self.data = self.data_class(data)
 
     def set_kde(self):
         self.kde = self.kde_class(self.data, **self.kde_kwargs)
 
     def train(self, data):
-        self.set_data(data)
+        super(STKDEBase, self).train(data)
         self.set_kde()
 
     def predict(self, time, space_array):
-        # combine time with space dimension
-        space_array = DataArray(space_array, copy=False)
-        time_array = DataArray(np.ones(space_array.ndata) * time)
-        target_data = time_array.adddim(space_array, type=self.data_class)
+        target_data = self.prediction_array(time, space_array)
         return self.kde.pdf(target_data)
 
 
-class STLinearSpaceExponentialTime(STKernelBase):
+class STGaussianNn(STBase):
+    data_class = CartesianSpaceTimeData
+    kde_class = VariableBandwidthNnKde
+
+
+class STLinearSpaceExponentialTime(STKDEBase):
 
     data_class = CartesianSpaceTimeData
+    kde_class = FixedBandwidthLinearSpaceExponentialTimeKde
 
-    def __init__(self, radius, mean_time, tol=1e-3):
-        """
-        tol is the value below which links are cut (only applies to time dimension here as linear kernel cuts anyway
-        """
-        # TODO: have disabled tol cutoff for now because it was inconsistent with the KDE framework
-        # reimplement
+    def __init__(self, radius, mean_time):
+        # TODO: have disabled tol cutoff for now because it was inconsistent with the KDE framework.
+        # Add support for this? But only worth doing with a proper filtering mechanism (e.g. see below)
+        kde_kwargs = {'bandwidths': (float(mean_time), float(radius))}
+        super(STLinearSpaceExponentialTime, self).__init__(**kde_kwargs)
 
-        self.radius = float(radius)
-        self.mean_time = float(mean_time)
-        self.tol = tol
-        self.kde = None
-        self.reset_kde()
-        # cutoff time
-        # self.dt_max = -mean_time * (np.log(mean_time) + np.log(tol))
-        super(STLinearSpaceExponentialTime, self).__init__()
+    # TODO: consider whether this kind of approach might help us in the fixed bandwidth KDE situation more generally
+    # I have disabled it for now because it essentially repeats all the same calls as KDE.
 
     # def get_linkages(self, target_data):
     #     def linkage_fun(dt, dd):
@@ -117,17 +113,6 @@ class STLinearSpaceExponentialTime(STKernelBase):
     #
     #     link_i, link_j = linkages(self.data, linkage_fun, data_target=target_data)
     #     return link_i, link_j
-
-    def reset_kde(self):
-        self.kde = FixedBandwidthLinearSpaceExponentialTimeKde(self.data, bandwidths=(self.mean_time, self.radius))
-
-    def predict(self, time, space_array):
-        data_array = self.prediction_array(time, space_array)
-        return self.kde.pdf(data_array)
-
-    # TODO: consider whether this kind of approach might help us in the fixed bandwidth KDE situation more generally
-    # I have disabled it for now because it essentially repeats all the same calls as KDE.
-
 
     # def predict(self, time, space_array):
     #     data_array = self.prediction_array(time, space_array)
@@ -153,7 +138,7 @@ class STLinearSpaceExponentialTime(STKernelBase):
     #     return res
 
 
-class STKernelBowers(STKernelBase):
+class STKernelBowers(STBase):
     data_class = CartesianSpaceTimeData
 
     def __init__(self, a, b, min_frac=1e-6):
@@ -204,7 +189,7 @@ class STKernelBowers(STKernelBase):
         return res
 
 
-class SKernelBase(STKernelBase):
+class SKernelBase(STBase):
     """
     Spatial kernel.  Aggregates data over time, with the time window defined in the input parameter dt.
     This is the base class, from which different KDE variants inherit.
@@ -266,7 +251,7 @@ class SNetworkKernelBase(SKernelBase):
         pass
 
 
-class STNetworkKernelBase(STKernelBase):
+class STNetworkKernelBase(STBase):
     data_class = NetworkSpaceTimeData
     space_class = NetworkData
 

@@ -42,8 +42,7 @@ def load_boundary_file():
     ## TODO: doesn't support different projections at present
     fin = consts.BOUNDARY_SHAPEFILE
     with fiona.open(fin, 'r') as s:
-        rec = s[0]['geometry']  # geojson format
-    return geometry.shape(rec[0]['geometry'])
+        return geometry.shape(s[0]['geometry'])  # geojson object
 
 
 class BirminghamCrimeFileLoader(DataLoaderFile):

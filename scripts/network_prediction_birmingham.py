@@ -7,14 +7,17 @@ from validation import validation, hotspot
 import datetime
 from time import time
 import sys
+import logging
 from scripts import OUT_DIR
 import os
 
 
 START_DATE = datetime.date(2013, 7, 1)
 START_DAY_NUMBER = 240
-D_BANDWIDTH = 820.
-T_BANDWIDTH = 78.
+D_BANDWIDTH_NETWORK = 820.
+T_BANDWIDTH_NETWORK = 78.
+D_BANDWIDTH_PLANAR = 610.
+T_BANDWIDTH_PLANAR = 55.
 NUM_VALIDATION = 180
 BETWEEN_SAMPLE_POINTS = 30
 GRID_LENGTH = 150
@@ -44,7 +47,7 @@ def snap_data(data, cid):
 
 
 def run_network_validation(data):
-    sk = hotspot.STNetworkLinearSpaceExponentialTime(radius=D_BANDWIDTH, time_decay=T_BANDWIDTH)
+    sk = hotspot.STNetworkLinearSpaceExponentialTime(radius=D_BANDWIDTH_NETWORK, time_decay=T_BANDWIDTH_NETWORK)
     vb = validation.NetworkValidationMean(data, sk, spatial_domain=None, include_predictions=True)
     vb.set_t_cutoff(START_DAY_NUMBER)
     vb.set_sample_units(None, BETWEEN_SAMPLE_POINTS)  # 2nd argument refers to interval between sample points
@@ -58,7 +61,7 @@ def run_network_validation(data):
 
 def run_planar_validation_compare_by_grid(data):
     poly = load_boundary_file()
-    sk_planar = hotspot.STLinearSpaceExponentialTime(radius=D_BANDWIDTH, mean_time=T_BANDWIDTH)
+    sk_planar = hotspot.STLinearSpaceExponentialTime(radius=D_BANDWIDTH_PLANAR, mean_time=T_BANDWIDTH_PLANAR)
     vb_planar = validation.ValidationIntegration(data, sk_planar, spatial_domain=poly, include_predictions=True)
     vb_planar.set_t_cutoff(START_DAY_NUMBER)
     vb_planar.set_sample_units(GRID_LENGTH, N_SAMPLES_PER_GRID)
@@ -70,9 +73,15 @@ def run_planar_validation_compare_by_grid(data):
     return vb_res
 
 
-def run_planar_validation_compare_by_grid_network_intersection(data, net):
+def run_planar_validation_compare_by_grid_network_intersection(data, net, debug=False):
+    if debug:
+        # set logger to verbose output
+        sh = logging.StreamHandler()
+        validation.roc.logger.handlers = [sh]
+        validation.roc.logger.setLevel(logging.DEBUG)
+        validation.roc.logger.debug("Initiated debugging logger for ROC")
     poly = load_boundary_file()
-    sk_planar = hotspot.STLinearSpaceExponentialTime(radius=D_BANDWIDTH, mean_time=T_BANDWIDTH)
+    sk_planar = hotspot.STLinearSpaceExponentialTime(radius=D_BANDWIDTH_PLANAR, mean_time=T_BANDWIDTH_PLANAR)
     vb = validation.ValidationIntegrationByNetworkSegment(
         data, sk_planar, spatial_domain=poly, graph=net, include_predictions=True
     )
@@ -97,13 +106,15 @@ if __name__ == '__main__':
     with open(os.path.join(OUT_DIR, 'birmingham', 'network_validation_results.dill'), 'w') as f:
         dill.dump(res['network'], f)
 
-    res['planar_grid_comparison'] = run_planar_validation_compare_by_grid(data)
-    with open(os.path.join(OUT_DIR, 'birmingham', 'planar_grid_validation_results.dill'), 'w') as f:
-        dill.dump(res['planar_grid_comparison'], f)
+    # res['planar_grid_comparison'] = run_planar_validation_compare_by_grid(data)
+    # with open(os.path.join(OUT_DIR, 'birmingham', 'planar_grid_validation_results.dill'), 'w') as f:
+    #     dill.dump(res['planar_grid_comparison'], f)
 
-    res['planar_net_comparison'] = run_planar_validation_compare_by_grid_network_intersection(data, data_snap.graph)
-    with open(os.path.join(OUT_DIR, 'birmingham', 'planar_net_validation_results.dill'), 'w') as f:
-        dill.dump(res['planar_net_comparison'], f)
+    # res['planar_net_comparison'] = run_planar_validation_compare_by_grid_network_intersection(data,
+    #                                                                                           data_snap.graph,
+    #                                                                                           debug=True)
+    # with open(os.path.join(OUT_DIR, 'birmingham', 'planar_net_validation_results.dill'), 'w') as f:
+    #     dill.dump(res['planar_net_comparison'], f)
 
-    with open(os.path.join(OUT_DIR, 'birmingham', 'planar_vs_net.dill'), 'w') as f:
-        dill.dump(res, f)
+    # with open(os.path.join(OUT_DIR, 'birmingham', 'planar_vs_net.dill'), 'w') as f:
+    #     dill.dump(res, f)

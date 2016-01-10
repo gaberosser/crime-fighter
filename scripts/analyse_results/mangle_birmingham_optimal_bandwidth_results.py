@@ -3,74 +3,88 @@ import dill
 import numpy as np
 import os
 from matplotlib import pyplot as plt
+from kde import optimisation
+from scripts.optimal_bandwidth_birmingham_network import PARAM_EXTENT as NETWORK_PARAM, N_PT as NETWORK_NPT
+from scripts.optimal_bandwidth_birmingham_planar import PARAM_EXTENT as PLANAR_PARAM, N_PT as PLANAR_NPT
 
+RESULTS_DIR = '/home/gabriel/Dropbox/research/results/bandwidth_optimisation/birmingham/start_date_2013_07_01/'
+NETWORK_DATA_DIR = os.path.join(RESULTS_DIR, 'network_linear_space_exponential_time')
+NETWORK_FILE_LIST = (
+    'birmingham_optimisation_start_day_180_10_iterations.dill',
+    'birmingham_optimisation_start_day_190_10_iterations.dill',
+    'birmingham_optimisation_start_day_200_10_iterations.dill',
+    'birmingham_optimisation_start_day_210_10_iterations.dill',
+    'birmingham_optimisation_start_day_220_10_iterations.dill',
+    'birmingham_optimisation_start_day_230_10_iterations.dill',
+)
 
-def load_all_chunks():
-    start_days = range(180, 240, 10)
+PLANAR_DATA_DIR = os.path.join(RESULTS_DIR, 'planar_linear_space_exponential_time')
+PLANAR_FILE_LIST = (
+    'planar_linearexponentialkde_start_day_180_10_iterations.dill',
+    'planar_linearexponentialkde_start_day_190_10_iterations.dill',
+    'planar_linearexponentialkde_start_day_200_10_iterations.dill',
+    'planar_linearexponentialkde_start_day_210_10_iterations.dill',
+    'planar_linearexponentialkde_start_day_220_10_iterations.dill',
+    'planar_linearexponentialkde_start_day_230_10_iterations.dill',
+)
+
+def load_all_chunks_network():
     n_per_file = 10
-    data_dir = '/home/gabriel/Dropbox/research/results/bandwidth_optimisation/birmingham/start_date_2013_07_01/'
-
     z = []
-
-    for i in start_days:
-        filename = 'birmingham_optimisation_start_day_%d_10_iterations.dill' % i
-        fullfile = os.path.join(data_dir, filename)
+    for fn in NETWORK_FILE_LIST:
+        fullfile = os.path.join(NETWORK_DATA_DIR, fn)
         with open(fullfile, 'r') as f:
             x = dill.load(f)
+
         for j in range(n_per_file):
             z.append(np.array(x[j]))
 
-    return z
+    opt = optimisation.NetworkFixedBandwidth(None)
+    opt.set_parameter_grid(NETWORK_NPT, *NETWORK_PARAM)
+    bandwidths = np.array(list(opt.args_kwargs_generator()))
+    t_grid = bandwidths[:, 0].reshape((NETWORK_NPT, NETWORK_NPT))
+    d_grid = bandwidths[:, 1].reshape((NETWORK_NPT, NETWORK_NPT))
+    return z, d_grid, t_grid
 
 
-def log_likelihood_hist(raw_values):
-    """
-    :param raw_values: From load_all_chunks
-    :return:
-    """
-    non_z = []
-    for x in raw_values:
-        non_z.extend(x[x != 0.])
-    plt.hist(np.log(non_z), 50)
-    plt.xlabel('Single crime log likelihood')
-    plt.ylabel('Count')
+def load_all_chunks_planar():
+    n_per_file = 10
+    z = []
+    t_grid = d_grid = None
+    for fn in PLANAR_FILE_LIST:
+        fullfile = os.path.join(PLANAR_DATA_DIR, fn)
+        with open(fullfile, 'r') as f:
+            x = dill.load(f)
+        t_grid = x['tt']
+        d_grid = x['dd']
+        ll = x['ll']
+        for j in range(n_per_file):
+            z.append(np.array(ll[j]))
+    return z, d_grid, t_grid
 
 
-def combine_chunks(min_ll=np.log(1e-12)):
+def combine_chunks(
+        raw_values,
+        shape=(100, 100),
+        min_ll=np.log(1e-12)):
     """
      The original run was carried our in chunks of 10 to speed things up. Now we need to stitch them back together.
-     In addition, the output is a flat list of len 10000, which represents the value at EVERY TARGET each day. We
-     need to log and sum those, then reshape.
+     The output is a flat list of len 10000, which represents the value at EVERY TARGET each day. We
+     need to log and sum those, then reshape. In later runs, the output is a dict that includes the parameter grid.
     """
-
-    # minimum ll: to avoid -inf when the value is zero, we set this minimum before summing lls
-    start_days = range(180, 240, 10)
-    n_per_file = 10
-    data_dir = '/home/gabriel/Dropbox/research/results/bandwidth_optimisation/birmingham/start_date_2013_07_01/'
-
-    # get param grid
-    from scripts.optimal_bandwidth_birmingham import PARAM_EXTENT, N_PT, optimisation
-    opt = optimisation.NetworkFixedBandwidth(None)
-    opt.set_parameter_grid(N_PT, *PARAM_EXTENT)
-    bandwidths = np.array(list(opt.args_kwargs_generator()))
-    tt = bandwidths[:, 0].reshape((N_PT, N_PT))
-    dd = bandwidths[:, 1].reshape((N_PT, N_PT))
-
-    raw_values = load_all_chunks()
-
     ll = []
 
     for x in raw_values:
         this_ll = np.log(x)
         this_ll[this_ll < min_ll] = min_ll
         # reshape default order should be correct, as 'flat' was used originally
-        this_ll = this_ll.sum(axis=1).reshape((100, 100))
+        this_ll = this_ll.sum(axis=1).reshape(shape)
         ll.append(this_ll)
 
     with open('start_date_2013_07_01_60_days.dill', 'w') as f:
         dill.dump(ll, f)
 
-    return ll, dd, tt
+    return ll
 
 
 def sum_surface_plot(ll, tt, dd, fmin=0.5, cmap='Reds'):
@@ -99,3 +113,16 @@ def sum_surface_plot(ll, tt, dd, fmin=0.5, cmap='Reds'):
     dopt = dd[i, j]
     plt.plot([topt, topt], [0, dopt], 'k--')
     plt.plot([0, topt], [dopt, dopt], 'k--')
+
+
+def log_likelihood_hist(raw_values):
+    """
+    :param raw_values: From load_all_chunks
+    :return:
+    """
+    non_z = []
+    for x in raw_values:
+        non_z.extend(x[x != 0.])
+    plt.hist(np.log(non_z), 50)
+    plt.xlabel('Single crime log likelihood')
+    plt.ylabel('Count')
