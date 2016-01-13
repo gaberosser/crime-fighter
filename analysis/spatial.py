@@ -7,6 +7,8 @@ from data.models import CartesianData
 from tools import pairwise_differences_indices
 from functools import partial
 import csv
+from scipy import sparse
+
 
 try:
     from django.contrib.gis import geos
@@ -300,3 +302,25 @@ def shapely_polygon_to_osm_poly(poly, name, srid=None):
 
     with open("%s.poly" % name, 'w') as f:
         f.writelines([t + "\n" for t in poly_arr])
+
+
+def network_spatial_linkages(netdata,
+                             max_d,
+                             data_target=None,
+                             parallel=True):
+    """
+    Analagous operation to spatial_linkages. Compute the pairwise distance between all points in netdata.
+    Use initial Euclidean distance filtering to reduce to dmax and speed things up.
+    :param netdata:
+    :param max_d:
+    :param data_target:
+    :param parallel: If true, run things in parallel (duh!)
+    :return:
+    """
+    cartdata = netdata.to_cartesian()
+    ii, jj, dd = spatial_linkages(cartdata, max_d)
+    n = netdata.ndata
+    pdist = sparse.lil_matrix((n, n))
+    for i, j in zip(ii, jj):
+        pdist[i, j] = netdata[i, 0].distance(netdata[j, 0])
+    return pdist.tocsr()
