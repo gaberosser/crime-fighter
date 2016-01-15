@@ -49,6 +49,7 @@ class SpatialRoc(object):
         self.sample_units = None
         self.sample_points = None
         self.n_sample_point_per_unit = None
+        self.sample_unit_sizes = None
         self.prediction_values = None
         self._data = None
         self.index = None
@@ -106,14 +107,15 @@ class SpatialRoc(object):
         """
         raise NotImplementedError()
 
-    @property
-    def sample_unit_size(self):
-        """ Return the size of each sample unit, e.g. length or area. """
-        raise NotImplementedError()
+    # @property
+    # def sample_unit_size(self):
+    #     """ Return the size of each sample unit, e.g. length or area. """
+    #     raise NotImplementedError()
 
     def set_sample_units(self, *args, **kwargs):
         '''
-        Set the following attributes: sample units, centroids, sample_points, n_sample_points_per_unit
+        Set the following attributes: sample units, centroids, sample_points, n_sample_points_per_unit,
+        sample_unit_sizes
         :param args: Passed to set_sample_points
         :param kwargs: Passed to set_sample_points
         :return: None
@@ -128,6 +130,7 @@ class SpatialRoc(object):
         self.sample_units = copy(roc.sample_units)
         self.sample_points = copy(roc.sample_points)
         self.n_sample_point_per_unit = copy(roc.n_sample_point_per_unit)
+        self.sample_unit_sizes = copy(roc.sample_unit_sizes)
 
     def set_sample_points(self, *args, **kwargs):
         """ Set the sampling locations within each sample unit """
@@ -146,7 +149,11 @@ class SpatialRoc(object):
         self.prediction_values = []
         tally = 0
         for n in self.n_sample_point_per_unit:
-            self.prediction_values.append(np.mean(prediction[tally:tally + n]))
+            val = np.mean(prediction[tally:tally + n])
+            # TODO: do we wish to multiply by the sample unit size?
+            # If so, we are prioritising the VOLUME of crime
+            # If not, we are prioritising the DENSITY of crime
+            self.prediction_values.append(val)
             tally += n
         self.prediction_values = np.array(self.prediction_values)
 
@@ -194,7 +201,7 @@ class SpatialRoc(object):
         true_counts_sorted = np.sort(self.true_count)[::-1]
         # disabling due to memory consumption
         # pred_values = self.prediction_values[self.prediction_rank]
-        sample_unit_sizes = self.sample_unit_size[self.prediction_rank]
+        sample_unit_sizes = self.sample_unit_sizes[self.prediction_rank]
         total_sample_unit = sum(sample_unit_sizes)
 
         N = sum(true_counts)
@@ -310,17 +317,22 @@ class RocGrid(SpatialRoc):
         self.side_length = side_length
         self.grid_polys, self.sample_units, self.full_grid_square = create_spatial_grid(self.poly, self.side_length)
         self.set_centroids()
+        self.set_sample_unit_sizes()
         self.set_sample_points(*args, **kwargs)
 
-    @property
-    def sample_unit_size(self):
-        return np.array([t.area for t in self.grid_polys])
+    # @property
+    # def sample_unit_size(self):
+    #     return np.array([t.area for t in self.grid_polys])
+
+    def set_sample_unit_sizes(self):
+        self.sample_unit_sizes = np.array([t.area for t in self.grid_polys])
 
     def copy_sample_units(self, roc):
         super(RocGrid, self).copy_sample_units(roc)
         self.side_length = roc.side_length
         self.grid_polys = copy(roc.grid_polys)
         self.full_grid_square = copy(roc.full_grid_square)
+        self.sample_unit_sizes = copy(roc.sample_unit_sizes)
 
     def set_sample_points(self, *args, **kwargs):
         # sample points here are just the centroids
@@ -468,7 +480,7 @@ class RocGridTimeWeighted(RocGrid):
         true_counts = self.true_count[self.prediction_rank]
         true_counts_sorted = np.sort(self.true_count)[::-1]
         pred_values = self.prediction_values[self.prediction_rank]
-        area = self.sample_unit_size[self.prediction_rank]
+        area = self.sample_unit_sizes[self.prediction_rank]
         total_area = sum(area)
 
         carea = np.cumsum(area) / total_area
@@ -551,7 +563,6 @@ class NetworkRocSegments(SpatialRoc):
             # plot standard network edge outlines without colour
             self.graph.plot_network()
 
-
         if show_sample_units:
             # TODO: this might not be the best way, but going to illustrate sampling with crosses
             plt.plot(self.sample_points.to_cartesian().toarray(0),
@@ -570,10 +581,14 @@ class NetworkRocSegments(SpatialRoc):
         # TODO: add this method to the StreetNet class?
         raise NotImplementedError()
 
-    @property
-    def sample_unit_size(self):
+    # @property
+    # def sample_unit_size(self):
+    #     """ Return the size of each sample unit, e.g. length or area. """
+    #     return np.array([t['length'] for t in self.sample_units])
+
+    def set_sample_unit_sizes(self):
         """ Return the size of each sample unit, e.g. length or area. """
-        return np.array([t['length'] for t in self.sample_units])
+        self.sample_unit_sizes = np.array([t['length'] for t in self.sample_units])
 
     # segment-specific
     def set_sample_units(self, length_or_arr, *args, **kwargs):
@@ -589,6 +604,7 @@ class NetworkRocSegments(SpatialRoc):
 
         self.sample_units = self.graph.edges()
         self.centroids = self.data_class([t.centroid for t in self.sample_units])  # array
+        self.set_sample_unit_sizes()
         self.set_sample_points(*args, **kwargs)
 
     def copy_sample_units(self, roc):
@@ -597,6 +613,7 @@ class NetworkRocSegments(SpatialRoc):
         self.sample_units = copy(roc.sample_units)
         self.sample_points = copy(roc.sample_points)
         self.n_sample_point_per_unit = copy(roc.n_sample_point_per_unit)
+        self.sample_unit_sizes = copy(roc.sample_unit_sizes)
 
     def set_sample_points(self, *args, **kwargs):
         # sample points here are just the centroids
@@ -634,6 +651,13 @@ class RocGridByNetworkLengthMean(RocGridMean):
         self.full_grid_square = None
         self.side_length = None
 
+    def set_sample_unit_sizes(self):
+        """
+        Can't set the sample unit sizes in this case because they rely on the output of
+        self.set_network_grid_intersection_lengths(), which hasn't been run yet.
+        """
+        pass
+
     def set_sample_units(self, side_length, *args, **kwargs):
         """
         Set the ROC grid.
@@ -647,6 +671,9 @@ class RocGridByNetworkLengthMean(RocGridMean):
 
         # compute intersection with net
         self.set_network_grid_intersection_lengths()
+
+        # overwrite sample unit sizes
+        self.sample_unit_sizes = self.network_length_in_grid
 
     def set_network_grid_intersection_lengths(self):
         logger.debug("set_network_grid_intersection_lengths called")
@@ -668,10 +695,6 @@ class RocGridByNetworkLengthMean(RocGridMean):
             self.network_length_in_grid.append(length_tally)
         logger.debug("Complete in %f s", time() - tic)
         self.network_length_in_grid = np.array(self.network_length_in_grid)
-
-    @property
-    def sample_unit_size(self):
-        return self.network_length_in_grid
 
 
 class NetworkRocSegmentsMean(NetworkRocSegments):
@@ -708,7 +731,9 @@ class NetworkRocSegmentsMean(NetworkRocSegments):
 
 class NetworkRocUniformSamplingGrid(NetworkRocSegments):
     """
+    Essentially the reverse of NetworkRocSegments
     Place sample points uniformly over the network, then divide into sample units by imposing a regular grid
+    The size of each sample unit is given by the AREA
     """
     @staticmethod
     def generate_bounding_poly(data):
@@ -736,6 +761,7 @@ class NetworkRocUniformSamplingGrid(NetworkRocSegments):
 
         # set network sampling points
         self.set_sample_points(interval, *args, **kwargs)
+        self.sample_unit_sizes = np.array([t.area for t in self.grid_polys])
 
     def set_sample_points(self, interval, *args, **kwargs):
         # get sample points
