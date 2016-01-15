@@ -128,15 +128,23 @@ if __name__ == "__main__":
     trigger_kde_kwargs = {'bandwidths': [10, 40, 40]}
     bg_kde_kwargs = {'strict': False}
 
-    sepp = pp_models.SeppStochasticNnBgFixedTrigger(data=data,
-                                                    max_delta_t=max_t,
-                                                    max_delta_d=max_d,
-                                                    seed=seed,
-                                                    estimation_function=est_fun,
-                                                    trigger_kde_kwargs=trigger_kde_kwargs,
-                                                    bg_kde_kwargs=bg_kde_kwargs)
+    # sepp = pp_models.SeppStochasticNnBgFixedTrigger(data=data,
+    #                                                 max_delta_t=max_t,
+    #                                                 max_delta_d=max_d,
+    #                                                 seed=seed,
+    #                                                 estimation_function=est_fun,
+    #                                                 trigger_kde_kwargs=trigger_kde_kwargs,
+    #                                                 bg_kde_kwargs=bg_kde_kwargs)
 
-    # sepp = pp_models.SeppStochasticNn(data=data,
+    sepp = pp_models.SeppStochasticNn(data=data,
+                                      max_delta_t=max_t,
+                                      max_delta_d=max_d,
+                                      seed=seed,
+                                      estimation_function=est_fun,
+                                      trigger_kde_kwargs=trigger_kde_kwargs,
+                                      bg_kde_kwargs=bg_kde_kwargs)
+
+    # sepp = pp_models.SeppStochasticNnIsotropicReflectedTrigger(data=data,
     #                                   max_delta_t=max_t,
     #                                   max_delta_d=max_d,
     #                                   seed=seed,

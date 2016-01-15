@@ -6,7 +6,8 @@ import multiprocessing as mp
 import datetime
 from functools import partial
 import contextlib
-
+import logging
+from time import time
 
 def _log_likelihood_fixed_wrapper(args):
     return _compute_log_likelihood_fixed(*args)
@@ -206,8 +207,33 @@ class ForwardChainingValidationBase(object):
         self.data_index = self.roller.data_index
         self.grid = None
         self.res_arr = None
-        self.parallel = parallel
+        self.parallel = False
+        self.ncpu = None
+        if parallel:
+            self.parallel = True
+            if isinstance(parallel, bool):
+                self.ncpu = mp.cpu_count()
+            elif isinstance(parallel, int):
+                self.ncpu = parallel
         self.nparam = None
+        self.logger = None
+
+    def set_logger(self, logger=None, verbose=True):
+        if logger is None:
+            if self.logger:
+                self.logger = logging.getLogger(__name__)
+                self.logger.handlers = []
+            else:
+                self.logger = logging.getLogger(__name__)
+                self.logger.handlers = []
+                if verbose:
+                    self.logger.setLevel(logging.DEBUG)
+                    ch = logging.StreamHandler()
+                    ch.setLevel(logging.INFO)
+                    self.logger.addHandler(ch)
+        else:
+            self.logger = logger
+
 
     def set_parameter_grid(self, npt=10, *args):
         """
@@ -253,19 +279,35 @@ class ForwardChainingValidationBase(object):
 
     def run(self, niter=None):
         self.initial_setup()
-        for obj in self.roller.iterator(niter=niter):
-            self.res_arr.append(self.run_one_timestep(obj.training, obj.testing))
+        count = 0
+        try:
+            for obj in self.roller.iterator(niter=niter):
+                count += 1
+                self.logger.info("Iteration %d", count)
+                tic = time()
+                self.res_arr.append(self.run_one_timestep(obj.training, obj.testing))
+                self.logger.info("Completed in %f s", time() - tic)
+        except KeyboardInterrupt:
+            # stop wherever we got to
+            count -= 1
+            self.logger.info("Interrupted. Quitting gracefully.")
+        self.logger.info("Stopping after %d iterations", count)
 
 
 def kde_wrapper(training, testing, kde_class, args_kwargs):
-    k = kde_class(training, *args_kwargs[0], **args_kwargs[1])
-    z = k.pdf(testing)
-    return np.sum(np.log(z))
+    the_kde = kde_class(training, *args_kwargs[0], **args_kwargs[1])
+    # return the full array
+    z = the_kde.pdf(testing)
+    return z
 
 
 class PlanarFixedBandwidth(ForwardChainingValidationBase):
 
     ll_func = kde_wrapper
+
+    def __init__(self, data, kde_class=models.FixedBandwidthKde, *args, **kwargs):
+        super(PlanarFixedBandwidth, self).__init__(data, *args, **kwargs)
+        self.kde_class = kde_class
 
     def args_kwargs_generator(self, *args, **kwargs):
         """
@@ -279,14 +321,17 @@ class PlanarFixedBandwidth(ForwardChainingValidationBase):
 
     def run_one_timestep(self, training, testing, *args, **kwargs):
         shape = self.grid.shape[1:]
-        the_func = partial(kde_wrapper, training, testing, models.FixedBandwidthKde)
+        the_func = partial(kde_wrapper, training, testing, self.kde_class)
         param_gen = self.args_kwargs_generator()
         if self.parallel:
-            with contextlib.closing(mp.Pool()) as pool:
-                z = np.array(pool.map(the_func, param_gen))
+            with contextlib.closing(mp.Pool(processes=self.ncpu)) as pool:
+                # z = np.array(pool.map(the_func, param_gen))
+                z = pool.map(the_func, param_gen)
         else:
-            z = np.array(map(the_func, param_gen))
-        return z.reshape(shape)
+            # z = np.array(map(the_func, param_gen))
+            z = map(the_func, param_gen)
+        # return z.reshape(shape)
+        return z
 
 
 class PlanarFixedBandwidthSpatialSymm(PlanarFixedBandwidth):
@@ -310,21 +355,84 @@ class PlanarFixedBandwidthSpatialSymm(PlanarFixedBandwidth):
             yield ((), {'bandwidths': x, 'parallel': False})
 
 
+def kde_persistent_wrapper(kde_obj, bandwidths):
+    """
+    Wrapper to call KDE for use when persistence is required (i.e. in the case of a netKDE).
+    This means the KDE object is NOT reinstantiated each time. Instead the bandwidths are changed in place.
+    Training and testing data are therefore not needed, because they remain in the KDE object between calls.
+    :param kde_obj: The persistent object
+    :param bandwidths: The new bandwidths for reassignment
+    :return:
+    """
+    MIN_LOG = -50
+    kde_obj.set_bandwidths_and_cutoffs(bandwidths)
+    z = kde_obj.pdf()  # no target data as it is already present
+    logz = np.log(z)
+    # replace zeroes with an arbitrary minimum
+    logz[logz < MIN_LOG] = MIN_LOG
+    return np.sum(logz)
+
+
 class NetworkFixedBandwidth(ForwardChainingValidationBase):
 
-    ll_func = kde_wrapper
+    ll_func = kde_persistent_wrapper
     MAX_N_PARAM = 2
     MIN_N_PARAM = 2
+    kde_class = netmodels.NetworkTemporalKde
 
+    def __init__(self, *args, **kwargs):
+        super(NetworkFixedBandwidth, self).__init__(*args, **kwargs)
+        ## TODO: parallelising would help but it needs to work differently
+        # instead of doing parallel loop over parameters, we need parallel loop over successive days.
+        # Disabling for now.
+        self.parallel = False
+        self.kde = None
+
+    def args_kwargs_generator(self, *args, **kwargs):
+        """
+        Prepare the *args and **kwargs that will be passed to the method along with training and testing data.
+        :return: generator of tuples (args (iterable), kwargs (dict)), one per parameter combination
+        """
+        ndim = self.grid.ndim - 1
+        data_getter = ([self.grid[i].flat[j] for i in range(ndim)] for j in range(self.nparam))
+        for x in data_getter:
+            yield x
+
+    def run_one_timestep(self, training, testing, *args, **kwargs):
+        shape = self.grid.shape[1:]
+        max_bandwidths = []
+        for i in range(self.grid.shape[0]):
+            max_bandwidths.append(np.max(self.grid[i, :]))
+        the_kde = self.kde_class(training, max_bandwidths, targets=testing, verbose=False)
+        # precompute network paths by calling pdf now.
+        # this will ensure they are computed with a maximum cutoff value, so that all other bandwidths will result in
+        # the original paths being used.
+        # it will be fast to recompute this when we actually need to in the loop below.
+        the_kde.pdf()
+        # the_func = partial(kde_persistent_wrapper, the_kde)
+        param_gen = self.args_kwargs_generator()
+        # if self.parallel:
+        #     with contextlib.closing(mp.Pool()) as pool:
+        #         z = np.array(pool.map(the_func, param_gen))
+        # else:
+        full_results = []
+        for bd in param_gen:
+            the_kde.set_bandwidths_and_cutoffs(bd)
+            full_results.append(the_kde.pdf())
+        return full_results
+        # z = np.array(map(the_func, param_gen))
+        # return z.reshape(shape)
 
 
 if __name__ == '__main__':
-    # load some Chicago data for testing purposes
+    # load some Chicago South data for testing purposes
 
     from analysis import chicago
-    num_validation = 100  # number of predict - assess cycles
+    npt = 10  # number of points PER DIM to use when optimising bandwidths
+    num_validation = 20  # number of prediction time windows
+    param_extent = (1., 60., 50., 2000.)
     start_date = datetime.datetime(2011, 3, 1)  # first date for which data are required
-    start_day_number = 366  # number of days (after start date) on which first prediction is made
+    start_day_number = 50  # number of days (after start date) on which first prediction is made
     end_date = start_date + datetime.timedelta(days=start_day_number + num_validation)
 
     all_domains = chicago.get_chicago_side_polys(as_shapely=True)
@@ -332,3 +440,35 @@ if __name__ == '__main__':
                                                end_date=end_date,
                                                crime_type='burglary',
                                                domain=all_domains['South'])
+
+    # load Chicago South network
+    from database.chicago.loader import load_network
+    from data.models import NetworkSpaceTimeData
+    net = load_network('s')
+
+    # snap crimes to network to obtain array
+    snapped_data, snap_fail_idx = NetworkSpaceTimeData.from_cartesian(net, data=data, return_failure_idx=True)
+
+    opt = NetworkFixedBandwidth(snapped_data, parallel=False, initial_cutoff=start_day_number)
+    opt.set_logger(verbose=True)
+    opt.set_parameter_grid(npt, *param_extent)
+    opt.run(niter=num_validation)
+
+    # debugging code
+
+    # roller_one = opt.roller.iterator(1).next()
+    # training = roller_one.training
+    # testing = roller_one.testing
+    # res_arr = opt.run_one_timestep(training=training, testing=testing)
+
+    # compute one timestep manually so the KDE is available for testing
+    # max_bandwidths = []
+    # for i in range(opt.grid.shape[0]):
+    #     max_bandwidths.append(np.max(opt.grid[i, :]))
+    # the_kde = opt.kde_class(training, max_bandwidths, targets=testing, verbose=False)
+    # the_kde.pdf()
+    # param_gen = opt.args_kwargs_generator()
+    # full_results = []
+    # for bd in param_gen:
+    #     the_kde.set_bandwidths_and_cutoffs(bd)
+    #     full_results.append(the_kde.pdf())

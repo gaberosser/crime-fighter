@@ -3,7 +3,7 @@ import numpy as np
 from scipy.stats import gaussian_kde
 from scipy import sparse
 from kde.kernels import LinearKernel1D
-from kde.models import FixedBandwidthKdeScott, VariableBandwidthNnKde
+from kde.models import FixedBandwidthKdeScott, VariableBandwidthNnKde, FixedBandwidthLinearSpaceExponentialTimeKde
 from kde.netmodels import NetworkTemporalKde
 from data.models import DataArray, CartesianSpaceTimeData, SpaceTimeDataArray, NetworkData, NetworkSpaceTimeData, \
     CartesianData
@@ -36,13 +36,16 @@ def generate_st_prediction_dataarray(time, space_arr, dtype=SpaceTimeDataArray):
     return res
 
 
-class STKernelBase(object):
+class STBase(object):
 
     data_class = SpaceTimeDataArray
     space_class = CartesianData
 
     def __init__(self):
         self.data = None
+
+    def set_data(self, data):
+        self.data = self.data_class(data)
 
     @property
     def ndata(self):
@@ -51,9 +54,10 @@ class STKernelBase(object):
         return self.data.ndata
 
     def train(self, data):
-        self.data = self.data_class(data)
+        self.set_data(data)
 
     def prediction_array(self, time, space_array):
+        # combine time with space dimension
         space_array = self.space_class(space_array, copy=False)
         t = DataArray(time * np.ones(space_array.ndata))
         if space_array.original_shape is not None:
@@ -64,80 +68,77 @@ class STKernelBase(object):
         raise NotImplementedError()
 
 
-class STGaussianNn(STKernelBase):
-    data_class = CartesianSpaceTimeData
-    kde_class = VariableBandwidthNnKde
+class STKDEBase(STBase):
+    kde_class = None
 
     def __init__(self, **kde_kwargs):
-        super(STGaussianNn, self).__init__()
+        super(STKDEBase, self).__init__()
         self.kde = None
         self.kde_kwargs = kde_kwargs
-
-    def set_data(self, data):
-        self.data = self.data_class(data)
 
     def set_kde(self):
         self.kde = self.kde_class(self.data, **self.kde_kwargs)
 
     def train(self, data):
-        self.set_data(data)
+        super(STKDEBase, self).train(data)
         self.set_kde()
 
     def predict(self, time, space_array):
-        # combine time with space dimension
-        space_array = DataArray(space_array, copy=False)
-        time_array = DataArray(np.ones(space_array.ndata) * time)
-        target_data = time_array.adddim(space_array, type=self.data_class)
+        target_data = self.prediction_array(time, space_array)
         return self.kde.pdf(target_data)
 
 
-class STLinearSpaceExponentialTime(STKernelBase):
+class STGaussianNn(STBase):
+    data_class = CartesianSpaceTimeData
+    kde_class = VariableBandwidthNnKde
+
+
+class STLinearSpaceExponentialTime(STKDEBase):
 
     data_class = CartesianSpaceTimeData
+    kde_class = FixedBandwidthLinearSpaceExponentialTimeKde
 
-    def __init__(self, radius, mean_time, tol=1e-3):
-        """
-        tol is the value below which links are cut (only applies to time dimension here as linear kernel cuts anyway
-        """
-        self.radius = float(radius)
-        self.mean_time = float(mean_time)
-        self.tol = tol
-        # cutoff time
-        self.dt_max = -mean_time * (np.log(mean_time) + np.log(tol))
-        super(STLinearSpaceExponentialTime, self).__init__()
+    def __init__(self, radius, mean_time):
+        # TODO: have disabled tol cutoff for now because it was inconsistent with the KDE framework.
+        # Add support for this? But only worth doing with a proper filtering mechanism (e.g. see below)
+        kde_kwargs = {'bandwidths': (float(mean_time), float(radius))}
+        super(STLinearSpaceExponentialTime, self).__init__(**kde_kwargs)
 
-    def get_linkages(self, target_data):
-        def linkage_fun(dt, dd):
-            return (dd <= self.radius) & (dt <= self.dt_max)
+    # TODO: consider whether this kind of approach might help us in the fixed bandwidth KDE situation more generally
+    # I have disabled it for now because it essentially repeats all the same calls as KDE.
 
-        link_i, link_j = linkages(self.data, linkage_fun, data_target=target_data)
-        return link_i, link_j
+    # def get_linkages(self, target_data):
+    #     def linkage_fun(dt, dd):
+    #         return dd <= self.radius
+    #
+    #     link_i, link_j = linkages(self.data, linkage_fun, data_target=target_data)
+    #     return link_i, link_j
 
-    def predict(self, time, space_array):
-        data_array = self.prediction_array(time, space_array)
-        link_i, link_j = self.get_linkages(data_array)
-        if not len(link_i):
-            return np.zeros(space_array.ndata)
-        dt = (data_array.time.getrows(link_j) - self.data.time.getrows(link_i))
-        dt = dt.toarray()
-        dd = data_array.space.getrows(link_j).distance(self.data.space.getrows(link_i))
-        dd = dd.toarray()
-        a = np.exp(-dt / self.mean_time) / self.mean_time
-        b = (self.radius - dd) / self.radius ** 2
-        # import ipdb; ipdb.set_trace()
-        m = sparse.lil_matrix((self.data.ndata, data_array.ndata))
-
-        m[link_i, link_j] = a * b
-
-        res = np.array(m.sum(axis=0).flat)
-
-        # reshape if necessary
-        if data_array.original_shape is not None:
-            res = res.reshape(data_array.original_shape)
-        return res
+    # def predict(self, time, space_array):
+    #     data_array = self.prediction_array(time, space_array)
+    #     link_i, link_j = self.get_linkages(data_array)
+    #     if not len(link_i):
+    #         return np.zeros(space_array.ndata)
+    #     dt = (data_array.time.getrows(link_j) - self.data.time.getrows(link_i))
+    #     dt = dt.toarray()
+    #     dd = data_array.space.getrows(link_j).distance(self.data.space.getrows(link_i))
+    #     dd = dd.toarray()
+    #     a = np.exp(-dt / self.mean_time) / self.mean_time
+    #     b = (self.radius - dd) / self.radius ** 2
+    #     # import ipdb; ipdb.set_trace()
+    #     m = sparse.lil_matrix((self.data.ndata, data_array.ndata))
+    #
+    #     m[link_i, link_j] = a * b
+    #
+    #     res = np.array(m.sum(axis=0).flat)
+    #
+    #     # reshape if necessary
+    #     if data_array.original_shape is not None:
+    #         res = res.reshape(data_array.original_shape)
+    #     return res
 
 
-class STKernelBowers(STKernelBase):
+class STKernelBowers(STBase):
     data_class = CartesianSpaceTimeData
 
     def __init__(self, a, b, min_frac=1e-6):
@@ -188,7 +189,7 @@ class STKernelBowers(STKernelBase):
         return res
 
 
-class SKernelBase(STKernelBase):
+class SKernelBase(STBase):
     """
     Spatial kernel.  Aggregates data over time, with the time window defined in the input parameter dt.
     This is the base class, from which different KDE variants inherit.
@@ -250,7 +251,7 @@ class SNetworkKernelBase(SKernelBase):
         pass
 
 
-class STNetworkKernelBase(STKernelBase):
+class STNetworkKernelBase(STBase):
     data_class = NetworkSpaceTimeData
     space_class = NetworkData
 
@@ -325,18 +326,9 @@ class STNetworkLinearSpaceExponentialTime(STNetworkKernelBase):
         self.kde = None
         super(STNetworkLinearSpaceExponentialTime, self).__init__()
 
-    @property
-    def spatial_upper_limit(self):
-        return self.radius
-
-    @property
-    def temporal_upper_limit(self):
-        return self.time_decay * 7.
-
     def reset_kde(self):
         """ Redefines the KDE, resetting any cached results """
         self.kde = NetworkTemporalKde(self.data,
-                                      cutoffs=[self.temporal_upper_limit, self.spatial_upper_limit],
                                       bandwidths=[self.time_decay, self.radius])
 
     def train(self, data):
@@ -356,7 +348,7 @@ class STNetworkLinearSpaceExponentialTime(STNetworkKernelBase):
         This is important: updating the spatial sample points loses all cached net paths.
         """
         if self.kde.targets_set and not force_update:
-            self.kde.update_target_times_single_time(time)
+            self.kde.update_target_times(time)
             return self.kde.pdf()
         else:
             space_array = self.space_class(space_array, copy=False)

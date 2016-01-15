@@ -2,12 +2,13 @@ __author__ = 'gabriel'
 import math
 import numpy as np
 from shapely import geometry
-import shapefile
 import collections
 from data.models import CartesianData
 from tools import pairwise_differences_indices
 from functools import partial
 import csv
+from scipy import sparse
+
 
 try:
     from django.contrib.gis import geos
@@ -131,7 +132,6 @@ def geodjango_rectangle_from_vertices(xmin, ymin, xmax, ymax):
 
 def write_polygons_to_shapefile(outfile, polygons, field_description=None, **other_attrs):
     """
-
     :param outfile:
     :param polygons: List of shapely polygons
     :param field_description: dictionary, each key is a field name, each value is a dict
@@ -139,6 +139,7 @@ def write_polygons_to_shapefile(outfile, polygons, field_description=None, **oth
     fieldType may be 'C' for char, 'N' for number.
     :param other_attrs: arrays of equal length to polygons, one for each field in field_description.
     """
+    import shapefile
     w = shapefile.Writer(shapefile.POLYGON)
     for fieldname, fieldvals in field_description.items():
         w.field(fieldname, **fieldvals)
@@ -301,3 +302,27 @@ def shapely_polygon_to_osm_poly(poly, name, srid=None):
 
     with open("%s.poly" % name, 'w') as f:
         f.writelines([t + "\n" for t in poly_arr])
+
+
+def network_spatial_linkages(netdata,
+                             max_d,
+                             data_target=None,
+                             parallel=True):
+    """
+    Analagous operation to spatial_linkages. Compute the pairwise distance between all points in netdata.
+    Use initial Euclidean distance filtering to reduce to dmax and speed things up.
+    :param netdata:
+    :param max_d:
+    :param data_target:
+    :param parallel: If true, run things in parallel (duh!)
+    :return:
+    """
+    cartdata = netdata.to_cartesian()
+    ii, jj, dd = spatial_linkages(cartdata, max_d)
+    nd = []
+    # n = netdata.ndata
+    # pdist = sparse.lil_matrix((n, n))
+    for i, j in zip(ii, jj):
+        nd.append(netdata[i, 0].distance(netdata[j, 0]))
+        # pdist[i, j] = netdata[i, 0].distance(netdata[j, 0])
+    return ii, jj, dd, nd

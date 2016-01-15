@@ -397,7 +397,7 @@ class GeosTable(object):
     def upsert(self, set_qry, where_qry):
         self.cur.execute(self.upsert_query(set_qry, where_qry))
 
-    def select_query(self, where_dict=None, fields=None, limit=None):
+    def select_query(self, where_dict=None, fields=None, limit=None, order_by=None):
         qry = """
         SELECT {0} FROM {1}
         """.format(
@@ -406,6 +406,10 @@ class GeosTable(object):
         )
         if where_dict is not None:
             qry += where_query_from_dict(where_dict)
+        if order_by is not None:
+            qry += """
+            ORDER BY {0}
+            """.format(order_by)
         if limit is not None:
             qry += """
             LIMIT {0}
@@ -413,8 +417,8 @@ class GeosTable(object):
         qry += ';'
         return qry
 
-    def select(self, where_dict=None, fields=None, limit=None, convert_to_dict=True):
-        qry = self.select_query(where_dict=where_dict, fields=fields, limit=limit)
+    def select(self, where_dict=None, fields=None, limit=None, order_by=None, convert_to_dict=True):
+        qry = self.select_query(where_dict=where_dict, fields=fields, limit=limit, order_by=order_by)
         return self.execute_and_fetch(qry, fields=fields, convert_to_dict=convert_to_dict)
 
 
@@ -510,6 +514,7 @@ class SanFranciscoDivision(GeosTable):
 
 class Birmingham(GeosTable):
     table_name = "birmingham"
+    srid = SRID['uk']
 
     @property
     def schema(self):
@@ -518,7 +523,7 @@ class Birmingham(GeosTable):
             'offence VARCHAR(64)',
             'datetime_start TIMESTAMP',
             'datetime_end TIMESTAMP',
-            'location GEOMETRY(POINT, %d)' % SRID['uk'],
+            'location GEOMETRY(POINT, %d)' % self.srid,
             'address TEXT',
             'officer_statement TEXT',
         )
