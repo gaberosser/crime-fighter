@@ -319,8 +319,10 @@ def network_spatial_linkages(netdata,
     """
     cartdata = netdata.to_cartesian()
     ii, jj, dd = spatial_linkages(cartdata, max_d)
-    n = netdata.ndata
-    pdist = sparse.lil_matrix((n, n))
+    nd = []
+    # n = netdata.ndata
+    # pdist = sparse.lil_matrix((n, n))
     for i, j in zip(ii, jj):
-        pdist[i, j] = netdata[i, 0].distance(netdata[j, 0])
-    return pdist.tocsr()
+        nd.append(netdata[i, 0].distance(netdata[j, 0]))
+        # pdist[i, j] = netdata[i, 0].distance(netdata[j, 0])
+    return ii, jj, dd, nd
