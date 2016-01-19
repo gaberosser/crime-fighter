@@ -10,6 +10,7 @@ from scripts import OUT_DIR
 import os
 from matplotlib import pyplot as plt
 from analysis.spatial import shapely_rectangle_from_vertices
+from shapely import ops
 
 # will need to recompute the grid unfortunately
 START_DATE = datetime.date(2013, 7, 1)
@@ -17,20 +18,14 @@ START_DAY_NUMBER = 240
 GRID_LENGTH = 150
 N_SAMPLES_PER_GRID = 15
 
-SIZE_M = 5000
-XMIN = 403729
-YMIN = 286571
+# SIZE_M = 5000
+SIZE_M = 2500
+XMIN = 403729 + 1250
+YMIN = 286571 + 1250
 XMAX = XMIN + SIZE_M
 YMAX = YMIN + SIZE_M
-ZOOM_BUFF = 1250
-
-# ZOOM_EXTENT = (
-#     403729,
-#     285571,
-#     408694,
-#     288913
-# )
-
+# ZOOM_BUFF = 1250
+ZOOM_BUFF = 0
 
 def compute_and_save_planar_grid(outfile='planar_grid_prediction_sample_units.dill'):
     # have run this now, but for the record it's how we can recompute the planar grid
@@ -72,6 +67,7 @@ if __name__ == '__main__':
     fids = set([e.fid for e in net_reduced.edges()])
     net_idx = [i for i, e in enumerate(net_units) if e.fid in fids]
     net_units_reduced = [net_units[i] for i in net_idx]
+    net_lines_reduced = [t.linestring.intersection(bbox) for t in net_units_reduced]
     net_vals_reduced = net_vals[:, net_idx]
 
     # repeat for grid results
@@ -79,7 +75,6 @@ if __name__ == '__main__':
     grid_polys_reduced = [grid_units['polys'][i] for i in grid_idx]
     grid_vals_reduced = grid_vals[:, grid_idx]
 
-    grid_polys_reduced = [i for p in grid_units['polys'] if p.intersects(bbox)]
     grid_lines_x = set()
     grid_lines_y = set()
     for t in grid_units['extent']:
@@ -95,7 +90,8 @@ if __name__ == '__main__':
     grid_ymin = min(grid_lines_y)
     grid_ymax = max(grid_lines_y)
 
-    fig, axs = plt.subplots(2, 2, sharex=True, sharey=True, figsize=(12, 10))
+    fig, axs = plt.subplots(2, 2, sharex=True, sharey=True, figsize=(10, 10))
+    plt.tight_layout()
 
     day_idx = (0, 60)
 
@@ -105,7 +101,7 @@ if __name__ == '__main__':
         ax = axs[0, i]
         j = day_idx[i]
 
-        plots.plot_network_density([t.linestring for t in net_units_reduced],
+        plots.plot_network_density(net_lines_reduced,
                                    net_vals_reduced[j],
                                    colorbar=False,
                                    cmap='Reds',
@@ -119,11 +115,17 @@ if __name__ == '__main__':
         pick_idx = np.argsort(grid_vals_reduced[j])[::-1][:50]
         pick_polys = [grid_polys_reduced[k] for k in pick_idx]
 
+        # get highlighted segments
+        net_pick_idx = np.argsort(net_vals_reduced[j])[::-1][:50]
+        pick_segments = [net_lines_reduced[k] for k in net_pick_idx]
+        pick_segment_mpoly = ops.cascaded_union([t.buffer(15, 32) for t in pick_segments])
+
+        _ = plot_shapely_geos(pick_segment_mpoly, ax=ax, ec='none', fc='c')
         _ = plot_shapely_geos(pick_polys, ax=ax, edgecolor='b', lw=2, facecolor='none')
 
         # grid plot
         ax = axs[1, i]
-        plots.plot_network_edge_lines([t.linestring for t in net_units_reduced],
+        plots.plot_network_edge_lines(net_lines_reduced,
                                       ax=ax,
                                       alpha=1.,
                                       colorbar=False)
@@ -136,6 +138,7 @@ if __name__ == '__main__':
                             alpha=0.5
                             )
 
+        _ = plot_shapely_geos(pick_segment_mpoly, ax=ax, ec='none', fc='c')
         _ = plot_shapely_geos(pick_polys, ax=ax, edgecolor='b', lw=2, facecolor='none')
 
         # reset extent to cut off frayed edges

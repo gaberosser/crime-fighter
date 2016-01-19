@@ -325,4 +325,4 @@ def network_spatial_linkages(netdata,
     for i, j in zip(ii, jj):
         nd.append(netdata[i, 0].distance(netdata[j, 0]))
         # pdist[i, j] = netdata[i, 0].distance(netdata[j, 0])
-    return ii, jj, dd, nd
+    return np.array(ii), np.array(jj), np.array(dd), np.array(nd)

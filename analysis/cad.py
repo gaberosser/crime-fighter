@@ -380,6 +380,7 @@ def jiggle_all_points_on_grid(x, y):
         spurious exact repeats. """
     divs = models.Division.objects.filter(type='cad_250m_grid')
     extents = np.array([t.mpoly.extent for t in divs])
+    centroids = np.array([t.mpoly.centroid.coords for t in divs])
     ingrid = lambda t: np.where(
         (t[0] >= extents[:, 0]) &
         (t[0] < extents[:, 2]) &
@@ -388,17 +389,21 @@ def jiggle_all_points_on_grid(x, y):
     )[0][0]
     res = []
     for t in zip(x, y):
-        # find grid square
-        try:
-            idx = ingrid(t)
-        except IndexError:
-            # not on grid - leave as-is
-            warnings.warn("Point found that is not on the CAD grid.  Leaving as-is.")
-            nt = t
+        # check whether this point lies on a centroid
+        if np.any(np.all(centroids == t, axis=1)):
+            # find the grid square
+            try:
+                idx = ingrid(t)
+            except IndexError:
+                # not on grid - leave as-is
+                warnings.warn("Point found that is not on the CAD grid.  Leaving as-is.")
+                nt = t
+            else:
+                e = extents[idx]
+                # jiggle
+                nt = np.random.random(2) * 250 + e[:2]
         else:
-            e = extents[idx]
-            # jiggle
-            nt = np.random.random(2) * 250 + e[:2]
+            nt = t
         res.append(nt)
     return np.array(res)
 
