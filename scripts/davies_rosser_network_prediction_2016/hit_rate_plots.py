@@ -15,6 +15,40 @@ files = (
 subdir = os.path.join(OUT_DIR, 'birmingham')
 
 
+def load_raw_data():
+    x = []
+    y = []
+    xm = []
+    ym = []
+    for fn in files:
+        with open(os.path.join(subdir, fn), 'r') as f:
+            tmp = dill.load(f)
+            x.append(tmp['x'])
+            y.append(tmp['y'])
+            xm.append(tmp['x'].mean(axis=0))
+            ym.append(tmp['y'].mean(axis=0))
+    return x, y, xm, ym
+
+
+def wilcoxon_test(cmin=0.01, cmax=0.2, npt=500):
+    from stats.pairwise import wilcoxon
+    x, y, xm, ym = load_raw_data()
+    n_net = xm[0].size
+    n_grid = xm[2].size
+    covs = np.linspace(cmin, cmax, npt)
+    pvals = []
+    outcomes = []
+    for c in covs:
+        idx_net = min(bisect_left(xm[0], c), n_net - 1)
+        idx_grid = min(bisect_left(xm[2], c), n_grid - 1)
+        ny = y[0][:, idx_net]
+        gy = y[2][:, idx_grid]
+        T, p, o = wilcoxon(ny, gy)
+        pvals.append(p)
+        outcomes.append(o)
+
+    return np.array(pvals), np.array(outcomes)
+
 if __name__ == '__main__':
 
     coverage_levels = (0.01, 0.05, 0.1)
