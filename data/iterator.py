@@ -1,5 +1,6 @@
 from . import models
 import numpy as np
+import logging
 
 
 class RollingOrigin(object):
@@ -26,6 +27,13 @@ class RollingOrigin(object):
         SpaceTimeDataArray, or mimic that class.
         If no data_class is provided, we either use a generic default or the existing data class.
         """
+        # set default parameters in the event they are supplied as None
+        if dt is None:
+            dt = 1.
+        if dt_plus is None:
+            dt_plus = 1.
+        if dt_minus is None:
+            dt_minus = 0.
 
         if data_class is None:
             if isinstance(data, models.DataArray):
@@ -43,6 +51,7 @@ class RollingOrigin(object):
         assert dt_minus >= 0., "dt_minus must be positive"
         if dt_plus:
             assert dt_plus >= 0., "dt_plus must be positive"
+        assert dt_plus > dt_minus, "Require that dt_plus > dt_minus"
 
         self.dt = dt
         self.dt_plus = dt_plus
@@ -50,6 +59,9 @@ class RollingOrigin(object):
 
         # set initial time cut point
         self.cutoff_t = initial_cutoff_t or self.t[int(self.ndata / 2)]
+
+        # set logger
+        self.logger = logging.getLogger(name=self.__class__.__name__)
 
     def set_data(self, data, data_index=None):
         # sort data in increasing time
@@ -116,14 +128,16 @@ class RollingOrigin(object):
         :return:
         """
         tmax = self.t.max()
-        max_iter = int((tmax - self.cutoff_t) // self.dt)
+        max_iter = int((tmax - self.cutoff_t - self.dt_minus) // self.dt)
         if niter is not None:
             # check that the number of iterations will be possible
             assert niter <= max_iter, "the requested number of iterations is too high"
         else:
             niter = max_iter
         def generator():
+            self.logger.info("Starting iterations, %d in total", niter)
             for i in range(niter):
+                self.logger.info("Iteration %d, cutoff_t is %f", i, self.cutoff_t)
                 yield self
                 self.advance()
         return generator()

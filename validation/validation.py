@@ -1,4 +1,3 @@
-
 __author__ = 'gabriel'
 from shapely.geometry import Point
 import numpy as np
@@ -7,6 +6,7 @@ import hotspot
 import roc
 import collections
 from data.models import CartesianSpaceTimeData, NetworkSpaceTimeData, DataArray
+from data.iterator import RollingOrigin
 import logging
 
 
@@ -30,20 +30,29 @@ class ValidationBase(object):
 
     roc_class = roc.RocGrid
     data_class = CartesianSpaceTimeData
+    iterator_class = RollingOrigin
 
     def __init__(self, data, model,
                  data_index=None,
                  spatial_domain=None,
                  sample_unit_size=None,
                  cutoff_t=None,
-                 include_predictions=False):
+                 include_predictions=False,
+                 train_kwargs=None,
+                 pred_kwargs=None):
 
         self.include_predictions = include_predictions
+        self.train_kwargs = train_kwargs or {}
+        self.pred_kwargs = pred_kwargs or {}
 
         self.data = None
         self.data_index = None
         self.set_data(data, data_index=data_index)
         self.model = model
+
+        # set rolling iterator
+        self.iterator = None
+        self.set_iterator(cutoff_t)
 
         # set initial time cut point
         self.cutoff_t = cutoff_t or self.t[int(self.ndata / 2)]
@@ -74,6 +83,14 @@ class ValidationBase(object):
         # set roc with ALL data initially so it can compute the boundary if no poly has been provided
         self.roc.set_data(self.data[:, 1:], index=self.data_index)
 
+    def set_iterator(self, dt, dt_plus=None, dt_minus=None):
+        self.iterator = self.iterator_class(self.data,
+                                            data_index = self.data_index,
+                                            initial_cutoff_t=self.cutoff_t,
+                                            dt=dt,
+                                            dt_plus=dt_plus,
+                                            dt_minus=dt_minus,
+                                            )
 
     def set_t_cutoff(self, cutoff_t, b_train=True, **kwargs):
         """
@@ -84,7 +101,7 @@ class ValidationBase(object):
         """
         self.cutoff_t = cutoff_t
         if b_train:
-            self.train_model(**kwargs)
+            self.train_model(**self.train_kwargs)
 
     def set_sample_units(self, length_or_roc, *args, **kwargs):
         """
@@ -239,21 +256,27 @@ class ValidationBase(object):
             logger.exception("Both t_upper AND n_iter were supplied, but only one is supported")
             raise AttributeError("Both t_upper AND n_iter were supplied, but only one is supported")
 
+        self.set_iterator(time_step, dt_plus=true_dt_plus, dt_minus=true_dt_minus)
+        if pred_kwargs:
+            self.pred_kwargs = pred_kwargs
+        if train_kwargs:
+            self.train_kwargs = train_kwargs
+
         verbose = kwargs.pop('verbose', True)
-        pred_kwargs = pred_kwargs or {}
-        train_kwargs = train_kwargs or {}
         pred_dt_plus = pred_dt_plus or time_step
-        true_dt_plus = true_dt_plus or pred_dt_plus
+        # true_dt_plus = true_dt_plus or pred_dt_plus
 
         if t_upper:
-            n_iter = math.ceil((t_upper - self.cutoff_t) / time_step)
-        elif n_iter:
-            # check that this number of iterations is possible
-            if (self.cutoff_t + (n_iter - 1) * time_step + true_dt_minus) > self.data[-1, 0]:
-                logger.exception("The requested number of iterations is too great for the supplied data.")
-                raise AttributeError("The requested number of iterations is too great for the supplied data.")
-        else:
-            n_iter = math.ceil((self.data[-1, 0] - self.cutoff_t) / time_step)
+            n_iter = math.ceil((t_upper - self.cutoff_t - true_dt_minus) / time_step)
+        # elif n_iter:
+        #     # check that this number of iterations is possible
+        #     if (self.cutoff_t + (n_iter - 1) * time_step + true_dt_minus) > self.data[-1, 0]:
+        #         logger.exception("The requested number of iterations is too great for the supplied data.")
+        #         raise AttributeError("The requested number of iterations is too great for the supplied data.")
+        # else:
+        #     n_iter = math.ceil((self.data[-1, 0] - self.cutoff_t) / time_step)
+
+
 
         res = collections.defaultdict(list)
 
@@ -263,19 +286,14 @@ class ValidationBase(object):
         res['true_dt_minus'] = true_dt_minus
 
 
-        if verbose:
-            logger.info("Running %d validation iterations..." % n_iter)
-
-        count = 0
-
         try:
-            while count < n_iter:
-                if count == 0:
+            for i, g in enumerate(self.iterator.iterator()):
+                if i == 0:
                     # initial training
-                    self._initial_setup(**train_kwargs)
+                    self._initial_setup()
                 else:
                     # update model as required and update the cutoff time
-                    self._update(time_step, **train_kwargs)
+                    self._update()
 
                 if verbose:
                     logger.info("Running validation with cutoff time %s (iteration %d / %d)" % (str(self.cutoff_t),
@@ -321,23 +339,22 @@ class ValidationBase(object):
                 # this allows for optional components such as prediction values
                 res[k] = np.array(res[k])
 
-    def _update(self, time_step, **train_kwargs):
+    def _update(self, time_step):
         """
         This function gets called after a successful train-predict-assess cycle.
         It is used to setup and TRAIN the model for the next cycle.
         It should ALWAYS update the cutoff time
         """
         # training is implied here
-        self.set_t_cutoff(self.cutoff_t + time_step, **train_kwargs)
+        self.set_t_cutoff(self.cutoff_t + time_step)
 
-    def _initial_setup(self, **train_kwargs):
+    def _initial_setup(self):
         """
         Called instead of _update on the first iteration of a run.
-        Since this is called *before* the predict step, we don't advance the time on the first iteration
-        :param train_kwargs:
+        Default behaviour is the same as any other iteration, but other implementations may require one-time-only
         :return:
         """
-        self._update(time_step=0., **train_kwargs)
+        self._update()
 
     def repeat_run(self, run_res, pred_dt_plus=None, true_dt_plus=None, true_dt_minus=None,
                    pred_kwargs=None, **kwargs):

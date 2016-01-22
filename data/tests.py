@@ -236,3 +236,46 @@ class TestIterator(SimpleTestCase):
         res = list(obj.iterator(niter=25))
         self.assertEqual(len(res), 25)
 
+    def test_iteration_with_dt_plus_minus(self):
+        t = np.arange(200) / 2.
+        data = np.array(zip(t,
+                            np.random.rand(200, 1),
+                            np.random.rand(200, 1)))
+        obj = iterator.RollingOrigin(data=data, initial_cutoff_t=50, dt_plus=2, dt_minus=0)
+
+        # train / test split
+        self.assertTrue((obj.training == data[t < 50.]).all())
+        test_idx = (t >= 50.) & (t < 52.)
+        self.assertTrue((obj.testing == data[test_idx]).all())
+        self.assertTrue((obj.testing_index == np.array([100, 101, 102, 103])).all())
+
+        # iteration
+        expected_testing_data = [data[(t >= 50. + i) & (t < 52. + i)] for i in range(50)]
+        # max iterations
+        for i, x in enumerate(obj.iterator()):
+            self.assertTrue((x.testing == expected_testing_data[i]).all())
+        self.assertEqual(i, 48)
+        # should be at max cutoff now
+        self.assertEqual(obj.cutoff_t, 99)
+
+        with self.assertRaises(AssertionError):
+            # can't have dt_plus <= dt_minus
+            obj = iterator.RollingOrigin(data=data, initial_cutoff_t=50, dt_plus=2, dt_minus=2)
+
+        obj = iterator.RollingOrigin(data=data, initial_cutoff_t=50, dt_plus=2, dt_minus=1)
+
+        # train / test split
+        self.assertTrue((obj.training == data[t < 50.]).all())
+        test_idx = (t >= 51.) & (t < 52.)
+
+        self.assertTrue((obj.testing == data[test_idx]).all())
+        self.assertTrue((obj.testing_index == np.array([102, 103])).all())
+
+        # iteration
+        expected_testing_data = [data[(t >= 51. + i) & (t < 52. + i)] for i in range(50)]
+        # max iterations
+        for i, x in enumerate(obj.iterator()):
+            self.assertTrue((x.testing == expected_testing_data[i]).all())
+        # max cutoff should have been set at 98 this time since dt_minus prevents using 99
+        self.assertEqual(i, 47)
+        self.assertEqual(obj.cutoff_t, 98)

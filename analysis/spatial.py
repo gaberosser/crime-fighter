@@ -130,7 +130,9 @@ def geodjango_rectangle_from_vertices(xmin, ymin, xmax, ymax):
         (xmin, ymin),
     ])
 
-def write_polygons_to_shapefile(outfile, polygons, field_description=None, **other_attrs):
+def write_polygons_to_shapefile(outfile, polygons, field_description=None,
+                                autobalance=True,
+                                **other_attrs):
     """
     :param outfile:
     :param polygons: List of shapely polygons
@@ -140,13 +142,17 @@ def write_polygons_to_shapefile(outfile, polygons, field_description=None, **oth
     :param other_attrs: arrays of equal length to polygons, one for each field in field_description.
     """
     import shapefile
+    field_description = field_description or {}
     w = shapefile.Writer(shapefile.POLYGON)
+    if autobalance:
+        w.autoBalance = 1
     for fieldname, fieldvals in field_description.items():
         w.field(fieldname, **fieldvals)
     for i, p in enumerate(polygons):
         parts = [list(t) for t in zip(*p.boundary.xy)]
         w.poly(parts=[parts])
-        w.record(*[other_attrs[k][i] for k in field_description])
+        if field_description:
+            w.record(*[other_attrs[k][i] for k in field_description])
     w.save(outfile)
 
 def is_clockwise(poly):
