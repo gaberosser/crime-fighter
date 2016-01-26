@@ -200,6 +200,45 @@ class TestCartesianData(SimpleTestCase):
 
 class TestIterator(SimpleTestCase):
 
+    def test_setup(self):
+        t = np.arange(200) / 2.
+        data = np.array(zip(t,
+                            np.random.rand(200, 1),
+                            np.random.rand(200, 1)))
+        obj = iterator.RollingOrigin(data=data, initial_cutoff_t=50)
+        self.assertEqual(obj.max_niter, 49)
+
+        # allow_partial: final window (only half in frame) is now allowed
+        obj = iterator.RollingOrigin(data=data, initial_cutoff_t=50, allow_partial=True)
+        self.assertEqual(obj.max_niter, 50)
+
+        # dt_minus:
+        obj = iterator.RollingOrigin(data=data, initial_cutoff_t=50, dt_minus=0.4)
+        self.assertEqual(obj.max_niter, 49)
+
+        obj = iterator.RollingOrigin(data=data, initial_cutoff_t=50, dt_minus=0.4, allow_partial=True)
+        self.assertEqual(obj.max_niter, 50)
+
+        obj = iterator.RollingOrigin(data=data, initial_cutoff_t=50, dt_minus=0.5)
+        self.assertEqual(obj.max_niter, 49)
+
+        # now allow_partial does nothing because the final window is still outside the data frame
+        obj = iterator.RollingOrigin(data=data, initial_cutoff_t=50, dt_minus=0.5, allow_partial=True)
+        self.assertEqual(obj.max_niter, 49)
+
+        obj = iterator.RollingOrigin(data=data, initial_cutoff_t=50, dt_minus=0.6)
+        self.assertEqual(obj.max_niter, 49)
+
+        obj = iterator.RollingOrigin(data=data, initial_cutoff_t=50, dt_minus=0.6, allow_partial=True)
+        self.assertEqual(obj.max_niter, 49)
+
+        # dt_minus < dt_plus
+        with self.assertRaises(AssertionError):
+            obj = iterator.RollingOrigin(data=data, initial_cutoff_t=50, dt_minus=0.8, dt_plus=0.8)
+
+        # dt_minus and dt_plus
+
+
     def test_rolling_iteration(self):
         t = np.arange(200) / 2.
         data = np.array(zip(t,
@@ -254,9 +293,17 @@ class TestIterator(SimpleTestCase):
         # max iterations
         for i, x in enumerate(obj.iterator()):
             self.assertTrue((x.testing == expected_testing_data[i]).all())
-        self.assertEqual(i, 48)
-        # should be at max cutoff now
-        self.assertEqual(obj.cutoff_t, 99)
+        # we lose the last iteration as the top edge of the window is outside the range (i.e. 98 -> 100)
+        self.assertEqual(i, 47)
+        self.assertEqual(obj.cutoff_t, 98)
+
+        # repeat but with allow_partial
+        obj = iterator.RollingOrigin(data=data, initial_cutoff_t=50, dt_plus=2, dt_minus=0, allow_partial=True)
+        for i, x in enumerate(obj.iterator()):
+            self.assertTrue((x.testing == expected_testing_data[i]).all())
+        # we get the last two iterations back as they both overlap with the data frame
+        self.assertEqual(i, 49)
+        self.assertEqual(obj.cutoff_t, 100)  # (99 -> 101 is fine, 100 -> 102 is not)
 
         with self.assertRaises(AssertionError):
             # can't have dt_plus <= dt_minus

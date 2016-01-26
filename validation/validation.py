@@ -297,7 +297,7 @@ class ValidationBase(object):
 
                 if verbose:
                     logger.info("Running validation with cutoff time %s (iteration %d / %d)" % (str(self.cutoff_t),
-                                                                                                count + 1,
+                                                                                                i + 1,
                                                                                                 n_iter))
 
                 # predict and assess iteration
@@ -307,8 +307,6 @@ class ValidationBase(object):
 
                 # add record of cutoff time to help later repeats
                 res['cutoff_t'].append(self.cutoff_t)
-
-                count += 1
 
         except KeyboardInterrupt:
             # this breaks the loop, now return res as it stands

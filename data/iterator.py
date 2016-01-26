@@ -11,6 +11,8 @@ class RollingOrigin(object):
                  dt=1.,
                  dt_plus=1.,
                  dt_minus=0.,
+                 allow_partial=False,
+                 ignore_empty=False,
                  data_class=None):
 
         """
@@ -23,6 +25,11 @@ class RollingOrigin(object):
         beyond the cutoff are used.
         :param dt_minus: The lower time range of the TESTING data, expressed relative to the cutoff time.
         Default is 0, meaning that all data >= cutoff are used (subject to dt_plus).
+        :param allow_partial: If True, allow a final iteration even if the rolling window is only partially complete.
+        Default to False, as this is not generally desirable.
+        :param ignore_empty: If True, when iterating do not include or return empty frames. These are simply skipped
+        by calling advance. This means that more than the requested niter iterations may be required if empty
+        frames are encountered.
         :param data_class: Optionally provide a class to contain the data. This should be derived from
         SpaceTimeDataArray, or mimic that class.
         If no data_class is provided, we either use a generic default or the existing data class.
@@ -34,6 +41,9 @@ class RollingOrigin(object):
             dt_plus = 1.
         if dt_minus is None:
             dt_minus = 0.
+
+        self.allow_partial = allow_partial
+        self.ignore_empty = ignore_empty
 
         if data_class is None:
             if isinstance(data, models.DataArray):
@@ -82,6 +92,16 @@ class RollingOrigin(object):
         return self.data.time.toarray()
 
     @property
+    def max_niter(self):
+        tmax = self.t.max()
+        if self.allow_partial:
+            # always allow the last partial iteration, regardless of the width of the window
+            return np.math.ceil((tmax - self.cutoff_t - self.dt_minus) / float(self.dt))
+        else:
+            # whether we include the last iteration depends upon the window's upper edge
+            return int((tmax - self.cutoff_t - self.dt_plus) // self.dt) + 1
+
+    @property
     def training(self):
         return self.data.getrows(self.t < self.cutoff_t)
 
@@ -127,17 +147,30 @@ class RollingOrigin(object):
         :param niter: Optionally fix the number of iterations
         :return:
         """
-        tmax = self.t.max()
-        max_iter = int((tmax - self.cutoff_t - self.dt_minus) // self.dt)
         if niter is not None:
             # check that the number of iterations will be possible
-            assert niter <= max_iter, "the requested number of iterations is too high"
+            assert niter <= self.max_niter, "the requested number of iterations is too high"
         else:
-            niter = max_iter
+            niter = self.max_niter
+
         def generator():
             self.logger.info("Starting iterations, %d in total", niter)
-            for i in range(niter):
-                self.logger.info("Iteration %d, cutoff_t is %f", i, self.cutoff_t)
+            i = 0
+            while True:
+                if i == niter:
+                    self.logger.info("Maximum niter reached, terminating iteration.")
+                    break
+
+                self.logger.info("Iteration %d, cutoff_t is %f", i + 1, self.cutoff_t)
+
+                if self.ignore_empty and self.testing_index.size == 0:
+                    # no yield in this case - skip and move to the next iteration without counting
+                    self.logger.info("No test data and ignore_empty is True. Skipping.")
+                    self.advance()
+                    continue
+
                 yield self
                 self.advance()
+                i += 1
+
         return generator()
