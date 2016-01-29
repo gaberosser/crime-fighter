@@ -16,6 +16,20 @@ def centre_axes(ax=None):
     ax.spines['bottom'].set_position(('data', 0.))
 
 
+def custom_colourmap_white_to_colour(col, name='custom', reverse=False):
+    """
+    Create a custom colourmap that goes from white to the specified colour,
+    in a similar way to Reds
+    """
+    cols = [
+        (1, 1, 1),
+        col
+    ]
+    if reverse:
+        cols = cols[::-1]
+    return mpl.colors.LinearSegmentedColormap.from_list(name, cols)
+
+
 def colour_mapper(data,
                   vmin=None,
                   vmax=None,
@@ -23,15 +37,17 @@ def colour_mapper(data,
                   fmax=None,
                   cmap=cm.get_cmap('Reds')):
 
+    data = np.array(data)
+
     if fmin:
-        vmin = sorted(data)[int(len(data) * fmin)]
+        vmin = sorted(data)[int(data.size * fmin)]
     elif vmin is None:
-        vmin = min(data)
+        vmin = data.min()
 
     if fmax:
-        vmax = sorted(data)[int(len(data) * fmax)]
+        vmax = sorted(data)[int(data.size * fmax)]
     elif vmax is None:
-        vmax = max(data)
+        vmax = data.max()
 
     cmap = cm.get_cmap(cmap)
     norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
@@ -135,3 +151,23 @@ def mask_contour(cont, poly_verts, ax=None, show_clip_path=True):
 
     plt.draw()
     return patch
+    
+    
+def abs_bound_from_rel(arr, fracs):
+    """
+    Given the arbitrarily-shaped and ordered array arr, compute the bound
+    or bounds corresponding to the proportional rank(s) in fracs
+    """
+    if not hasattr(fracs, '__iter__'):
+        fracs = [fracs]
+    sorted_arr = np.array(arr).flatten()
+    sorted_arr.sort()
+    res = []
+    for f in fracs:
+        assert 0 <= f <= 1, 'All supplied fracs must be in the range [0, 1]'
+        if f == 1:
+            f -= 1e-16
+        res.append(sorted_arr[int(f * sorted_arr.size)])
+    if len(res) == 1:
+        res = res[0]
+    return res

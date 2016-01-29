@@ -9,7 +9,6 @@ from analysis.spatial import (create_spatial_grid,
                               HAS_GEODJANGO)
 from data.models import DataArray, NetworkSpaceTimeData, NetworkData, NetPoint, CartesianData
 from shapely.geometry import Point, Polygon
-from rtree import index
 from network.utils import network_walker_uniform_sample_points
 from time import time
 import logging
@@ -25,6 +24,13 @@ try:
     MPL = True
 except ImportError:
     MPL = False
+
+# optional failure when importing rtree
+try:
+    from rtree import index
+    RTREE = True
+except ImportError:
+    RTREE = False    
 
 
 if HAS_GEODJANGO:
@@ -648,26 +654,38 @@ class RocGridByNetworkLengthMean(RocGridMean):
         # compute intersection with net
         self.set_network_grid_intersection_lengths()
 
-    def set_network_grid_intersection_lengths(self):
+    def set_network_grid_intersection_lengths(self):        
         logger.debug("set_network_grid_intersection_lengths called")
-        # segment the network into edges intersecting grid squares
-        lines = list(self.graph.lines_iter())
-        # create an index ahead of time for fast lookups
-        geo_idx = index.Index()
-        logger.debug("Creating index")
-        for i, l in enumerate(lines):
-            geo_idx.insert(i, l.bounds)
-        self.network_length_in_grid = []
-        logger.debug("Starting iteration over %d sample units", self.n_sample_units)
-        tic = time()
-        for i, t in enumerate(self.sample_units):
-            sq = shapely_rectangle_from_vertices(*t)
-            length_tally = 0.
-            for j in geo_idx.intersection(sq.bounds):
-                length_tally += sq.intersection(lines[j]).length
-            self.network_length_in_grid.append(length_tally)
-        logger.debug("Complete in %f s", time() - tic)
-        self.network_length_in_grid = np.array(self.network_length_in_grid)
+        if RTREE:
+            # segment the network into edges intersecting grid squares
+            lines = list(self.graph.lines_iter())
+            # create an index ahead of time for fast lookups
+            geo_idx = index.Index()
+            logger.debug("Creating index")
+            for i, l in enumerate(lines):
+                geo_idx.insert(i, l.bounds)
+            self.network_length_in_grid = []
+            logger.debug("Starting iteration over %d sample units", self.n_sample_units)
+            tic = time()
+            for i, t in enumerate(self.sample_units):
+                sq = shapely_rectangle_from_vertices(*t)
+                length_tally = 0.
+                for j in geo_idx.intersection(sq.bounds):
+                    length_tally += sq.intersection(lines[j]).length
+                self.network_length_in_grid.append(length_tally)
+            logger.debug("Complete in %f s", time() - tic)
+            self.network_length_in_grid = np.array(self.network_length_in_grid)
+        else:
+            # this older version is SLOW. Avoid if at all possible
+            # segment the network into edges intersecting grid squares
+            lines = list(self.graph.lines_iter())
+            self.network_length_in_grid = []
+            for t in self.sample_units:
+                sq = shapely_rectangle_from_vertices(*t)
+                this_int = [sq.intersection(t) for t in lines if sq.intersects(t)]
+                this_length = sum([t.length for t in this_int])
+                self.network_length_in_grid.append(this_length)
+            self.network_length_in_grid = np.array(self.network_length_in_grid)        
 
     @property
     def sample_unit_size(self):
