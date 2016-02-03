@@ -6,12 +6,6 @@ import dill
 import numpy as np
 import datetime
 from shapely import geometry
-try:
-    from django.db import connection
-    NO_DB = False
-except ImportError:
-    # disable loading from DB
-    NO_DB = True
 
 
 def datetime_to_days(t0, dt):
@@ -130,6 +124,19 @@ class FileLoader(object):
 
 
 # mixins
+class DjangoDBMixin(object):
+    def set_db_connection(self):
+        from django.db import connection
+        self.cursor = connection.cursor().cursor
+
+
+class PostgresqlDBMixin(object):
+    def set_db_connection(self):
+        import psycopg2
+        from settings import PSYCOPG2_DB_SETTINGS
+        conn = psycopg2.connect(**PSYCOPG2_DB_SETTINGS)
+        self.cursor = conn.cursor()
+
 
 class CsvFileMixin(object):
     def raw_generator(self):
@@ -160,13 +167,15 @@ class DailyDataMixin(object):
 
 
 class STFileLoader(FileLoader):
-
+    # TODO: no references here to the base loader, so make this more like a MIXIN: remove post_filter_one then it can
+    # be applied generically to DB *and* file loading
     """
     If one time_key is supplied, that is taken to be the precise datetime
     If two time keys are supplied, they are taken to be the start and end datetimes
     """
     time_key = None
     space_keys = (None, )
+    index_key = None
 
     def __init__(self,
                  start_dt=None,
@@ -244,96 +253,102 @@ class STFileLoader(FileLoader):
             self.dates_to_float(data)
             data = sorted(data, key=lambda x: self.get_one_time(x))
         if self.to_txy:
-            t = [r.get(self.time_key) for r in data]
+            t = [self.get_one_time(r) for r in data]
             t = np.array(t).reshape((len(t), 1))
             space = [[r.get(ix) for ix in self.space_keys] for r in data]
+            index = [r.get(self.index_key) for r in data]
             data = np.hstack((t, space))
-
-        return super(STFileLoader, self).post_process(data)
-
-
-class DataLoaderBase(object):
-
-    idx_field = None
-
-    def __init__(self, convert_dates=True, as_txy=True):
-        self.convert_dates = convert_dates
-        self.as_txy = as_txy
-        self.t0 = None
-        self.idx = None
-
-    def load_raw_data(self, **kwargs):
-        raise NotImplementedError()
-
-    def process_raw_data(self, raw, **kwargs):
-        return raw
-
-    def date_conversion(self, processed):
-        raise NotImplementedError()
-
-    def set_idx_field(self, processed):
-        if self.idx_field is not None:
-            self.idx = [t.get(self.idx_field) for t in processed]
         else:
-            self.idx = np.arange(len(processed))
+            index = [r.get(self.index_key) for r in data]
 
-    def compute_txy(self, processed):
+        return data, index
+
+
+class DatabaseLoader(object):
+
+    table_name = None
+
+    def __init__(self, **kwargs):
+        # set class attributes here
+        self.errors = []
+        self.cursor = None
+        self.set_db_connection()
+
+    def set_db_connection(self):
         """
-        Extract a numpy array of (time, x, y), discarding all other attributes
+        See mixins for a variety of implementations
         """
         raise NotImplementedError
 
-    def get_data(self, as_txy=True, **kwargs):
-        # send the same kwargs to both
-        # this only works because at present EITHER one OR the other method uses them
-        res = self.load_raw_data(**kwargs)
-        res = self.process_raw_data(res, **kwargs)
-        self.set_idx_field(res)
-        if self.convert_dates:
-            self.date_conversion(res)
-        if self.as_txy:
-            res = self.compute_txy(res)
-        return res, self.t0, self.idx
-
-
-class DataLoaderDB(DataLoaderBase):
+    @property
+    def fields(self):
+        return [
+            ('col_name',),
+            ('long_col_name', 'different_field_name'),
+            ('FUNCTION(col_name)', 'modified_field_name')
+        ]
 
     @property
-    def model(self):
-        return None
+    def sql_initial(self):
+        """
+        Generate SQL code for the first query to extract data
+        """
+        field_list = [" {0} AS {1}".format(x[0], x[1]) if len(x) == 2 else " {0}".format(x[0]) for x in self.fields]
+        field_list = ','.join(field_list)
+        sql = """SELECT {0} FROM {1}""".format(field_list,
+                                               self.table_name)
+        return sql
 
-    def __init__(self, *args, **kwargs):
-        if NO_DB:
-            raise NotImplementedError("No DB support on this system")
-        else:
-            super(DataLoaderDB, self).__init__(*args, **kwargs)
-            self.cursor = connection.cursor()
-
-    def sql_get(self, **kwargs):
-        # filtering happens here using kwargs
-        raise NotImplementedError()
-
-    def load_raw_data(self, **kwargs):
-        sql = self.sql_get(**kwargs)
-        self.cursor.execute(sql)
+    def get_raw_data(self):
+        self.cursor.execute(self.sql_initial)
         return self.cursor.fetchall()
 
+    def post_filter_one(self, parsedrow):
+        """
+        Apply filter to a PARSED datum
+        :param x:
+        :return: True if the row passes, otherwise False
+        """
+        return True
 
-class DataLoaderFile(DataLoaderBase):
+    def parse_one(self, x):
+        """
+        Parse a single row of the raw data
+        :param x:
+        :return:
+        """
+        return x
 
-    def __init__(self, filename, fmt='pickle', *args, **kwargs):
-        super(DataLoaderFile, self).__init__(*args, **kwargs)
-        self.filename = filename
-        self.fmt = fmt
+    def post_process(self, data):
+        """
+        Optionally process the parsed data block before it is returned
+        """
+        return data
 
-    def load_raw_data(self, **kwargs):
-        with open(self.filename, 'r') as f:
-            if self.fmt.lower() == 'pickle':
-                return pickle.load(f)
-            if self.fmt.lower() == 'csv':
-                c = csv.DictReader(f)
-                return list(c)
+    def save(self, outfile, overwrite=False, method='pickle'):
+        if os.path.exists(outfile) and not overwrite:
+            raise AttributeError("%s already exists and overwrite=False", outfile)
+        data = self.get()
+        with open(outfile, 'wb') as f:
+            if method == 'pickle':
+                pickle.dump(data, f)
+            elif method == 'dill':
+                dill.dump(data, f)
 
-    def process_raw_data(self, raw, **kwargs):
-        # filtering happens here using kwargs
-        return super(DataLoaderFile, self).process_raw_data(raw, **kwargs)
+    def dill(self, outfile, overwrite=False):
+        self.save(outfile, overwrite=overwrite, method='dill')
+
+    def get(self):
+        raw = self.get_raw_data()
+        data = []
+        for x in raw:
+            try:
+                t = self.parse_one(x)
+            except Exception as exc:
+                self.errors.append(exc)
+                continue
+
+            if self.post_filter_one(t):
+                data.append(t)
+
+        return self.post_process(data)

@@ -1,4 +1,4 @@
-from ..loader import STFileLoader, DailyDataMixin, CsvFileMixin
+from ..loader import STFileLoader, DailyDataMixin, CsvFileMixin, PostgresqlDBMixin, DatabaseLoader
 try:
     from database import models
     NO_DB = False
@@ -14,10 +14,11 @@ from shapely import wkb, geometry
 import fiona
 
 
-class ResidentialBurglaryLoader(CsvFileMixin,
-                                DailyDataMixin,
-                                STFileLoader):
+class ResidentialBurglaryFileLoader(CsvFileMixin,
+                                    DailyDataMixin,
+                                    STFileLoader):
 
+    index_key = 'crime_number'
     time_key = 'datetime_start'
     space_keys = ('x', 'y')
 
@@ -42,3 +43,7 @@ class ResidentialBurglaryLoader(CsvFileMixin,
             'address': row['FULL_LOC'].replace("'", ""),
             'officer_statement': re.sub(r'[^\x00-\x7f]', r'', row['MO']).replace("'", "")
         }
+
+
+class ResidentialBurglaryDBLoader(PostgresqlDBMixin,
+                                  DatabaseLoader):
