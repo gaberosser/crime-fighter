@@ -1,4 +1,4 @@
-from ..loader import STFileLoader, DailyDataMixin, CsvFileMixin, PostgresqlDBMixin, DatabaseLoader
+from ..loader import SpaceTimeFileLoader, DailyDataMixin, CsvFileMixin, PostgresqlDBMixin, SpaceTimeDatabaseLoader
 try:
     from database import models
     NO_DB = False
@@ -16,7 +16,7 @@ import fiona
 
 class ResidentialBurglaryFileLoader(CsvFileMixin,
                                     DailyDataMixin,
-                                    STFileLoader):
+                                    SpaceTimeFileLoader):
 
     index_key = 'crime_number'
     time_key = 'datetime_start'
@@ -46,4 +46,25 @@ class ResidentialBurglaryFileLoader(CsvFileMixin,
 
 
 class ResidentialBurglaryDBLoader(PostgresqlDBMixin,
-                                  DatabaseLoader):
+                                  DailyDataMixin,
+                                  SpaceTimeDatabaseLoader):
+    table_name = 'birmingham'
+    index_key = 'crime_number'
+    time_key = 'datetime_start'
+    space_keys = ('x', 'y')
+    time_column = time_key
+    space_column = 'location'
+    srid = 27700
+
+    @property
+    def fields(self):
+        return [
+            ('crime_number',),
+            ('offence',),
+            ('datetime_start',),
+            ('datetime_end',),
+            ('ST_X(location)', 'x'),
+            ('ST_Y(location)', 'y'),
+            ('address',),
+            ('officer_statement',),
+        ]
