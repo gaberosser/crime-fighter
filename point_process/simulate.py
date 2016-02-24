@@ -4,6 +4,30 @@ import math
 PI = np.pi
 
 
+def exponential_decay_poisson(decay_const, intensity, t_max, prng=None):
+    if not prng:
+        prng = np.random.RandomState()
+
+    def inv_func(t):
+        return -math.log((intensity - t) / float(intensity)) / float(decay_const)
+
+    tn = 0.
+    res = []
+    while True:
+        tn -= math.log(prng.rand())
+        try:
+            ta = inv_func(tn)
+            if ta <= t_max:
+                res.append(ta)
+            else:
+                break
+        except ValueError:
+            # attempted to take the log of a negative number (outside of support of inv_func)
+            break
+
+    return np.array(res)
+
+
 def nonstationary_poisson(inv_func, t_max, prng=None):
     if not prng:
         prng = np.random.RandomState()
@@ -37,6 +61,249 @@ def network_centroid(graph):
     x = (xmax + xmin) / 2.0
     y = (ymax + ymin) / 2.0
     return x, y
+
+
+class SeppSimulationBase(object):
+    def __init__(self, *args, **kwargs):
+
+        # parameters
+        # default values correspond to Mohler 2011 simulation
+
+        self.t_total = kwargs.pop('t_total', None)  # to be set now or at runtime
+
+        self.num_to_prune = 0  # to be set at runtime if required
+        self._data = None  # set by run() method
+
+        # BG and trigger parameters
+        self.trigger_decay = None
+        self.trigger_intensity = None
+
+        self.set_bg_params(kwargs.pop('bg_params', None))
+        self.set_trigger_params(kwargs.pop('trigger_params', None))
+
+        self.prng = np.random.RandomState()
+
+    @property
+    def data(self):
+        return self._data[:, 1:]
+
+    def set_bg_params(self, bg_params=None):
+        """
+        Parse supplied parameters or set defaults
+        :param bg_params: Either a dictionary supplied at init or None
+        :return:
+        """
+        raise NotImplementedError()
+
+    def set_trigger_params(self, trigger_params=None):
+        """
+        Parse supplied parameters or set defaults
+        :param trigger_params: Either a dictionary supplied at init or None
+        :return:
+        """
+        raise NotImplementedError()
+
+    def seed(self, seed=None):
+        self.prng.seed(seed)
+
+    def bg_pdf(self, targets):
+        raise NotImplementedError()
+
+    def initialise_background(self):
+        """ Simulate background events """
+        raise NotImplementedError()
+
+    def spatial_excitation_one(self, datum):
+        """
+        Generate the new spatial location resulting from the excitation by the supplied datum.
+        The time has already been generated.
+        :param datum:
+        :return:
+        """
+        raise NotImplementedError()
+
+    def propagate_one(self, t, s, idx):
+        """
+        ** REPLACES _point_aftershocks **
+        Generate the excitation series from a single datum with time t, location s and index idx.
+        :param t:
+        :param s:
+        :param idx:
+        :return: Array of new (time, space) data
+        """
+        # simulate triggered times
+        triggered = []
+        new_ts = exponential_decay_poisson(self.trigger_decay,
+                                           self.trigger_intensity,
+                                           self.t_total - t,
+                                           prng=self.prng)
+        # simulate triggered locations
+        new_ss = [self.spatial_excitation_one(s) for i in range(new_ts.size)]
+        for tn, sn in zip(new_ts, new_ss):
+            triggered.append([t + tn, sn, idx])
+        return triggered
+
+    # def _point_aftershocks(self, t, x, y, idx):
+    #     """ Generate sequence of triggered events for the given (t, x, y) datum.
+    #         Events are appended to a list. NB They are not given an index - this should be done in the main
+    #          calling routine """
+    #
+    #     t_max = self.t_total
+    #     new_t = nonstationary_poisson(self.non_stationary_poisson_inverse, self.t_total - t, prng=self.prng)
+    #     triggered = []
+    #     loc = self.prng.multivariate_normal(np.array([x, y]), self.trigger_cov, size=len(new_t))
+    #     for tn, xn in zip(new_t, loc):
+    #         triggered.append([t + tn, xn[0], xn[1], idx])
+    #     return np.array(triggered)
+
+    # TODO: refactor from here
+
+
+    def append_triggers(self, data):
+        """
+        Given the events in data, generate triggers and append to data.  Return the new array
+        :param data: e.g. from initialise_background
+        :return: extended data array
+        """
+
+        i = 0  # rolling index
+
+        while i < data.shape[0]:
+            j, t, x, y, _ = data[i]
+            if t > self.t_total:
+                # increment index and skip this point - it is beyond the requested max simulation time
+                i += 1
+                continue
+
+            new_events = self._point_aftershocks(t, x, y, j)
+            if new_events.size == 0:
+                # no new events generated - increment index and skip this iteration
+                i += 1
+                continue
+
+            # include only new events within the requested maximum time
+            new_events = new_events[new_events[:, 0] < self.t_total]
+            if new_events.size == 0:
+                # no new events left - increment index and skip this iteration
+                i += 1
+                continue
+
+            n_new = new_events.shape[0]
+
+            # prepend indices to new events
+            new_events = np.hstack((np.arange(data.shape[0], data.shape[0] + n_new).reshape((n_new, 1)), new_events))
+
+            # append new_events to running list
+            # triggered = np.vstack((triggered, new_events))
+
+            # append new events to data array
+            data = np.vstack((data, new_events))
+
+            # increment index
+            i += 1
+
+        return data
+
+    def prune_and_relabel(self, n_prune):
+        """ Prune the first and last set of points with size defined by n_prune.
+            Then relabel the data to correct lineage IDs. """
+
+        # assume data are in a sorted np array
+        self._data = self._data[n_prune:-n_prune, :]
+        # relocate time so that first event occurs at t=0
+        t0 = self._data[0, 1]
+        self._data[:, 1] -= t0
+
+        # relabel triggered events after pruning
+        # parent index is set to -1 if parent is no longer in the dataset
+
+        parent_ids = self._data[:, 0].astype(int)
+        trigger_idx = np.where(~np.isnan(self._data[:, 4]))[0]
+        link_ids = self._data[trigger_idx, 4].astype(int)
+
+        for i in range(link_ids.size):
+            this_link_id = link_ids[i]
+            # search for corresponding parent
+            if not np.any(parent_ids == this_link_id):
+                # parent no longer present in dataset
+                self._data[trigger_idx[i], 4] = -1.
+            else:
+                # parent is present, update index
+                new_idx = np.where(parent_ids == this_link_id)[0]
+                if len(new_idx) != 1:
+                    raise ValueError("Duplicate ID found")
+                self._data[trigger_idx[i], 4] = new_idx[0]
+
+    @property
+    def ndata(self):
+        return self._data.shape[0]
+
+    @property
+    def number_bg(self):
+        if self._data is None:
+            raise AttributeError("Data have not been set.  Call run().")
+        return np.isnan(self._data[:, -1]).sum()
+
+    @property
+    def number_trigger(self):
+        if self._data is None:
+            raise AttributeError("Data have not been set.  Call run().")
+        return sum(~np.isnan(self._data[:, -1]))
+
+    @property
+    def linkages(self):
+        """
+        :return: bg_idx, cause_idx, effect_idx. True linkages in simulation.
+        """
+        # find trigger events with parents still in the dataset
+        linked_map = (~np.isnan(self._data[:, -1])) & (self._data[:, -1] != -1)
+
+        # extract indices
+        effect_idx = np.where(linked_map)[0]
+        cause_idx = self._data[effect_idx, -1]
+        bg_idx = np.where(~linked_map)[0]
+
+        return bg_idx, cause_idx, effect_idx
+
+    @property
+    def p(self):
+        """ True probability matrix for the simulated data """
+        p = np.zeros((self.ndata, self.ndata), dtype=np.bool)
+        bg_idx, cause_idx, effect_idx = self.linkages
+
+        # insert links
+        p[bg_idx, bg_idx] = True
+        p[cause_idx, effect_idx] = True
+
+        return p
+
+
+    def run(self, t_total=None, num_to_prune=None):
+        self.t_total = t_total or self.t_total
+        if not self.t_total:
+            raise ValueError("The value of t_total has not been set.")
+
+        self.num_to_prune = num_to_prune or self.num_to_prune
+        data = self.initialise_background()
+        # iterate over the growing data array to create branching aftershocks
+        data = self.append_triggers(data)
+
+        # sort by time and reindex
+        sort_idx = data[:, 1].argsort()
+
+        self._data = data[sort_idx]
+        if self.num_to_prune:
+            self.prune_and_relabel(self.num_to_prune)
+
+
+
+
+
+
+
+
+
+
 
 
 class SeppSimulation(object):
