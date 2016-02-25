@@ -189,18 +189,20 @@ if __name__ == '__main__':
     # c.t_total = 1000
     # c.num_to_prune = 2000  # should leave ~2000 datapoints
 
-    c = simulate.MohlerSimulation()
+    # c = simulate.MohlerSimulation()
 
     # c = simulate.LocalTriggeringSplitByQuartiles()
     # c.t_total = 1500
     # c.num_to_prune = 2000
 
 
-    # c = simulate.HomogPoissonBackgroundSimulation()
-    # c.bg_params['xmin'] = -2
-    # c.bg_params['xmax'] = 2
-    # c.bg_params['ymin'] = -20
-    # c.bg_params['ymax'] = 20
+    c = simulate.HomogPoissonBackgroundSimulation()
+    c.t_total = 1500
+    c.num_to_prune = 2000
+    c.bg_params['xmin'] = -2
+    c.bg_params['xmax'] = 2
+    c.bg_params['ymin'] = -20
+    c.bg_params['ymax'] = 20
 
     # c = simulate.PatchyGaussianSumBackground()
     # c.bg_params[0]['location'] = [-1, -1]
@@ -217,7 +219,7 @@ if __name__ == '__main__':
     # c.num_to_prune = 2000
 
     c.run()
-    data = c.data[:, :3]
+    data = c.data
     max_delta_t = 100
     max_delta_d = .5
     # init_est_params = {

@@ -7,8 +7,7 @@ from matplotlib.lines import Line2D
 def plot_simulation_bg(n_pt=300):
     from scipy.stats import multivariate_normal
     bg_x_max = 10
-    c = simulate.MohlerSimulation()
-    cov=c.bg_sigma**2 * np.eye(2)
+    cov = np.diag([4.5, 4.5]) ** 2
     x = np.linspace(-bg_x_max, bg_x_max, 100)
     x, y = np.meshgrid(x, x)
     xy = np.vstack((x.flatten(), y.flatten())).transpose()
@@ -32,11 +31,12 @@ def plot_simulation_bg(n_pt=300):
 def plot_simulation_trigger_fun():
     from scipy.stats import multivariate_normal
     c = simulate.MohlerSimulation()
-    trigger_x_max = c.off_sigma_y
-    trigger_y_max = c.off_sigma_y*3
-    cov = np.eye(2) * np.array([c.off_sigma_x, c.off_sigma_y]) ** 2
+    trigger_x_max = c.trigger_sigma[0] * 30
+    trigger_y_max = c.trigger_sigma[1] * 3
+    cov = c.trigger_cov()
+
     t = np.linspace(0, 40, 100)
-    zt = c.off_omega * c.off_theta * np.exp(-c.off_theta * t)
+    zt = c.trigger_decay * c.trigger_intensity * np.exp(-c.trigger_decay * t)
     x = np.linspace(-trigger_x_max, trigger_x_max, 100)
     y = np.linspace(-trigger_y_max, trigger_y_max, 100)
     x, y = np.meshgrid(x, y)
@@ -73,13 +73,13 @@ def plot_simulation_trigger_fun():
 def compute_generation(idx, data):
     gen = 0
     while True:
-        if np.isnan(idx):
+        if idx is None:
             return gen
         gen += 1
         idx = data[int(idx)][-1]
 
 
-def plot_offsrping(nevents=20):
+def plot_offspring(nevents=20):
     msdict = {
         0: 20,
         1: 10,
@@ -88,36 +88,38 @@ def plot_offsrping(nevents=20):
         4: 2,
         5: 1,
     }
-    c = simulate.MohlerSimulation()
-    c.data = np.array([[0, 0., 0., 0., np.nan]])
+    c = simulate.PlanarGaussianSpaceExponentialTime(t_total=100)
+    # manually set first event
+    c._data = [(0, 0., (0., 0.), None)]
     while True:
-        c.generate_aftershocks()
-        if c.data.shape[0] > nevents:
+        c.append_triggers()
+        if c.ndata > nevents:
             break
     fig = plt.figure()
     ax = fig.add_subplot(111)
-    for row in c.data:
-        gen = compute_generation(row[-1], c.data)
+    for row in c._data:
+        x, y = row[2]
+        gen = compute_generation(row[-1], c._data)
         colour = np.array([1, 1, 1]) * min(gen, 5) / float(5.)
         try:
             ms = msdict[gen]
         except AttributeError:
             ms = 1
-        ax.plot(row[2], row[3], 'o', color=colour, markersize=ms)
+        ax.plot(x, y, 'o', color=colour, markersize=ms)
         if gen > 0:
             # compute linking line
-            prev = c.data[int(row[-1])]
-            ax.plot([prev[2], row[2]], [prev[3], row[3]], '-', color='gray')
+            prevx, prevy = c._data[int(row[-1])][2]
+            ax.plot([prevx, x], [prevy, y], '-', color='gray')
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
     ax.tick_params(labelsize=16)
     plt.setp( ax.xaxis.get_majorticklabels(), rotation=70 )
     ax.xaxis.get_label().set_size(16)
     ax.yaxis.get_label().set_size(16)
-    xmin = min(np.min(c.data[:, 2]), -0.01)
-    xmax = max(np.max(c.data[:, 2]), 0.01)
-    ymin = min(np.min(c.data[:, 3]), -0.1)
-    ymax = max(np.max(c.data[:, 3]), 0.1)
+    xmin = min(np.min(c.data[:, 1]), -0.01)
+    xmax = max(np.max(c.data[:, 1]), 0.01)
+    ymin = min(np.min(c.data[:, 2]), -0.1)
+    ymax = max(np.max(c.data[:, 2]), 0.1)
     ax.set_xlim(1.1 * np.array([xmin, xmax]))
     ax.set_ylim(1.1 * np.array([ymin, ymax]))
     # ax.set_aspect('equal')

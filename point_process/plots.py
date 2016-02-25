@@ -376,8 +376,8 @@ def multiplots(ppobj, simobj=None, maxes=None):
     ax = fig.gca()
     if simobj:
         t = np.linspace(0, t_max, npt)
-        w = simobj.trigger_params['time_decay']
-        th = simobj.trigger_params['intensity']
+        w = simobj.trigger_decay
+        th = simobj.trigger_intensity
         zt = th * w * np.exp(-w * t)
         plt.plot(t, zt, 'k--')
         ax.set_ylim([0, w * th * 1.02])
@@ -390,7 +390,7 @@ def multiplots(ppobj, simobj=None, maxes=None):
         ax = fig.gca()
         if simobj:
             x = np.linspace(-x_max, x_max, npt)
-            sx = simobj.trigger_params['sigma'][0]
+            sx = simobj.trigger_sigma[0]
             zx = th / (np.sqrt(2 * np.pi) * sx) * np.exp(-(x**2) / (2 * sx**2))
             plt.plot(x, zx, 'k--')
             ax.set_ylim([0, 1.05 * th / (np.sqrt(2 * np.pi) * sx)])
@@ -405,7 +405,7 @@ def multiplots(ppobj, simobj=None, maxes=None):
         zmax_infer = max(line.get_ydata())
         if simobj:
             y = np.linspace(-y_max, y_max, npt)
-            sy = simobj.trigger_params['sigma'][1]
+            sy = simobj.trigger_sigma[1]
             zy = th/(np.sqrt(2 * np.pi) * sy) * np.exp(-(y**2) / (2 * sy**2))
             plt.plot(y, zy, 'k--')
             zmax_theor = th/(np.sqrt(2 * np.pi) * sy)

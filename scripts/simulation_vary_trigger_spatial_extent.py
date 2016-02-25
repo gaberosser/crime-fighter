@@ -70,10 +70,10 @@ if __name__ == "__main__":
             c.t_total = t_total
             c.bg_params[0]['sigma'] = [1., 1.]
             c.bg_params[0]['intensity'] = 5
-            c.trigger_params['sigma'] = list(tt)
+            c.trigger_sigma = list(tt)
             init_est = lambda d, t: estimation.estimator_exp_gaussian(d, t, ct=0.1, cd=np.mean(tt))
             c.run()
-            data = c.data[:, :3]
+            data = c.data
             r = models.SeppStochasticNn(data=data,
                                         max_delta_d=max_delta_d,
                                         max_delta_t=max_delta_t,

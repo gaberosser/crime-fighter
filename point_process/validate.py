@@ -386,8 +386,7 @@ if __name__ == "__main__":
     # Point process simulated data
     c = simulate.MohlerSimulation()
     c.run()
-    data = np.array(c.data)[:, :3]  # (t, x, y, b_is_BG)
-    data = data[data[:, 0].argsort()]
+    data = c.data  # (t, x, y) sorted by t
 
     # use Bowers kernel
     # stk = hotspot.STKernelBowers(1, 1e-4)

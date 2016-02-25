@@ -56,7 +56,7 @@ def camden_sampling_example():
 def simulation_mohler():
     c = simulate.MohlerSimulation()
     c.run()
-    data = c.data[:, :3]
+    data = c.data
     max_delta_t = 100.
     max_delta_d = 1.
     initial_est = lambda x, y: estimation.estimator_exp_gaussian(x, y, ct=0.1, cd=0.1)
@@ -148,7 +148,7 @@ def different_time_kernel():
 
     c = simulate.MohlerSimulation()
     c.run()
-    data = c.data[:, :3]
+    data = c.data
     max_delta_t = 100
     max_delta_d = 1.
     init_est_params = {

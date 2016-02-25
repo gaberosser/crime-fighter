@@ -31,7 +31,7 @@ if __name__ == '__main__':
     # c.off_sigma_x = 1.0
     c.seed(42)
     c.run()
-    data = np.array(c.data)[:, :3]  # (t, x, y, b_is_BG)
+    data = np.array(c.data)  # (t, x, y)
     # sort data by time ascending (may be done already?)
     data = data[data[:, 0].argsort()]
 

@@ -18,16 +18,30 @@ DATA_DIR = os.path.join(cd, 'test_data')
 class TestSimulation(unittest.TestCase):
 
     def test_mohler_simulation(self):
-        c = simulate.MohlerSimulation()
+        c = simulate.MohlerSimulation(t_total=1000)
+        c.seed(42)
+        c.run(num_to_prune=25)
 
-        # test background
-        bg = c.initialise_background()
-        num_bg = len(bg)
-        # check that all events are background
-        self.assertTrue(np.all(np.isnan(bg[:, -1])))
+        # test: all IDs are unique
+        ids = [t[0] for t in c._data]
+        self.assertEqual(len(ids), len(set(ids)))
 
-        # generate aftershocks
-        shocks = c.append_triggers(bg)
+        # test: data are sorted by time
+        ts = c.data[:, 0]
+        self.assertTrue(np.all(np.diff(ts) >= 0))
+
+        # test: no parent IDs that are not in the data
+        link_ids = [t[-1] for t in c._data]
+        self.assertFalse(np.any([t not in set(ids) for t in link_ids if t != -1 and t is not None]))
+
+        # test: linkages
+        bg_idx, cause_idx, eff_idx = c.linkages
+        self.assertEqual(len(cause_idx), len(eff_idx))
+        a = c.data[bg_idx]
+        self.assertEqual(len(bg_idx), c.number_bg)
+        dd = c.data[eff_idx] - c.data[cause_idx]
+        # time of effect must be ahead of time of cause
+        self.assertTrue(np.all(dd[:, 0] > 0))
 
 
 class TestUtils(unittest.TestCase):
@@ -87,7 +101,7 @@ class TestSeppStochasticNn(unittest.TestCase):
         self.c.num_to_prune = 3500
         self.c.seed(42)
         self.c.run()
-        self.data = self.c.data[:, :3]
+        self.data = self.c.data
 
     def test_point_process(self):
         """
@@ -103,7 +117,7 @@ class TestSeppStochasticNn(unittest.TestCase):
         self.assertEqual(len(r.num_bg), 15)
         self.assertAlmostEqual(r.l2_differences[0], 0.0011281, places=3)
         self.assertAlmostEqual(r.l2_differences[-1], 0.0001080, places=3)
-        num_bg_true = np.isnan(self.c.data[:, -1]).sum()
+        num_bg_true = self.c.number_bg
 
         self.assertTrue(np.abs(r.num_bg[-1] - num_bg_true) / float(num_bg_true) < 0.05)  # agree to within 5pct
         self.assertListEqual(r.num_trig, [r.ndata - x for x in r.num_bg])
@@ -147,8 +161,8 @@ class TestSeppStochasticNn(unittest.TestCase):
         t = np.linspace(0, r.max_delta_t, 1000)
         gt = r.trigger_kde.marginal_pdf(t, normed=False) / r.ndata
 
-        w = self.c.trigger_params['time_decay']
-        th = self.c.trigger_params['intensity']
+        w = self.c.trigger_decay
+        th = self.c.trigger_intensity
         gt_true = th * w * np.exp(-w * t)
         ise = np.sum((gt - gt_true) ** 2) * (t[1] - t[0])
         self.assertTrue(ise < 0.001)
@@ -157,12 +171,12 @@ class TestSeppStochasticNn(unittest.TestCase):
         gx = r.trigger_kde.marginal_pdf(x, dim=1, normed=False) / r.ndata
         gy = r.trigger_kde.marginal_pdf(x, dim=2, normed=False) / r.ndata
 
-        sx = self.c.trigger_params['sigma'][0]
+        sx = self.c.trigger_sigma[0]
         gx_true = th / (np.sqrt(2 * np.pi) * sx) * np.exp(-(x ** 2) / (2 * sx ** 2))
         ise = np.sum((gx - gx_true) ** 2) * (x[1] - x[0])
         self.assertTrue(ise < 0.1)
 
-        sy = self.c.trigger_params['sigma'][1]
+        sy = self.c.trigger_sigma[1]
         gy_true = th / (np.sqrt(2 * np.pi) * sy) * np.exp(-(x ** 2) / (2 * sy ** 2))
         ise = np.sum((gy - gy_true) ** 2) * (x[1] - x[0])
         self.assertTrue(ise < 0.01)
