@@ -1,3 +1,5 @@
+# network is a separate repo
+network/
 .idea/
 venv/
 *~
