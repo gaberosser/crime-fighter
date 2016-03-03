@@ -81,7 +81,8 @@ def run_anisotropic_k(net,
     )
     net_pts = simulate.uniform_random_points_on_net(net, npt)
     xy = net_pts.to_cartesian()
-    rk = ripley.RipleyKAnisotropic(xy, dmax, bd_poly)
+    dphi = np.pi / 4.
+    rk = ripley.RipleyKAnisotropic(xy, dmax, bd_poly, dphi=dphi)  # default behaviour; start at dphi/2
     rk.process()
 
     # distance and angle vectors
@@ -99,6 +100,14 @@ if __name__ == '__main__':
     out_dir = os.path.join(OUT_DIR, OUT_SUBDIR)
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
+
+
+    """
+    STEP 1
+    deposit points on the network
+    vary the domain shape and/or network bias towards horizontal/vertical roads
+    measure anisotropic K and save
+    """
 
     base_domain_length = 5000.
     domain_width_height_ratios = [1.,

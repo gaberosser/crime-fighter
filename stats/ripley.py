@@ -32,8 +32,9 @@ def prepare_data(data, domain, max_d, compute_angles=False):
     :param data:
     :param domain:
     :param max_d:
-    :param compute_angles: If True, also calculate dphi, the angle made by the line connecting i to j.
-    :return:
+    :param compute_angles: If True, also calculate dangle, the angle made by the line connecting i to j.
+    :return: (parent_idx, child_idx, delta_distance, near_exterior) if compute_angles is False, else
+    (parent_idx, child_idx, delta_distance, delta_angle, near_exterior)
     """
     i1, j1, dd = spatial.spatial_linkages(data, max_d)
     idx_cat = np.argsort(j1)
@@ -45,10 +46,10 @@ def prepare_data(data, domain, max_d, compute_angles=False):
     d_to_ext = np.array([geometry.Point(data[i]).distance(domain.exterior) for i in range(len(data))])
     near_exterior = np.where(d_to_ext[ii] < dd)[0]
     if compute_angles:
-        dphi = data.getrows(ii).angle(data.getrows(jj)).toarray()
+        dangle = data.getrows(ii).angle(data.getrows(jj)).toarray()
         # mask zero distances to avoid them all appearing at 0 angle
-        dphi[dd == 0.] = np.nan
-        return ii, jj, dd, dphi, near_exterior
+        dangle[dd == 0.] = np.nan
+        return ii, jj, dd, dangle, near_exterior
     return ii, jj, dd, near_exterior
 
 
@@ -79,7 +80,7 @@ class RipleyK(object):
         self.compute_edge_correction()
 
     def compute_edge_correction(self):
-        mappable_func = partial(edge_correction_wrapper, n_quad=32, domain=self.domain)
+        mappable_func = partial(edge_correction_wrapper, n_quad=self.n_quad, domain=self.domain)
         self.edge_corr_circ = np.ones(self.dd.size)
         self.edge_corr_area = np.ones(self.dd.size)
 
@@ -125,11 +126,10 @@ class RipleyK(object):
         k = self.compute_k(u)
         return np.sqrt(k / np.pi)
 
-
     def run_permutation(self, u, niter=20):
         if np.any(u > self.max_d):
             raise AttributeError('No values of u may be > max_d')
-        mappable_func = partial(edge_correction_wrapper, n_quad=32, domain=self.domain)
+        mappable_func = partial(edge_correction_wrapper, n_quad=self.n_quad, domain=self.domain)
         k = []
         try:
             for i in range(niter):
@@ -144,64 +144,120 @@ class RipleyK(object):
                 edge_corr_area[near_exterior] = np.array(res)[:, 1]
 
                 k.append(self.compute_k(u, dd=dd, edge_corr=edge_corr_area))
+        except Exception as exc:
+            print repr(exc)
         finally:
             return np.array(k)
 
 
+def anisotropic_edge_correction_wrapper(x, domain=None, n_quad=32):
+    return anisotropic_edge_correction(*x, domain=domain, n_quad=n_quad)
+
+
+def anisotropic_edge_correction(xy, d, phi, dphi, domain=None, n_quad=32):
+    th = np.linspace(phi, phi + dphi, n_quad)
+    x = np.concatenate((xy[0:1], d * np.cos(th) + xy[0], xy[0:1]))
+    y = np.concatenate((xy[1:2], d * np.sin(th) + xy[1], xy[1:2]))
+    poly = geometry.Polygon(zip(x, y))
+    area = poly.intersection(domain).area / (0.5 * dphi * d ** 2)  # NB: modified denominator
+    line = geometry.LineString(zip(x[1:-1], y[1:-1]))
+    circ = line.intersection(domain).length / (dphi * d)  # NB: modified denominator
+    return circ, area
+
+
 class RipleyKAnisotropic(RipleyK):
 
-    def __init__(self, *args, **kwargs):
-        self.dphi = None
-        super(RipleyKAnisotropic, self).__init__(*args, **kwargs)
+    n_quad = 16
+
+    def __init__(self,
+                 data,
+                 max_d,
+                 domain,
+                 phi=None,
+                 dphi=None):
+        """
+        Anisotropic version of Ripley's K
+        :param phi: START angle for each of the divisions
+        :param dphi: Angular width of each segment
+        :return:
+        """
+        super(RipleyKAnisotropic, self).__init__(data, max_d, domain)
+        if phi is None:
+            if dphi is None:
+                dphi = np.pi / 4.
+            else:
+                # check that dphi goes into 2 * pi an integer number of times
+                if np.mod(2 * np.pi, dphi) > 1e-12:
+                    raise ValueError("Value of dphi must go into 2 * pi an integer number of times (approx.)")
+            phi0 = dphi / 2.
+            phi = np.arange(phi0, 2 * np.pi, dphi)
+        else:
+            if dphi is None:
+                raise AttributeError("If phi is specified, must also specify dphi")
+            if np.any(np.abs(np.diff(phi) - dphi) > 1e-12):
+                raise ValueError("Supplied phi starting angles are not separated by a distance of dphi")
+            phi = np.array(phi)
+        self.phi = phi
+        self.dphi = dphi
+        self.phi_filters = [phi_filter_factory(p, self.dphi) for p in self.phi]
+
+    @property
+    def nsegment(self):
+        return self.phi.size
 
     def process(self):
-        self.ii, self.jj, self.dd, self.dphi, self.near_exterior = prepare_data(self.data,
+        self.ii, self.jj, self.dd, self.dangle, self.near_exterior = prepare_data(self.data,
                                                                                  self.domain,
                                                                                  self.max_d,
                                                                                  compute_angles=True)
-        self.compute_edge_correction()
+        self.edge_corr_circ, self.edge_corr_area = self.compute_edge_correction()
 
-    def compute_edge_correction(self):
+    def compute_edge_correction(self, ii, dd, near_exterior):  #### FIXME!!
         """
-        This COULD be adjusted to compute edge corrections properly, using only the area/circumf of the segment of the
-        circle described by dphi. That will take a while though, so let's not bother?
-        :return:
         """
-        super(RipleyKAnisotropic, self).compute_edge_correction()
+        dd = self.dd if dd is None else dd
+        near_exterior = self.near_exterior if near_exterior is None else near_exterior
+        mappable_func = partial(anisotropic_edge_correction_wrapper, n_quad=self.n_quad, domain=self.domain)
+        edge_corr_circ = np.ones((dd.size, self.phi.size))
+        edge_corr_area = np.ones((dd.size, self.phi.size))
 
-    def compute_k(self, u, phi=None, dd=None, dphi=None, edge_corr=None, *args, **kwargs):
+        print "Computing edge correction terms..."
+        tic = time()
+        pool = mp.Pool()
+        for j, phi in enumerate(self.phi):
+            res = pool.map_async(
+                mappable_func,
+                ((self.data[self.ii[i]], dd[i], phi, self.dphi) for i in near_exterior)
+            ).get(1e100)
+            edge_corr_circ[self.near_exterior, j] = np.array(res)[:, 0]
+            edge_corr_area[self.near_exterior, j] = np.array(res)[:, 1]
+        print "Completed in %f seconds" % (time() - tic)
+        return edge_corr_circ, edge_corr_area
+
+    def compute_k(self, u, dd=None, dangle=None, edge_corr=None, *args, **kwargs):
         """
         Compute anisotropic K in which distance is less than u and phi lies in the bins specified.
         :param u: Array of distances.
-        :param phi: Array of filter functions. These should accept a vector of angles and return a masked array that is
-        True for angles within the segment.
-        :param bidirectional: If True, each phi range is automatically combined with the equivalent range after adding
-        pi. It is up to the user to ensure that ranges do not overlap.
         :return: 2D array, rows represent values in u and cols represent between-values in phi
         """
-        if phi is None:
-            raise AttributeError("Input argument phi is required.")
-        dd = dd if dd is not None else self.dd
-        dphi = dphi if dphi is not None else self.dphi
+        dd = self.dd if dd is None else dd
+        dangle = self.dangle if dangle is None else dangle
         # can try switching this for circumferential correction
-        edge_corr = edge_corr if edge_corr is not None else self.edge_corr_area
+        edge_corr = self.edge_corr_area if edge_corr is None else edge_corr
 
         if not hasattr(u, '__iter__'):
             u = [u]
 
-        # create phi filters
-        phi_filters, phi_width = generate_angle_filters(phi)
-        res = np.zeros((len(u), len(phi_filters)))
+        res = np.zeros((len(u), len(self.phi)))
 
-        for j in range(len(phi_filters)):
-            ff = phi_filters[j]
-            phi_ind = ff(dphi)
+        for j in range(self.nsegment):
+            ff = self.phi_filters[j]
+            phi_ind = ff(dangle)
             # zero distance objects have a NaN angle change
             # we will apply these equally across ALL phi bins, so get an index here
-            zero_d_ind = np.isnan(dphi)
+            zero_d_ind = np.isnan(dangle)
             for i in range(len(u)):
                 t = u[i]
-                # phi_frac = phi_width[j] / (2 * np.pi)
                 d_ind = dd <= t
                 # w = 1 / (edge_corr[d_ind & phi_ind] * phi_frac)  # using area-based correction
                 w = 1 / edge_corr[d_ind & phi_ind]  # using area-based correction
@@ -210,24 +266,20 @@ class RipleyKAnisotropic(RipleyK):
                 # w_zero = 1 / (edge_corr[d_ind & zero_d_ind] * phi_frac)
                 w_zero = 1 / edge_corr[d_ind & zero_d_ind]
 
-                a = (w.sum() + w_zero.sum() / float(len(phi_filters)))
+                a = (w.sum() + w_zero.sum() / float(self.nsegment))
                 b = float(self.n * self.intensity)
 
                 res[i, j] = a / b
 
         return res
 
-    def run_permutation(self, u, phi=None, niter=20):
+    def run_permutation(self, u, niter=20):
         """
         Run random permutation to test significance of K value.
         :param u:
-        :param phi: Array of filter functions. These should accept a vector of angles and return a masked array that is
-        True for angles within the segment.
         :param niter:
         :return:
         """
-        if phi is None:
-            raise AttributeError("phi is a required input argument")
         if np.any(u > self.max_d):
             raise AttributeError('No values of u may be > max_d')
 
@@ -235,19 +287,22 @@ class RipleyKAnisotropic(RipleyK):
         k = []
         mappable_func = partial(spatial.random_points_within_poly, npts=self.n)
         all_randomisations = pool.map_async(mappable_func, (self.domain for i in range(niter))).get(1e100)
-        mappable_func = partial(edge_correction_wrapper, n_quad=32, domain=self.domain)
+        # mappable_func = partial(anisotropic_edge_correction_wrapper, n_quad=self.n_quad, domain=self.domain)
         try:
             for i in range(niter):
                 data = CartesianData.from_args(*all_randomisations[i])
-                ii, jj, dd, dphi, near_exterior = prepare_data(data, self.domain, self.max_d, compute_angles=True)
-                edge_corr_circ = np.ones(dd.size)
-                edge_corr_area = np.ones(dd.size)
-                res = pool.map_async(mappable_func, ((data[ii[i]], dd[i]) for i in near_exterior)).get(1e100)
+                ii, jj, dd, dangle, near_exterior = prepare_data(data, self.domain, self.max_d, compute_angles=True)
+                # edge_corr_circ = np.ones(dd.size)
+                # edge_corr_area = np.ones(dd.size)
+                # res = pool.map_async(mappable_func, ((data[ii[i]], dd[i]) for i in near_exterior)).get(1e100)
+                edge_corr_circ, edge_corr_area = self.compute_edge_correction(dd=dd, near_exterior=near_exterior)
 
-                edge_corr_circ[near_exterior] = np.array(res)[:, 0]
-                edge_corr_area[near_exterior] = np.array(res)[:, 1]
+                # edge_corr_circ[near_exterior] = np.array(res)[:, 0]
+                # edge_corr_area[near_exterior] = np.array(res)[:, 1]
 
-                k.append(self.compute_k(u, phi=phi, dd=dd, dphi=dphi, edge_corr=edge_corr_area))
+                k.append(self.compute_k(u, dd=dd, dangle=dangle, edge_corr=edge_corr_area))
+        except Exception as exc:
+            print repr(exc)
         finally:
             return np.array(k)
 
@@ -283,7 +338,7 @@ def phi_filter_factory(*args):
 
     return filter_func
 
-def generate_angle_filters(phi):
+def generate_angle_filters(phi, dphi):
     phi_width = [sum(t[1::2]) for t in phi]
     phi_filters = [phi_filter_factory(*t) for t in phi]
     return phi_filters, phi_width
