@@ -195,7 +195,7 @@ class SeppSimulationBase(object):
         Assume data are ordered by ascending time
         """
 
-        self._data = self._data[self.num_to_prune:-self.num_to_prune]
+        self._data = self._data[int(self.num_to_prune):int(-self.num_to_prune)]
         # relocate time so that first event occurs at t=0
         t0 = self._data[0][1]
         for t in self._data:
