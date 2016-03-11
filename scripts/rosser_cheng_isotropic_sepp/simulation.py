@@ -1,6 +1,9 @@
 import numpy as np
+from data.models import CartesianSpaceTimeData
 from network import simulate, itn
 from point_process.simulate import NetworkHomogBgExponentialGaussianTrig
+from point_process import estimation
+from point_process.models import SeppStochasticNnReflected, SeppStochasticNnIsotropicReflectedTrigger
 from stats import ripley
 from analysis.spatial import shapely_rectangle_from_vertices
 import os
@@ -42,7 +45,7 @@ def simulate_sepp_on_network(net,
     obj.run()
 
     sim_data = obj.data
-    return sim_data.space
+    return sim_data
 
 
 if __name__ == '__main__':
@@ -75,7 +78,7 @@ if __name__ == '__main__':
         print "Running vary_domain with bounds %s." % str(ext)
         net = simulate.create_grid_network(ext, row_space, col_spaces[0])
         net_pts = simulate_sepp_on_network(net)
-        u, k_obs, k_sim = run_anisotropic_k(net_pts)
+        u, k_obs, k_sim = run_anisotropic_k(net_pts.space)
         vary_domain[ext] = {
             'k_obs': k_obs,
             'k_sim': k_sim,
@@ -95,7 +98,7 @@ if __name__ == '__main__':
         print "Running vary_network with col space %f." % cs
         net = simulate.create_grid_network(domain_extents[0], row_space, cs)
         net_pts = simulate_sepp_on_network(net)
-        u, k_obs, k_sim = run_anisotropic_k(net_pts)
+        u, k_obs, k_sim = run_anisotropic_k(net_pts.space)
         vary_network[cs] = {
             'k_obs': k_obs,
             'k_sim': k_sim,
@@ -107,3 +110,59 @@ if __name__ == '__main__':
     with open(out_file, 'wb') as f:
         dill.dump(vary_network, f)
     print "Saved."
+
+    """
+    STEP 2
+    Train the sepp on these simulated datasets
+    """
+    niter = 100
+
+    estimate_kwargs = {
+        'ct': 0.1,
+        'cd': 150,
+        'frac_bg': None,
+    }
+
+    model_kwargs = {
+        'parallel': True,
+        'max_delta_t': 90, # set on each iteration
+        'max_delta_d': 500, # set on each iteration
+        'bg_kde_kwargs': {'number_nn': [100, 15],
+                          'min_bandwidth': None,
+                          'strict': False},
+        'trigger_kde_kwargs': {'number_nn': 15,
+                               'min_bandwidth': None,
+                               'strict': False},
+        'estimation_function': lambda x, y: estimation.estimator_exp_gaussian(x, y, **estimate_kwargs),
+        'seed': 42,  # doesn't matter what this is, just want it fixed
+        'remove_coincident_pairs': False
+    }
+
+    vary_network = {}
+
+    for cs in col_spaces:
+        print "Running vary_network with col space %f." % cs
+        net = simulate.create_grid_network(domain_extents[0], row_space, cs)
+        net_pts = simulate_sepp_on_network(net)
+        xy = net_pts.space.to_cartesian()
+        txy = net_pts.time.adddim(xy, type=CartesianSpaceTimeData)
+        r = SeppStochasticNnReflected(txy, **model_kwargs)
+        r.train(niter=niter)
+        # u, k_obs, k_sim = run_anisotropic_k(net_pts)
+        # vary_network[cs] = {
+        #     'k_obs': k_obs,
+        #     'k_sim': k_sim,
+        #     'u': u,
+        # }
+
+
+    for ext in domain_extents:
+        print "Running vary_domain with bounds %s." % str(ext)
+        net = simulate.create_grid_network(ext, row_space, col_spaces[0])
+        net_pts = simulate_sepp_on_network(net)
+        u, k_obs, k_sim = run_anisotropic_k(net_pts)
+        vary_domain[ext] = {
+            'k_obs': k_obs,
+            'k_sim': k_sim,
+            'u': u,
+        }

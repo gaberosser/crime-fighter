@@ -9,9 +9,7 @@ from shapely import geometry, ops
 import multiprocessing as mp
 from functools import partial
 import operator
-import os
 from contextlib import closing
-
 from data.models import CartesianSpaceTimeData, CartesianData
 from kde import models as kde_models
 import collections
@@ -327,15 +325,24 @@ class RipleyKAnisotropic(RipleyK):
 
         print "Computing edge correction terms..."
         tic = time()
-        with closing(mp.Pool()) as pool:
-            for j, seg in enumerate(segments):
-                ma = dill_mapping_function(
-                    pool,
-                    mappable_func,
-                    ((data[source_idx[i]], dd[i], seg) for i in near_exterior)
-                )
-                res = ma.get(1e100)
-                ec[near_exterior, j] = np.array(res)
+        for j, seg in enumerate(segments):
+            iter_args = (
+                (data[source_idx[i]], dd[i], domain) for i in near_exterior
+            )
+            res = np.array([(seg.area_correction(*x)) for x in iter_args])
+            ec[near_exterior, j] = np.array(res)
+        # with closing(mp.Pool()) as pool:
+        #     for j, seg in enumerate(segments):
+        #         iter_args = (
+        #             (data[source_idx[i]], dd[i], seg) for i in near_exterior
+        #         )
+        #         ma = dill_mapping_function(
+        #             pool,
+        #             mappable_func,
+        #             ((data[source_idx[i]], dd[i], seg) for i in near_exterior)
+        #         )
+        #         res = ma.get(1e100)
+        #         ec[near_exterior, j] = np.array(res)
         print "Completed in %f seconds" % (time() - tic)
         return ec
 
@@ -677,11 +684,16 @@ def rose_plot(phi, combinations, ax=None):
 if __name__ == '__main__':
 
     import os
+    from scripts import OUT_DIR
 
-    OUTDIR = '/home/gabriel/Dropbox/research/output/'
+    # OUTDIR = '/home/gabriel/Dropbox/research/output/'
+    subdir = os.path.join(OUT_DIR, 'chicago', 'ripley_k_ani')
+    if not os.path.isdir(subdir):
+        os.makedirs(subdir)
+
     max_d = 500
     geos_simplification = 20  # metres tolerance factor
-    n_sim = 100
+    n_sim = 20
     start_date = datetime.date(2011, 3, 1)
     end_date = start_date + datetime.timedelta(days=366)
     domains = chicago.get_chicago_side_polys(as_shapely=True)
@@ -689,7 +701,6 @@ if __name__ == '__main__':
 
     # define a vector of threshold distances
     u = np.linspace(0, max_d, 2000)
-    phi = [((2 * i + 1) * np.pi / 8, np.pi / 4.) for i in range(8)]
 
     domain_mapping = {
         'chicago_south': 'South',
@@ -737,26 +748,24 @@ if __name__ == '__main__':
                                                        end_date=end_date,
                                                        domain=domain)
             tic = time()
-            obj = RipleyKAnisotropic(data[:, 1:], max_d, domain)
+            obj = RipleyKAnisotropicC2(data[:, 1:], max_d, domain)
             obj.process()
-            k_obs = obj.compute_k(u, phi=phi)
+            k_obs = obj.compute_k(u)
             print "%s, %s, %f seconds" % (domain_mapping[r], ct, time() - tic)
-            k_sim = obj.run_permutation(u, phi=phi, niter=n_sim)
+            k_sim = obj.run_permutation(u, niter=n_sim)
 
             res[r][ct] = {
-                # 'obj': obj,
                 'k_obs': k_obs,
                 'k_sim': k_sim,
             }
 
-            outfile = os.path.join(OUTDIR, 'ripley_%s_%s.pickle' % (r, ct))
+            outfile = os.path.join(subdir, '%s_%s.pickle' % (r, ct))
             with open(outfile, 'w') as f:
                 dill.dump(
                     {'obj': obj,
                      'k_obs': k_obs,
                      'k_sim': k_sim,
                      'u': u,
-                     'phi': phi,
                      },
                     f
                 )
