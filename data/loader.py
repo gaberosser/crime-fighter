@@ -118,6 +118,7 @@ class LoaderBase(object):
                 continue
             if self.post_filter_one(t):
                 data.append(t)
+        return data
 
     def get(self):
         parsed = self.parse_raw_data()
