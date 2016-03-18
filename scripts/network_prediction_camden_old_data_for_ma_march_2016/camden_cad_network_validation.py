@@ -27,8 +27,6 @@ N_SAMPLES_PER_GRID = 15
 
 def load_data(
     crime_type='burglary',
-    start_date=START_DATE,
-    end_date=None
 ):
     file_name_map = {
         'burglary': 'burg_D.shp',
@@ -51,6 +49,8 @@ def load_data(
     t0 = min(dates)
     days = [(t - t0).days for t in dates]
     txy = np.vstack((days, xs, ys)).transpose()
+    sort_idx = np.argsort(txy[:, 0])
+    txy = txy[sort_idx]
     return txy, t0
 
 
@@ -63,13 +63,8 @@ def load_network():
 def snap_data(data, net):
 
     # snap space
-    snapped_xy, failed = NetworkSpaceTimeData.from_cartesian(net, data, return_failure_idx=True)
+    snapped_xy, failed = NetworkSpaceTimeData.from_cartesian(net, data, return_failure_idx=True, radius=50.)
     return snapped_xy
-    # not_failed = sorted(list(set(range(data.shape[0])) - failed))
-
-    # res = DataArray(data[not_failed, 0]).adddim(snapped_xy, type=NetworkSpaceTimeData)
-
-    # return res
 
 
 def run_network_validation(data):
@@ -123,6 +118,13 @@ def run_planar_validation_compare_by_grid_network_intersection(data, net, debug=
 
 if __name__ == '__main__':
 
+    # DEBUG: enable full logging in roc module
+    sh = logging.StreamHandler()
+    fmt = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    sh.setFormatter(fmt)
+    validation.roc.logger.addHandler(sh)
+    validation.roc.logger.setLevel(logging.DEBUG)
+
     out_dir = os.path.join(OUT_DIR, 'cad_old', 'monsuru_network_prediction')
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
@@ -134,7 +136,7 @@ if __name__ == '__main__':
 
     for ct in ('burglary', 'violence', 'shoplifting'):
 
-        data, t0 = load_data(start_date=START_DATE, end_date=end_date, crime_type=ct)
+        data, t0 = load_data(crime_type=ct)
         data_snap = snap_data(data, net)
         res[ct] = run_network_validation(data_snap)
 

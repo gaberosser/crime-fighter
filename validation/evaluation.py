@@ -43,3 +43,20 @@ def wilcoxon_comparison(coverage_arr1,
         mean_delta[k] = y1.mean() - y2.mean()
         
     return covs, pvals, effect_direction, mean_delta
+
+
+def mean_hit_rate(coverage_arr, hit_rate_arr, output_coverages):
+    """
+    Compute the mean hit rate, using nearest value interpolation find the daily hit rate for a given coverage
+    :param coverage_arr: (M x N) array, where M is the number of days and N is the number of sample units, giving the
+    fraction cumulative coverage
+    :param inp_arr: (M x N) array giving the fraction cumulative crime captured
+    :param output_coverages: An array/iterable of length P with desired coverage fractions (in the range [0, 1])
+    :return: array of length P with mean hit rate
+    """
+    covs = np.array(output_coverages)
+    if np.any(covs < 0) or np.any(covs > 1):
+        raise ValueError("Output coverages must be in the range [0, 1].")
+
+    for c in covs:
+        pass

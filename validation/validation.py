@@ -192,6 +192,7 @@ class ValidationBase(object):
         testing_data = self.testing(dt_plus=true_dt_plus, dt_minus=true_dt_minus)
         testing_ind = self.testing_data_index(dt_plus=true_dt_plus, dt_minus=true_dt_minus)
         prediction_t = self.cutoff_t + pred_dt_plus
+        print "Cutoff time %d, I found %d datapoints" % (self.cutoff_t, len(testing_data))
 
         res = {}
 

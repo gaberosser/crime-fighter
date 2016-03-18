@@ -87,6 +87,7 @@ class SpatialRoc(object):
         """
         if data is not None:
             data = self.data_class(data)
+            logger.info("Length of supplied data: %d", data.ndata)
             self.check_data(data)
             self._data = data
             if index is not None:
@@ -95,6 +96,7 @@ class SpatialRoc(object):
             else:
                 index = np.arange(data.ndata)
             self.index = index
+            logger.info("self.ndata: %d", self.ndata)
 
     def plot(self, show_sample_units=True,
              show_prediction=True,
@@ -146,6 +148,7 @@ class SpatialRoc(object):
         return len(self.sample_units)
 
     def set_prediction(self, prediction):
+        logger.info("self.ndata: %d", self.ndata)
         if prediction.size != self.sample_points.ndata:
             raise AttributeError("Length of supplied prediction does not match sample points")
         # compute the mean predicted value per sample unit
@@ -187,6 +190,7 @@ class SpatialRoc(object):
         return np.array(indices, dtype=object)
 
     def evaluate(self, include_predictions=False):
+        import ipdb; ipdb.set_trace()
         # check that there are some testing data, and return reduced results if not
         if self.data.ndata == 0:
             return {
