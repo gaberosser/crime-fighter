@@ -1,21 +1,23 @@
 from point_process import simulate, estimation, models
-from data.models import CartesianSpaceTimeData
-from network.simulate import create_grid_network
+from analysis.spatial import shapely_rectangle_from_vertices
+from ripleys_k_analysis import run_anisotropic_k
 from scripts import OUT_DIR
 import numpy as np
 import os
 import dill
+from matplotlib import pyplot as plt
+from matplotlib.patches import Circle
+
+subdir = os.path.join(OUT_DIR, 'anisotropy_simulation_study', 'manhattan', 'sepp')
+domain_extent = [0., 0., 5000., 5000.]
+boundary = shapely_rectangle_from_vertices(*domain_extent)
+col_spacings = [100., 200., 400., 800.]
+row_space = 100.
 
 
-if __name__ == '__main__':
-    subdir = os.path.join(OUT_DIR, 'anisotropy_simulation_study', 'manhattan', 'sepp')
-    if not os.path.exists(subdir):
-        os.makedirs(subdir)
+def simulate_data_and_train():
 
     niter = 10
-    domain_extent = [0., 0., 5000., 5000.]
-    col_spacings = [100., 200., 400., 800.]
-    row_space = 100.
 
     sim_t_total = 1000.
     sim_num_to_prune = 400
@@ -87,6 +89,64 @@ if __name__ == '__main__':
             'sepp': sepp,
         }
 
+        if not os.path.exists(subdir):
+            os.makedirs(subdir)
         fn = 'simulated_data_patchy_bg_row_%d_col_%d.dill' % (row_space, col_space)
         with open(os.path.join(subdir, fn), 'wb') as f:
             dill.dump(out, f)
+
+
+if __name__ == '__main__':
+    # analyse results to produce figures
+
+    dmax = 200.
+    niter_rk = 50
+    trigger_sigma = 50.
+
+    # load previous results
+    row_space = 100.
+    sepp = {}
+    data = {}
+
+    for col_space in [col_spacings[0], col_spacings[-1]]:
+        fn = 'simulated_data_patchy_bg_row_%d_col_%d.dill' % (row_space, col_space)
+        with open(os.path.join(subdir, fn), 'rb') as f:
+            res = dill.load(f)
+        sepp[col_space] = res['sepp']
+        data[col_space] = res['data']
+
+    # run K ani routine
+    k_obs = {}
+    k_sim = {}
+    for col_space in [col_spacings[0], col_spacings[-1]]:
+        u, k_obs[col_space], k_sim[col_space] = run_anisotropic_k(data[col_space][0][:, 1:],
+                                                                  boundary,
+                                                                  dmax=dmax,
+                                                                  nsim=niter_rk)
+
+    # generate plots
+    # 1) scatterplot of data
+
+    # add an indicator of triggering extent
+    loc = (domain_extent[0] + domain_extent[2] / 2., domain_extent[1] + domain_extent[3] / 2.)
+    # th = np.linspace(0, 2 * np.pi, 100)
+    # circx = loc[0] + trigger_sigma * np.cos(th)
+    # circy = loc[1] + trigger_sigma * np.sin(th)
+
+    fig, axs = plt.subplots(nrows=1, ncols=2, sharex=True, sharey=True, figsize=(10, 5))
+    plt.axis('equal')
+    for i, col_space in enumerate([col_spacings[0], col_spacings[-1]]):
+        # scatterplot
+        axs[i].scatter(data[col_space][0][:, 1], data[col_space][0][:, 2], marker='o', facecolor='k', edgecolor='none',s=20, alpha=0.3)
+        axs[i].set_aspect('equal')
+        axs[i].set_xlim([domain_extent[0], domain_extent[2]])
+        axs[i].set_ylim([domain_extent[1], domain_extent[3]])
+        axs[i].add_patch(Circle(loc, trigger_sigma, fc='r', ec='none'))
+    plt.tight_layout()
+
+
+
+
+    # 2) Ripley's K ani for the two
+
+    # 3) SEPP trigger results for the two

@@ -73,9 +73,21 @@ class RipleyK(object):
     def __init__(self,
                  data,
                  max_d,
-                 domain):
+                 domain,
+                 clip_data=True):
+        """
 
+        :param data:
+        :param max_d:
+        :param domain:
+        :param clip_data: If True (default), remove data that lie outside of the domain. This is recommended as they
+        will result in a division by zero later on
+        :return:
+        """
         self.data = CartesianData(data)
+        if clip_data:
+            to_keep = [i for i, xy in enumerate(self.data.data) if geometry.Point(xy).within(domain)]
+            self.data = self.data.getrows(to_keep)
         assert self.data.nd == 2, "Input data must be 2D (i.e. purely spatial)"
         self.n = len(data)
         self.max_d = max_d
