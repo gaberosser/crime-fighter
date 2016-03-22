@@ -2,6 +2,7 @@ __author__ = 'gabriel'
 
 import numpy as np
 import math
+import collections
 from scipy import special
 from data.models import DataArray, exp, NetworkData, NetworkSpaceTimeData, CartesianSpaceTimeData, CartesianData
 from network import utils
@@ -380,17 +381,15 @@ class LinearKernel1D(BaseKernel):
     Simple linear 1D kernel.  Useful for network KDE.
     """
 
-    def __init__(self, h, loc=0., one_sided=False):
+    def __init__(self, h, loc=0.):
         """
 
         :param h: Bandwidth - kernel decreases linearly from loc to zero over this distance
         :param loc: Central location of kernel, defaults to zero
-        :param one_sided: If True then the kernel is only defined for x >= loc
         :return:
         """
         self.h = float(h)
         self.loc = loc
-        self.one_sided = one_sided
         super(LinearKernel1D, self).__init__()
 
     @property
@@ -401,12 +400,23 @@ class LinearKernel1D(BaseKernel):
         return self.h ** 2
 
     def pdf(self, x, **kwargs):
-        if self.one_sided:
-            t = x - self.loc
-            return 2 * (self.h - t) * (t >= 0) * (t <= self.h) / self.int_constants
-        else:
-            t = np.abs(x - self.loc)
-            return (self.h - t) * (t <= self.h) / self.int_constants
+        t = np.abs(x - self.loc)
+        return (self.h - t) * (t <= self.h) / self.int_constants
+
+    def cdf_centred(self, x):
+        """
+        Compute the centred CDF (i.e. as if the loc were zero)
+        :param x: Upper limit of integral DEFINED RELATIVE TO MEAN. That is, the upper limit used is x + self.loc
+        :return: CDF, computed from the mean
+        """
+        x = np.array(x, dtype=float)
+        res = np.zeros_like(x, dtype=float)
+        res[x >= self.h] = 1.
+        idx = (x >= -self.h) & (x < 0)
+        res[idx] = 0.5 + (self.h * x[idx] + 0.5 * x[idx] ** 2) / self.int_constants
+        idx = (x >= 0) & (x < self.h)
+        res[idx] = 0.5 + x[idx] * (self.h - 0.5 * x[idx]) / self.int_constants
+        return res
 
 
 class ExponentialKernel1D(BaseKernel):
@@ -433,8 +443,6 @@ class ExponentialKernel1D(BaseKernel):
     def pdf(self, x, **kwargs):
         t = x - self.loc
         return np.exp(-t / self.h) * (t >= 0) / self.int_constants
-
-
 
 
 class LinearRadialKernel(BaseKernel):
@@ -554,7 +562,7 @@ class NetworkKernelEqualSplitLinear(BaseKernel):
     def set_net_kernel(self):
         # two-sided kernel - we are in effect computing an absolute distance, so the integral over all space
         # includes both 'positive and negative distance'
-        self.net_kernel = self.kernel_class(self.bandwidth, one_sided=False)
+        self.net_kernel = self.kernel_class(self.bandwidth)
 
     @property
     def spatial_bandwidth(self):
@@ -576,6 +584,28 @@ class NetworkKernelEqualSplitLinear(BaseKernel):
 
     def set_walker(self, walker):
         self.walker = walker
+
+    def net_edge_integrals(self, source):
+        """
+        For each edge in the network, compute the integrated density along that edge.
+        This is a more efficient way to estimate edge densities, rather than approximating it with multiple targets
+        """
+        net = self.walker.net_obj
+        res = collections.defaultdict(int)
+
+        for path, edge in self.walker.walk_from_net_point(source):
+            norm = path.splits_total  # number of splits
+
+            if source.edge == edge:
+                # the source lies on this node: need two calls to the CDF with a=0
+                d1 = source.distance_positive
+                d0 = -source.distance_negative
+            else:
+                d0 = path.distance_total
+                d1 = d0 + edge.length
+
+            res[edge] += self.net_kernel.cdf_centred(d1) - self.net_kernel.cdf_centred(d0) / norm
+        return res
 
     def net_pdf(self, source):
         paths = self.walker.source_to_targets(source, max_distance=self.spatial_bandwidth)
@@ -644,7 +674,7 @@ class NetworkTemporalKernelEqualSplit(NetworkKernelEqualSplitLinear):
         self.time_cutoff = time_cutoff
 
     def set_net_kernel(self):
-        self.net_kernel = self.kernel_class(self.spatial_bandwidth, one_sided=False)
+        self.net_kernel = self.kernel_class(self.spatial_bandwidth)
 
     @property
     def ndim(self):
