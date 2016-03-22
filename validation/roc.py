@@ -190,7 +190,6 @@ class SpatialRoc(object):
         return np.array(indices, dtype=object)
 
     def evaluate(self, include_predictions=False):
-        import ipdb; ipdb.set_trace()
         # check that there are some testing data, and return reduced results if not
         if self.data.ndata == 0:
             return {
@@ -208,6 +207,7 @@ class SpatialRoc(object):
         total_sample_unit = sum(sample_unit_sizes)
 
         N = sum(true_counts)
+        print N
         n = np.cumsum(true_counts)
         carea = np.cumsum(sample_unit_sizes) / total_sample_unit
         cfrac = n / float(N)
