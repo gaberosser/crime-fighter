@@ -20,7 +20,7 @@ def plot_spatial_ellipse_array(sepp_model,
         fig = plt.figure()
         ax = fig.add_subplot(111)
     else:
-        fig = ax.gcf()
+        fig = ax.get_figure()
     plot_kwargs = plot_kwargs or {}
 
     loc = plticker.MultipleLocator(base=400.0) # this locator puts ticks at regular intervals
@@ -43,18 +43,18 @@ def plot_spatial_ellipse_array(sepp_model,
     ax.yaxis.set_major_locator(loc)
     ax.set_aspect('equal', adjustable='box-forced')
 
-    plt.tight_layout(h_pad=0.2, w_pad=0.2)
+    # plt.tight_layout(h_pad=0.2, w_pad=0.2)
 
-    big_ax = fig.add_subplot(111)
-    big_ax.spines['top'].set_color('none')
-    big_ax.spines['bottom'].set_color('none')
-    big_ax.spines['left'].set_color('none')
-    big_ax.spines['right'].set_color('none')
-    big_ax.set_xticks([])
-    big_ax.set_yticks([])
-    big_ax.tick_params(labelcolor='w', top='off', bottom='off', left='off', right='off')
-    big_ax.set_xlabel(r'$\Delta x$')
-    big_ax.set_ylabel(r'$\Delta y$')
-    big_ax.patch.set_visible(False)
+    # big_ax = fig.add_subplot(111)
+    # big_ax.spines['top'].set_color('none')
+    # big_ax.spines['bottom'].set_color('none')
+    # big_ax.spines['left'].set_color('none')
+    # big_ax.spines['right'].set_color('none')
+    # big_ax.set_xticks([])
+    # big_ax.set_yticks([])
+    # big_ax.tick_params(labelcolor='w', top='off', bottom='off', left='off', right='off')
+    # big_ax.set_xlabel(r'$\Delta x$')
+    # big_ax.set_ylabel(r'$\Delta y$')
+    # big_ax.patch.set_visible(False)
 
-    big_ax.set_position([0.05, 0.05, 0.95, 0.9])
+    # big_ax.set_position([0.05, 0.05, 0.95, 0.9])
