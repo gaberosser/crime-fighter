@@ -51,7 +51,7 @@ if __name__ == '__main__':
         sepp = []
 
         for i in range(niter):
-            net = create_grid_network(domain_extent, row_space, row_space)
+            net = create_grid_network(domain_extent, row_space, col_space)
             c = simulate.NetworkHomogBgExponentialGaussianTrig(net)
             c.trigger_params['sigma'] = 50.
             c.run(t_total=sim_t_total, num_to_prune=sim_num_to_prune)

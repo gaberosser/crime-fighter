@@ -1,6 +1,6 @@
 from point_process import simulate, estimation, models
 from analysis.spatial import shapely_rectangle_from_vertices
-from ripleys_k_analysis import run_anisotropic_k
+from scripts.rosser_cheng_isotropic_sepp.ripleys_k_analysis import run_anisotropic_k
 from scripts import OUT_DIR
 import numpy as np
 import os
