@@ -11,10 +11,10 @@ if __name__ == '__main__':
     if not os.path.exists(subdir):
         os.makedirs(subdir)
 
-    niter = 10
+    niter = 4
     domain_extent = [0., 0., 5000., 5000.]
     row_space = 100.
-    col_spacings = [100., 200., 400., 800.]
+    col_spacings = [100., 200., 400., 800.][::-1]
 
     sim_t_total = 500.
     sim_num_to_prune = 400
@@ -36,7 +36,7 @@ if __name__ == '__main__':
                           'min_bandwidth': None,
                           'strict': False},
         'trigger_kde_kwargs': {'number_nn': 15,
-                               'min_bandwidth': None,
+                               'min_bandwidth': [0, 5., 5.],  # NB required?
                                'strict': False},
         'estimation_function': lambda x, y: estimation.estimator_exp_gaussian(x, y, **estimate_kwargs),
         'seed': 42,  # doesn't matter what this is, just want it fixed
