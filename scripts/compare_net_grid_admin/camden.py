@@ -299,8 +299,9 @@ def plot_compare_network_planar(net_v,
 
 
 if __name__ == "__main__":
-    from analysis import cad
+    from analysis import cad, spatial
     from network import plots
+    from plotting import utils
 
     itn_net = network_from_pickle()
 
@@ -328,38 +329,79 @@ if __name__ == "__main__":
     # network hotspot model
     sk = hotspot.STNetworkLinearSpaceExponentialTime(radius=h, time_decay=t_decay)
 
-    # get target points and test/training data
+    # get target points and test/training data from the validation object
     vb = validation.NetworkValidationMean(all_data, sk, spatial_domain=None, include_predictions=True)
     vb.set_t_cutoff(INITAL_CUTOFF)
-    vb.set_sample_units(None, n_samples)  # 2nd argument refers to interval between sample points
+    vb.set_sample_units(None, 35)  # 2nd argument refers to interval between sample points
 
     targets = vb.sample_points
+    targets_planar = targets.to_cartesian()
+
+    cmap = utils.transparent_colour_map()
+    figsize=(7, 6)
+    xmin, ymin, xmax, ymax = boro_poly.buffer(200).bounds
+    axlims = (xmin, xmax, ymin, ymax)
+
+    # NETWORK prediction
     z = sk.predict(INITAL_CUTOFF, targets)
-    plots.network_lines_with_shaded_scatter_points(vb.sample_points, z, line_buffer=20)
 
-    # vb_res = vb.run(1, n_iter=1)
+    fig = plt.figure(figsize=figsize)
+    ax = fig.add_subplot(111)
+    plots.network_lines_with_shaded_scatter_points(vb.sample_points, z, line_buffer=20, ax=ax, cmap=cmap, fmax=0.98)
+    ax.axis('off')
+    ax.autoscale()
+    ax.set_aspect('equal')
+    ax.axis(axlims)
+    ax.set_position([0, 0, 1, 1])
 
-        # compare with grid-based method with same parameters
-        # cb_poly = camden_boundary()
-        # data_txy = all_data.time.adddim(all_data.space.to_cartesian(), type=models.CartesianSpaceTimeData)
-        # sk_planar = hotspot.STLinearSpaceExponentialTime(radius=h, mean_time=t_decay)
-        # vb_planar = validation.ValidationIntegration(data_txy, sk_planar, spatial_domain=cb_poly, include_predictions=True)
-        # vb_planar.set_t_cutoff(INITAL_CUTOFF)
-        # vb_planar.set_sample_units(grid_length, n_samples)
-        #
-        # tic = time.time()
-        # vb_res_planar = vb_planar.run(1, n_iter=n_test)
-        # toc = time.time()
-        # print toc - tic
-        #
-        # # compare with grid-based method using intersecting network segments to measure sample unit size
-        # vb_planar_segment = validation.ValidationIntegrationByNetworkSegment(
-        #     data_txy, sk_planar, spatial_domain=cb_poly, graph=itn_net
-        # )
-        # vb_planar_segment.set_t_cutoff(INITAL_CUTOFF)
-        # vb_planar_segment.set_sample_units(grid_length, n_samples)
-        #
-        # tic = time.time()
-        # vb_res_planar_segment = vb_planar_segment.run(1, n_iter=n_test)
-        # toc = time.time()
-        # print toc - tic
+    # GRID-BASED prediction
+    data_txy = all_data.time.adddim(all_data.space.to_cartesian(), type=models.CartesianSpaceTimeData)
+    sk_planar = hotspot.STLinearSpaceExponentialTime(radius=h, mean_time=t_decay)
+    vb_planar = validation.ValidationIntegration(data_txy, sk_planar, spatial_domain=boro_poly, include_predictions=True)
+    vb_planar.set_t_cutoff(INITAL_CUTOFF)
+    vb_planar.set_sample_units(grid_length, n_samples)
+    res = vb_planar.run(1, n_iter=1)
+    zp = res['prediction_values'][0]
+
+    fig = plt.figure(figsize=figsize)
+    ax = fig.add_subplot(111)
+    plots.plot_network_edge_lines(itn_net.lines_iter(), ax=ax)  # specify ax
+    # overlay shaded grid
+    grid = [shapely_rectangle_from_vertices(*t) for t in vb_planar.roc.sample_units]
+    plotting.spatial.plot_shaded_regions(grid,
+                                         zp,
+                                         ax=ax,
+                                         fmax=0.98,
+                                         cmap=cmap,
+                                         colorbar=False,
+                                         scale_bar=None)
+    ax.axis(axlims)
+    ax.set_position([0, 0, 1, 1])
+
+
+    # ADMINISTRATIVE UNIT based predictions
+    wards = cad.get_camden_wards(as_shapely=True)
+    sample_points = [spatial.random_points_within_poly(w, n_samples) for w in wards]
+    sample_xy = np.concatenate([np.array(t).transpose() for t in sample_points])
+    zau_pt = sk_planar.predict(INITAL_CUTOFF, sample_xy)
+    zau = []
+    for i in range(len(wards)):
+        zau.append(zau_pt[(i * n_samples):((i + 1) * n_samples)].mean())
+    zau = np.array(zau)
+
+    fig = plt.figure(figsize=figsize)
+    ax = fig.add_subplot(111)
+    plots.plot_network_edge_lines(itn_net.lines_iter(), ax=ax)  # specify ax
+    # overlay shaded grid
+    plotting.spatial.plot_shaded_regions(wards,
+                                         zau,
+                                         ax=ax,
+                                         fmax=0.98,
+                                         cmap='Reds',
+                                         alpha=0.5,
+                                         colorbar=False,
+                                         scale_bar=None)
+    ax.axis(axlims)
+    ax.set_position([0, 0, 1, 1])
+
+    plt.draw()

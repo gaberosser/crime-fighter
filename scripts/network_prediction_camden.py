@@ -363,11 +363,11 @@ if __name__ == "__main__":
         print toc - tic
 
         # dump to pickle file
-        out = {
-            'network_kde': vb_res,
-            'planar_kde': vb_res_planar,
-            'planar_kde_by_road_length': vb_res_planar_segment
-        }
-        outfile = os.path.join(OUT_DIR, 'network_vs_planar', 'camden_%s.pickle' % (ct.replace(' ', '_')))
-        with open(outfile, 'w') as f:
-            dill.dump(out, f)
+        # out = {
+        #     'network_kde': vb_res,
+        #     'planar_kde': vb_res_planar,
+        #     'planar_kde_by_road_length': vb_res_planar_segment
+        # }
+        # outfile = os.path.join(OUT_DIR, 'network_vs_planar', 'camden_%s.pickle' % (ct.replace(' ', '_')))
+        # with open(outfile, 'w') as f:
+        #     dill.dump(out, f)

@@ -152,6 +152,18 @@ def get_camden_region(as_shapely=False):
     return poly
 
 
+def get_camden_wards(as_shapely=True):
+    camden = models.Division.objects.get(type='borough', name__iexact='camden')
+    wards = models.Division.objects.filter(type='ward', mpoly__intersects=camden.mpoly)
+    polys = []
+    for t in wards:
+        if t.mpoly.intersection(camden.mpoly).area / t.mpoly.area > 1e-3:
+            polys.append(t.mpoly.simplify())
+    if as_shapely:
+        polys = [geodjango_to_shapely(p) for p in polys]
+    return polys
+
+
 class CadAggregate(object):
     def __init__(self, nicl_number=None, only_new=False, start_date=None, end_date=None):
         self._start_date = start_date
