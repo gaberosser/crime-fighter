@@ -1,9 +1,10 @@
 import numpy as np
 from data import models
-from analysis import chicago
-from network import osm
+from analysis import chicago, cad
+from network import osm, itn
 from settings import DATA_DIR
 import os
+import csv
 import datetime
 import dill
 from network.utils import linkages, network_linkages, linkage_func_separable
@@ -17,18 +18,31 @@ LABEL_NOISE = -1
 # START_DATE = datetime.date(2010, 1, 1)
 # END_DATE = datetime.date(2014, 1, 1)
 #
-net_file = os.path.join(DATA_DIR, 'chicago', 'network', 'chicago_south_clipped.net')
-net = osm.OSMStreetNet.from_pickle(net_file)
+
+domain = cad.get_camden_region(as_shapely=True)
+net_file = os.path.join(DATA_DIR, 'camden', 'network', 'mastermap-itn_camden_buff100.net')
+net = itn.ITNStreetNet.from_pickle(net_file)
+
+data_fn = os.path.join(DATA_DIR, 'jianan', 'stay_0.csv')
+fields = ('Seconds', 'EASTING', 'NORTHING')
+with open(data_fn, 'rb') as f:
+    c = csv.DictReader(f)
+    raw_fields = c.fieldnames
+    raw_data = list(c)
+    raw_txy = np.array([[r[t] for t in fields] for r in raw_data], dtype=float)
+
+# net = osm.OSMStreetNet.from_pickle(net_file)
 # sides = chicago.get_chicago_side_polys(True)
 # data, t0, cid = chicago.get_crimes_by_type(domain=sides['South'],
 #                                            start_date=START_DATE,
 #                                            end_date=END_DATE)
 
-with open('speedy_load_temp.dill', 'rb') as f:
+# with open('speedy_load_temp.dill', 'rb') as f:
     # txy = dill.load(f)
-    data = dill.load(f)
+    # data = dill.load(f)
 
-data = models.NetworkSpaceTimeData.from_cartesian(net, data)
+data, unsnapped_idx = models.NetworkSpaceTimeData.from_cartesian(net, raw_txy, return_failure_idx=True)
+snapped_idx = sorted(set(range(raw_txy.shape[0])) - set(unsnapped_idx))
 txy = data.time.adddim(data.space.to_cartesian(), type=models.CartesianSpaceTimeData)
 
 
@@ -132,8 +146,10 @@ class STDBScan(object):
             else:
                 # new cluster
                 self.logger.debug("Starting NEW cluster %d", cluster_idx)
+                labels[i] = cluster_idx
                 to_remove = {i}
-                self.logger.debug("Adding all %d neighbours of point %d to stack", len(neighbours), i)
+                self.logger.info("Added point %d to cluster %d", i, cluster_idx)
+                self.logger.debug("Added neighbours of point %d to stack (n=%d)", i, len(neighbours))
 
                 stack = set(neighbours)
                 while len(stack):
@@ -171,33 +187,40 @@ class STDBScan(object):
                 self.logger.debug("Now removing %d points from the pool, leaving %d points", len(to_remove), len(self.remaining))
 
                 cluster_idx += 1
+
         self.labels = labels
         self.labels_lookup = {}
 
-        for k, v in self.labels.iteritems():
+        for k, v in self.labels.items():
+            if v == LABEL_UNCLASSIFIED:
+                v = LABEL_NOISE
+                self.labels[k] = v
             self.labels_lookup.setdefault(v, []).append(k)
 
 
 
-dd_max = 100.
-dt_max = 21.
-self = STDBScan(data, dd_max, dt_max, min_pts=5)
+dd_max = 125.
+dt_max = 900
+min_pt = 24
+
+self = STDBScan(data, dd_max, dt_max, min_pts=min_pt)
 self.run()
 
+# plotting
 
 from matplotlib import pyplot as plt
 from matplotlib import cm
 
 fig = plt.figure()
 ax = fig.add_subplot(111)
-# net.plot_network(ax=ax)
-colour_scale = np.linspace(0, 1, 5)
+net.plot_network(ax=ax)
+colour_scale = np.linspace(0, 1, 10)
 
-noise_idx = self.labels_lookup[LABEL_NOISE] + self.labels_lookup[LABEL_UNCLASSIFIED]
-x = txy[noise_idx, 1]
-y = txy[noise_idx, 2]
-ax.scatter(x, y, c='k', marker='o', s=40, alpha=0.2, label='noise', edgecolor='none')
-for i in range(min(5, max(self.labels_lookup.keys()) + 1)):
+# noise_idx = self.labels_lookup[LABEL_NOISE] + self.labels_lookup[LABEL_UNCLASSIFIED]
+# x = txy[noise_idx, 1]
+# y = txy[noise_idx, 2]
+# ax.scatter(x, y, c='k', marker='o', s=40, alpha=0.2, label='noise', edgecolor='none')
+for i in range(min(len(colour_scale), max(self.labels_lookup.keys()) + 1)):
     this_idx = self.labels_lookup[i]
     c = cm.jet(colour_scale[np.mod(i, len(colour_scale))])
     x = txy[this_idx, 1]
@@ -205,3 +228,25 @@ for i in range(min(5, max(self.labels_lookup.keys()) + 1)):
     ax.scatter(x, y, s=40, c=np.ones((x.size, 4)) * c, edgecolor='none', label=str(i), cmap='jet')
 
 ax.set_aspect('equal')
+
+# save to new CSV
+
+out_fn = 'stay_points_labelled.csv'
+out_fields = raw_fields + ['easting_post_snap', 'northing_post_snap', 'label',]
+outset = set(unsnapped_idx)
+idx = 0
+missing = []
+with open(out_fn, 'wb') as f:
+    c = csv.DictWriter(f, out_fields)
+    c.writeheader()
+    for i, r in enumerate(raw_data):
+        if i in outset:
+            r['label'] = LABEL_UNCLASSIFIED
+            r['easting_post_snap'] = None
+            r['northing_post_snap'] = None
+        else:
+            r['label'] = self.labels[idx]
+            r['easting_post_snap'] = txy[idx, 1]
+            r['northing_post_snap'] = txy[idx, 2]
+            idx += 1
+        c.writerow(r)
