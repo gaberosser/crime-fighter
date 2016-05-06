@@ -55,12 +55,6 @@ class STDBScan(object):
                  dt_max,
                  min_pts=None):
 
-        # euclidean
-        # assert len(data.shape) == 2, "data must be a 2D matrix"
-
-        # euclidean
-        # assert data.shape[1] == 3, "data must be 3D"
-
         # network
         assert data.nd == 2, "data must be 2D (time + net space)"
 
@@ -214,13 +208,21 @@ from matplotlib import cm
 fig = plt.figure()
 ax = fig.add_subplot(111)
 net.plot_network(ax=ax)
-colour_scale = np.linspace(0, 1, 10)
+colour_scale = np.linspace(0, 1, 20)
 
-# noise_idx = self.labels_lookup[LABEL_NOISE] + self.labels_lookup[LABEL_UNCLASSIFIED]
-# x = txy[noise_idx, 1]
-# y = txy[noise_idx, 2]
-# ax.scatter(x, y, c='k', marker='o', s=40, alpha=0.2, label='noise', edgecolor='none')
-for i in range(min(len(colour_scale), max(self.labels_lookup.keys()) + 1)):
+# for i in range(min(len(colour_scale), max(self.labels_lookup.keys()) + 1)):
+#     this_idx = self.labels_lookup[i]
+#     c = cm.jet(colour_scale[np.mod(i, len(colour_scale))])
+#     x = txy[this_idx, 1]
+#     y = txy[this_idx, 2]
+#     ax.scatter(x, y, s=40, c=np.ones((x.size, 4)) * c, edgecolor='none', label=str(i), cmap='jet')
+
+this_idx = self.labels_lookup[-1]
+x = txy[this_idx, 1]
+y = txy[this_idx, 2]
+ax.scatter(x, y, s=20, edgecolor='none', c='k', alpha=0.2)
+
+for i in range(max(self.labels_lookup.keys()) + 1):
     this_idx = self.labels_lookup[i]
     c = cm.jet(colour_scale[np.mod(i, len(colour_scale))])
     x = txy[this_idx, 1]
