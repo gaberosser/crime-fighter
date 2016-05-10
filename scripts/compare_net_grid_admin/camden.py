@@ -302,6 +302,9 @@ if __name__ == "__main__":
     from analysis import cad, spatial
     from network import plots
     from plotting import utils
+    from matplotlib import patches
+    import matplotlib.collections as mcoll
+
 
     itn_net = network_from_pickle()
 
@@ -347,7 +350,34 @@ if __name__ == "__main__":
 
     fig = plt.figure(figsize=figsize)
     ax = fig.add_subplot(111)
-    plots.network_lines_with_shaded_scatter_points(vb.sample_points, z, line_buffer=20, ax=ax, cmap=cmap, fmax=0.98)
+
+    fmax = 0.98
+    line_buffer = 30.
+    alpha = 0.7
+    ordered_vals = sorted(z)
+    vmax = ordered_vals[int(fmax * len(ordered_vals))]
+    z[z > vmax] = vmax
+
+    if ax is None:
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+    net = vb.sample_points.graph
+    net.plot_network(ax=ax)
+
+    xy = vb.sample_points.to_cartesian()
+    # create circular patches
+    p = []
+    for i in range(xy.ndata):
+        p.append(patches.Circle(xy[i], radius=line_buffer, edgecolor='none', alpha=alpha))
+    coll = mcoll.PatchCollection(p, match_original=True)
+    coll.set_array(z)
+    coll.set_cmap(cmap)
+    ax.add_collection(coll)
+
+    # plots.network_lines_with_shaded_scatter_points(vb.sample_points, z, line_buffer=20, ax=ax, cmap=cmap, fmax=0.98)
     ax.axis('off')
     ax.autoscale()
     ax.set_aspect('equal')
