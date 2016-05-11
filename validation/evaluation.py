@@ -45,6 +45,24 @@ def wilcoxon_comparison(coverage_arr1,
     return covs, pvals, effect_direction, mean_delta
 
 
+def interpolated_hit_rate(coverage_arr, hit_rate_arr, coverage):
+    """
+    Return the closest hit rate result for the supplied coverage.
+    We look up the cutoff index separately on each day to ensure that the correct cutoff is used.
+    :param coverage_arr: M x N array containing the coverage levels,
+    M is the number of validation days, N is the number of sample units
+    :param hit_rate_arr: M x N array containing the hit rate. Corresponds to entries in coverage_arr
+    :param coverage: Coverage level in [0, 1]
+    :return: Length M array of hit rates for the supplied coverage
+    """
+    m = coverage_arr.shape[0]
+    a = np.zeros(m)
+    for i in range(m):
+        idx = bisect_left(coverage_arr[i], coverage)
+        a[i] = hit_rate_arr[i, idx]
+    return a
+
+
 def mean_hit_rate(coverage_arr, hit_rate_arr, n_covs=101.):
     """
     Compute the mean hit rate, using nearest value interpolation find the daily hit rate for a given coverage
@@ -61,9 +79,11 @@ def mean_hit_rate(coverage_arr, hit_rate_arr, n_covs=101.):
     m = coverage_arr.shape[0]
 
     a = np.zeros((m, n_covs))
-    for i in range(m):
-        for j, c in enumerate(covs):
-            idx = bisect_left(coverage_arr[i], c)
-            a[i, j] = hit_rate_arr[i, idx]
+    for j, c in enumerate(covs):
+        a[:, j] = interpolated_hit_rate(coverage_arr, hit_rate_arr, c)
+    # for i in range(m):
+    #     for j, c in enumerate(covs):
+    #         idx = bisect_left(coverage_arr[i], c)
+    #         a[i, j] = hit_rate_arr[i, idx]
 
     return covs, a.mean(axis=0)

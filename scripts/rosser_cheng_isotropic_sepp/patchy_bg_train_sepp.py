@@ -8,7 +8,7 @@ import dill
 from matplotlib import pyplot as plt
 from matplotlib.patches import Circle
 
-subdir = os.path.join(OUT_DIR, 'anisotropy_simulation_study', 'manhattan', 'sepp', 'patchy_background')
+subdir = os.path.join(OUT_DIR, 'anisotropy_simulation_study', 'patchy_background')
 domain_extent = [0., 0., 5000., 5000.]
 boundary = shapely_rectangle_from_vertices(*domain_extent)
 col_spacings = [100., 200., 400., 800.]

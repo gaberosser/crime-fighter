@@ -1,7 +1,8 @@
 from matplotlib import pyplot as plt
 import matplotlib.ticker as plticker
 from tools import get_ellipse_coords
-
+import os
+import dill
 
 def plot_spatial_ellipse_array(sepp_model,
                                icdf=0.95,
@@ -58,3 +59,24 @@ def plot_spatial_ellipse_array(sepp_model,
     # big_ax.patch.set_visible(False)
 
     # big_ax.set_position([0.05, 0.05, 0.95, 0.9])
+
+
+def plot_simulated_trigger_ellipses(all_data=None, max_d=600):
+    from scripts.rosser_cheng_isotropic_sepp.variable_grid_simulation_train_sepp import load_saved_data, col_spacings
+    styles = [
+        {'color': 'k', 'linestyle': '-', 'label': '100 m'},
+        {'color': 'k', 'linestyle': '--', 'label': '200 m'},
+        {'color': 'r', 'linestyle': '-', 'label': '400 m'},
+        {'color': 'r', 'linestyle': '--', 'label': '800 m'},
+    ]
+    if all_data is None:
+        all_data = load_saved_data()
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    for i, c in enumerate(col_spacings):
+        the_label = '%d m' % c
+        the_sepp = all_data[c]['sepp'][0]
+        plot_spatial_ellipse_array(the_sepp, ax=ax, max_d=max_d, plot_kwargs=styles[i])
+    plt.legend(loc='upper left')
+    ax.set_xlabel('X (m)')
+    ax.set_ylabel('Y (m)')

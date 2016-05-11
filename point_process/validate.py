@@ -106,6 +106,12 @@ class SeppValidation(validation.ValidationBase):
 
     data_class = CartesianSpaceTimeData
 
+    def __init__(self, data, model,
+                 include=None,
+                 **kwargs):
+        self.include = include or ('full', 'full_static', 'bg', 'bg_static', 'trigger')
+        super(SeppValidation, self).__init__(data, model, **kwargs)
+
     def predict_all(self, t, include=None, **kwargs):
         """
         Carry out all prediction methods at time t.  Doing this in one go means computing linkages only once per call.
@@ -123,7 +129,7 @@ class SeppValidation(validation.ValidationBase):
         }
 
         if include is None:
-            include = include_dict.keys()
+            include = self.include
         else:
             assert len(include), "No methods requested for predict/assess cycle."
 
