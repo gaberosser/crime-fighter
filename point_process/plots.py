@@ -353,22 +353,21 @@ def multiplots(ppobj, simobj=None, maxes=None):
     fig = plt.figure()
     ax = fig.add_subplot(111)
     h = []
-    h.append(ax.plot(iterx, ppobj.num_bg, 'k-'))
-    h.append(ax.plot(iterx, ppobj.num_trig, 'r-'))
+    labx = 'B/G, true' if simobj else 'B/G'
+    laby = 'Trig, true' if simobj else 'Trigger'
+    h.append(ax.plot(iterx, ppobj.num_bg, 'k-', label=labx))
+    h.append(ax.plot(iterx, ppobj.num_trig, 'r-', label=laby))
     ymax = max(max(ppobj.num_bg), max(ppobj.num_trig))
 
     if simobj:
-        h.append(ax.plot(iterx, simobj.number_bg * np.ones(niter), 'k--'))
-        h.append(ax.plot(iterx, simobj.number_trigger * np.ones(niter), 'r--'))
+        h.append(ax.plot(iterx, simobj.number_bg * np.ones(niter), 'k--', label='B/G, inferred'))
+        h.append(ax.plot(iterx, simobj.number_trigger * np.ones(niter), 'r--', label='Trig, inferred'))
         ymax = max(ymax, simobj.number_bg, simobj.number_trigger)
 
     ax.set_ylim([0, 1.05 * ymax])
     ax.set_xlabel('Number iterations')
     ax.set_ylabel('Number events')
-    if simobj:
-        ax.legend([t[0] for t in h], ('B/g, inferred', 'Trig, inferred', 'B/g, true', 'Trig, true'), 'right')
-    else:
-        ax.legend([t[0] for t in h], ('B/G', 'Trigger'), 'right')
+    ax.legend(loc='right')
 
     # fig A2
     t_max = t_max or ppobj.trigger_kde.marginal_icdf(ci, dim=0)
@@ -381,7 +380,7 @@ def multiplots(ppobj, simobj=None, maxes=None):
         zt = th * w * np.exp(-w * t)
         plt.plot(t, zt, 'k--')
         ax.set_ylim([0, w * th * 1.02])
-        ax.legend(ax.get_lines(), ('Inferred', 'True'), 'upper right')
+        ax.legend(ax.get_lines(), ('Inferred', 'True'), loc='upper right')
     ax.set_xlim([0, t_max])
 
     if ndim >= 2:
@@ -394,7 +393,7 @@ def multiplots(ppobj, simobj=None, maxes=None):
             zx = th / (np.sqrt(2 * np.pi) * sx) * np.exp(-(x**2) / (2 * sx**2))
             plt.plot(x, zx, 'k--')
             ax.set_ylim([0, 1.05 * th / (np.sqrt(2 * np.pi) * sx)])
-            ax.legend(ax.get_lines(), ('Inferred', 'True'), 'upper right')
+            ax.legend(ax.get_lines(), ('Inferred', 'True'), loc='upper right')
         ax.set_xlim([-x_max, x_max])
 
     if ndim >= 3:
@@ -410,7 +409,7 @@ def multiplots(ppobj, simobj=None, maxes=None):
             plt.plot(y, zy, 'k--')
             zmax_theor = th/(np.sqrt(2 * np.pi) * sy)
             ax.set_ylim([0, 1.05 * max(zmax_infer, zmax_theor)])
-            ax.legend(ax.get_lines(), ('Inferred', 'True'), 'upper right')
+            ax.legend(ax.get_lines(), ('Inferred', 'True'), loc='upper right')
         else:
             ax.set_ylim([0, 1.05 * zmax_infer])
         ax.set_xlim([-y_max, y_max])
