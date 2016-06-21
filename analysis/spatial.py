@@ -284,10 +284,10 @@ def shapely_polygon_to_osm_poly(poly, name, srid=None):
         project = partial(
             pyproj.transform,
             pyproj.Proj(init='epsg:%d' % srid),  # source coordinate system
-            # pyproj.Proj(init='epsg:900913')  # destination coordinate system
             pyproj.Proj(init='epsg:4326')  # destination coordinate system
         )
         poly = transform(project, poly)
+
     outer = poly.exterior
     poly_arr = [name, '1']
     for x, y in outer.coords:
@@ -302,6 +302,44 @@ def shapely_polygon_to_osm_poly(poly, name, srid=None):
 
     with open("%s.poly" % name, 'w') as f:
         f.writelines([t + "\n" for t in poly_arr])
+
+def shapely_multipolygon_to_osm_poly(poly, name, srid=None):
+    ## TODO: not working?
+    if srid is not None and srid != 900913:
+        import pyproj
+        from shapely.ops import transform
+        project = partial(
+            pyproj.transform,
+            pyproj.Proj(init='epsg:%d' % srid),  # source coordinate system
+            # pyproj.Proj(init='epsg:900913')  # destination coordinate system
+            pyproj.Proj(init='epsg:4326')  # destination coordinate system
+        )
+        poly = transform(project, poly)
+
+    if poly.geom_type.lower() == 'polygon':
+        poly = [poly]
+
+    # now assume multipolygon
+    poly_arr = [name,]
+    count = 1
+    for p in poly:
+        poly_arr.append('%d' % count)
+        outer = p.exterior
+        for x, y in outer.coords:
+            poly_arr.append("    %f     %f" % (x, y))
+        poly_arr.append('END')
+        count += 1
+        for t in p.interiors:
+            poly_arr.append('!%d' % count)
+            for x, y in t.coords:
+                poly_arr.append("    %f    %f" % (x, y))
+            count += 1
+            poly_arr.append('END')
+    poly_arr.append('END')
+
+    with open("%s.poly" % name, 'w') as f:
+        f.writelines([t + "\n" for t in poly_arr])
+
 
 
 def network_spatial_linkages(netdata,

@@ -7,7 +7,7 @@ from kde.models import FixedBandwidthKdeScott, VariableBandwidthNnKde, FixedBand
 from kde.netmodels import NetworkTemporalKde
 from data.models import DataArray, CartesianSpaceTimeData, SpaceTimeDataArray, NetworkData, NetworkSpaceTimeData, \
     CartesianData
-from point_process.utils import linkages, linkage_func_separable
+from point_process.utils import linkages
 from network.utils import network_linkages
 
         # x = self.roc.sample_points.toarray(0)
