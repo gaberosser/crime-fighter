@@ -16,29 +16,34 @@ NCPU = False  # use maximum number of CPUs for parallel processing
 
 if __name__ == "__main__":
 
-    START_DAY_NUMBER = int(sys.argv[1])
-    NUM_VALIDATION = int(sys.argv[2])
+    # START_DAY_NUMBER = int(sys.argv[1])
+    # NUM_VALIDATION = int(sys.argv[2])
+
+    max_time_window = 24
+    aoristic_method = 'start'
+    num_validation = 60  # number of prediction time windows
+    start_day_number = 180  # number of days (after start date) on which first prediction is made
 
     # load crime data
-    end_date = START_DATE + datetime.timedelta(days=START_DAY_NUMBER + NUM_VALIDATION + 1)
+    end_date = START_DATE + datetime.timedelta(days=start_day_number + num_validation + 1)
 
     # load crime data
-    obj = BirminghamCrimeLoader()
+    obj = BirminghamCrimeLoader(aoristic_method=aoristic_method, max_time_window=max_time_window)
     data, t0, cid = obj.get_data(start_date=START_DATE,
                                  end_date=end_date)
 
-    opt = optimisation.PlanarFixedBandwidth(data, data_index=cid, initial_cutoff=START_DAY_NUMBER,
+    opt = optimisation.PlanarFixedBandwidth(data, data_index=cid, initial_cutoff=start_day_number,
                                             parallel=NCPU, kde_class=models.FixedBandwidthLinearSpaceExponentialTimeKde)
     opt.set_logger(verbose=True)
     opt.set_parameter_grid(N_PT, *PARAM_EXTENT)
-    opt.run(NUM_VALIDATION)
+    opt.run(num_validation)
 
     tt, dd = zip(opt.grid)
     tt = tt[0]
     dd = dd[0]
 
     with open(
-        "planar_linearexponentialkde_start_day_%d_%d_iterations.dill" % (START_DAY_NUMBER, NUM_VALIDATION),
+        "planar_linearexponentialkde_start_day_%d_%d_iterations_start_max24hr.dill" % (start_day_number, num_validation),
         'w'
     ) as f:
         dill.dump({

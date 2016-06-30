@@ -104,6 +104,21 @@ class BirminghamCrimeFileLoader(DataLoaderFile):
 class BirminghamCrimeLoader(DataLoaderDB):
     idx_field = 'crime_number'
 
+    def __init__(self, aoristic_method='start', max_time_window=None, *args, **kwargs):
+        """
+        :param max_time_window: MAximum time elapsed between start and end datetime in HOURS.
+        """
+        SUPPORTED_METHODS = (
+            'start',
+            'end',
+            'mid'
+        )
+        if aoristic_method.lower() not in SUPPORTED_METHODS:
+            raise ValueError("Unrecognised aoristic method. Supported values are %s" % ', '.join(SUPPORTED_METHODS))
+        self.aoristic_method = aoristic_method
+        self.max_time_window = max_time_window
+        super(BirminghamCrimeLoader, self).__init__(*args, **kwargs)
+
     @property
     def model(self):
         return models.Birmingham
@@ -145,7 +160,11 @@ class BirminghamCrimeLoader(DataLoaderDB):
         if domain:
             s = "ST_Intersects(location, ST_GeomFromText('{0}', {1}))".format(domain.wkt, obj.srid)
             where_dict[s] = '*'
-        fields = ('crime_number', 'datetime_start', 'ST_X(location)', 'ST_Y(location)')
+        if self.max_time_window is not None:
+            s = "EXTRACT(EPOCH FROM datetime_end - datetime_start) / 3600.0"
+            where_dict[s] = "*<= {0}".format(self.max_time_window)
+
+        fields = ('crime_number', 'datetime_start', 'datetime_end', 'ST_X(location)', 'ST_Y(location)')
         return obj.select(where_dict=where_dict or None, fields=fields, order_by='datetime_start')
 
     def process_raw_data(self, raw, **kwargs):
@@ -154,6 +173,7 @@ class BirminghamCrimeLoader(DataLoaderDB):
             res.append({
                 'crime_number': row['crime_number'],
                 'datetime_start': row['datetime_start'],
+                'datetime_end': row['datetime_end'],
                 'x': row['ST_X(location)'],
                 'y': row['ST_Y(location)'],
             })
@@ -165,12 +185,28 @@ class BirminghamCrimeLoader(DataLoaderDB):
         for t in processed:
             start = datetime_to_days(self.t0, t.pop('datetime_start'))
             t['t_start'] = start
+            end = datetime_to_days(self.t0, t.pop('datetime_end'))
+            t['t_end'] = end
 
     def compute_txy(self, processed):
         res = []
         for t in processed:
-            if self.convert_dates:
-                res.append([t['t_start'], t['x'], t['y']])
-            else:
-                res.append([t['datetime_start'], t['x'], t['y']])
+            if self.aoristic_method == 'start':
+                if self.convert_dates:
+                    res.append([t['t_start'], t['x'], t['y']])
+                else:
+                    res.append([t['datetime_start'], t['x'], t['y']])
+            elif self.aoristic_method == 'end':
+                if self.convert_dates:
+                    res.append([t['t_end'], t['x'], t['y']])
+                else:
+                    res.append([t['datetime_end'], t['x'], t['y']])
+            elif self.aoristic_method == 'mid':
+                if self.convert_dates:
+                    this_t = (t['t_end'] + t['t_start']) / 2.
+                    res.append([this_t, t['x'], t['y']])
+                else:
+                    this_dt = (t['datetime_end'] - t['datetime_start']).total_seconds() / 2.
+                    this_t = t['datetime_start'] + datetime.timedelta(seconds=this_dt)
+                    res.append([this_t, t['x'], t['y']])
         return np.array(res)
