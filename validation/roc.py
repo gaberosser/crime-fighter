@@ -9,7 +9,7 @@ from analysis.spatial import (create_spatial_grid,
                               HAS_GEODJANGO)
 from data.models import DataArray, NetworkSpaceTimeData, NetworkData, NetPoint, CartesianData
 from shapely.geometry import Point, Polygon
-from network.utils import network_walker_uniform_sample_points
+from network.walker import network_walker_uniform_sample_points
 from time import time
 import logging
 logger = logging.getLogger(__name__)

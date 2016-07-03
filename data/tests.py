@@ -207,9 +207,6 @@ class TestIterator(SimpleTestCase):
                             np.random.rand(200, 1)))
         obj = iterator.RollingOrigin(data=data, initial_cutoff_t=50)
 
-        # class of data
-        self.assertIsInstance(obj.data, models.DataArray)
-
         # train / test split
         self.assertTrue((obj.training == data[t < 50.]).all())
         test_idx = (t >= 50.) & (t < 51.)

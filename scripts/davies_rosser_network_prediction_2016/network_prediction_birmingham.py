@@ -1,6 +1,5 @@
-from database.birmingham.loader import load_network, BirminghamCrimeFileLoader, load_boundary_file
-from database.birmingham.consts import CRIME_DATA_FILE
-from data.models import NetworkSpaceTimeData
+from database.birmingham.loader import load_network, BirminghamCrimeLoader, load_boundary_file
+from network.point import NetTimePointArray
 import dill
 import numpy as np
 from validation import validation, hotspot
@@ -14,19 +13,36 @@ import os
 
 START_DATE = datetime.date(2013, 7, 1)
 START_DAY_NUMBER = 240
-D_BANDWIDTH_NETWORK = 820.
-T_BANDWIDTH_NETWORK = 78.
-D_BANDWIDTH_PLANAR = 610.
-T_BANDWIDTH_PLANAR = 55.
+# D_BANDWIDTH_NETWORK = 820.
+# T_BANDWIDTH_NETWORK = 78.
+# D_BANDWIDTH_PLANAR = 610.
+# T_BANDWIDTH_PLANAR = 55.
 NUM_VALIDATION = 180
 BETWEEN_SAMPLE_POINTS = 30
 GRID_LENGTH = 150
 N_SAMPLES_PER_GRID = 15
 
+## optimal bandwidths
+## these come from running the mangle_birmingham_... script and copying the dictionary here
+OPTIMAL_BANDWIDTHS = {
+     ('network', 'end', None): (77.285714285714292, 925.51020408163254),
+     ('network', 'start', None): (77.414141414141412, 916.66666666666663),
+     ('network', 'start', 24): (79.102040816326536, 925.51020408163254),
+     ('planar', 'end', None): (50.04081632653061, 806.12244897959181),
+     ('planar', 'start', None): (50.04081632653061, 806.12244897959181),
+     ('planar', 'start', 24): (53.673469387755105, 766.32653061224482)
+}
 
-def load_data(start_date=START_DATE,
-              end_date=None):
-    obj = BirminghamCrimeFileLoader(CRIME_DATA_FILE, fmt='csv')
+
+
+def load_data(
+    start_date=START_DATE,
+    end_date=None,
+    aoristic_method='start',
+    max_time_window=None
+):
+    obj = BirminghamCrimeLoader(aoristic_method=aoristic_method, max_time_window=max_time_window)
+    # obj = BirminghamCrimeFileLoader(CRIME_DATA_FILE, fmt='csv')
     return obj.get_data(start_date=start_date,
                         end_date=end_date)
 
@@ -37,7 +53,8 @@ def snap_data(data, cid):
     net = load_network()
 
     # snap
-    snapped_data, failed = NetworkSpaceTimeData.from_cartesian(net, data, return_failure_idx=True)
+    # snapped_data, failed = NetworkSpaceTimeData.from_cartesian(net, data, return_failure_idx=True)
+    snapped_data, failed = NetTimePointArray.from_cartesian(net, data, return_failure_idx=True)
 
     # filter cid to those that snapped correctly
     idx = sorted(list(set(range(data.shape[0])) - set(failed)))
@@ -46,8 +63,8 @@ def snap_data(data, cid):
     return snapped_data, filtered_cid
 
 
-def run_network_validation(data):
-    sk = hotspot.STNetworkLinearSpaceExponentialTime(radius=D_BANDWIDTH_NETWORK, time_decay=T_BANDWIDTH_NETWORK)
+def run_network_validation(data, topt, dopt):
+    sk = hotspot.STNetworkLinearSpaceExponentialTime(radius=dopt, time_decay=topt)
     vb = validation.NetworkValidationMean(data, sk, spatial_domain=None, include_predictions=True)
     vb.set_t_cutoff(START_DAY_NUMBER)
     vb.set_sample_units(None, BETWEEN_SAMPLE_POINTS)  # 2nd argument refers to interval between sample points
@@ -59,9 +76,9 @@ def run_network_validation(data):
     return vb_res
 
 
-def run_planar_validation_compare_by_grid(data):
+def run_planar_validation_compare_by_grid(data, topt, dopt):
     poly = load_boundary_file()
-    sk_planar = hotspot.STLinearSpaceExponentialTime(radius=D_BANDWIDTH_PLANAR, mean_time=T_BANDWIDTH_PLANAR)
+    sk_planar = hotspot.STLinearSpaceExponentialTime(radius=dopt, mean_time=topt)
     vb_planar = validation.ValidationIntegration(data, sk_planar, spatial_domain=poly, include_predictions=True)
     vb_planar.set_t_cutoff(START_DAY_NUMBER)
     vb_planar.set_sample_units(GRID_LENGTH, N_SAMPLES_PER_GRID)
@@ -73,7 +90,7 @@ def run_planar_validation_compare_by_grid(data):
     return vb_res
 
 
-def run_planar_validation_compare_by_grid_network_intersection(data, net, debug=False):
+def run_planar_validation_compare_by_grid_network_intersection(data, net, topt, dopt, debug=False):
     if debug:
         # set logger to verbose output
         sh = logging.StreamHandler()
@@ -81,7 +98,7 @@ def run_planar_validation_compare_by_grid_network_intersection(data, net, debug=
         validation.roc.logger.setLevel(logging.DEBUG)
         validation.roc.logger.debug("Initiated debugging logger for ROC")
     poly = load_boundary_file()
-    sk_planar = hotspot.STLinearSpaceExponentialTime(radius=D_BANDWIDTH_PLANAR, mean_time=T_BANDWIDTH_PLANAR)
+    sk_planar = hotspot.STLinearSpaceExponentialTime(radius=dopt, mean_time=topt)
     vb = validation.ValidationIntegrationByNetworkSegment(
         data, sk_planar, spatial_domain=poly, graph=net, include_predictions=True
     )
@@ -97,24 +114,51 @@ def run_planar_validation_compare_by_grid_network_intersection(data, net, debug=
 
 if __name__ == '__main__':
 
+    # method can be one of 'net', 'grid', 'grid_net'
+    method = 'net_grid'
+    aoristic_method = 'start'
+    max_time_window = 24
+
+    filestem = '_validation_start_day_%d_%d_iterations_%s%s.dill' % (
+        START_DAY_NUMBER,
+        NUM_VALIDATION,
+        aoristic_method,
+        '_max%dhours' % max_time_window if max_time_window is not None else ''
+    )
+
+    # get optimal bandwidths
+    if method == 'net':
+        topt, dopt = OPTIMAL_BANDWIDTHS[('network', aoristic_method, max_time_window)]
+    else:
+        topt, dopt = OPTIMAL_BANDWIDTHS[('planar', aoristic_method, max_time_window)]
+
     end_date = START_DATE + datetime.timedelta(days=START_DAY_NUMBER + NUM_VALIDATION + 1)
-    data, t0, cid = load_data(start_date=START_DATE, end_date=end_date)
-    data_snap, cid_snap = snap_data(data, cid)
+    data, t0, cid = load_data(
+        start_date=START_DATE,
+        end_date=end_date,
+        aoristic_method=aoristic_method,
+        max_time_window=max_time_window
+    )
 
-    res = {}
-    res['network'] = run_network_validation(data_snap)
-    with open(os.path.join(OUT_DIR, 'birmingham', 'network_validation_results.dill'), 'w') as f:
-        dill.dump(res['network'], f)
+    if method == 'net':
+        data_snap, cid_snap = snap_data(data, cid)
+        res = run_network_validation(data_snap, topt, dopt)
+        fn = 'net' + filestem
+    elif method == 'grid':
+        res = run_planar_validation_compare_by_grid(data, topt, dopt)
+        fn = 'grid' + filestem
+    elif method == 'net_grid':
+        net = load_network()
+        res = run_planar_validation_compare_by_grid_network_intersection(
+            data,
+            net,
+            topt=topt,
+            dopt=dopt,
+            debug=True)
+        fn = 'grid_net' + filestem
+    else:
+        raise ValueError("Method not recognised")
 
-    # res['planar_grid_comparison'] = run_planar_validation_compare_by_grid(data)
-    # with open(os.path.join(OUT_DIR, 'birmingham', 'planar_grid_validation_results.dill'), 'w') as f:
-    #     dill.dump(res['planar_grid_comparison'], f)
 
-    # res['planar_net_comparison'] = run_planar_validation_compare_by_grid_network_intersection(data,
-    #                                                                                           data_snap.graph,
-    #                                                                                           debug=True)
-    # with open(os.path.join(OUT_DIR, 'birmingham', 'planar_net_validation_results.dill'), 'w') as f:
-    #     dill.dump(res['planar_net_comparison'], f)
-
-    # with open(os.path.join(OUT_DIR, 'birmingham', 'planar_vs_net.dill'), 'w') as f:
-    #     dill.dump(res, f)
+    with open(os.path.join(OUT_DIR, 'birmingham', fn), 'w') as f:
+        dill.dump(res, f)

@@ -1,5 +1,6 @@
 from . import models
 import numpy as np
+import copy
 
 
 class RollingOrigin(object):
@@ -9,11 +10,11 @@ class RollingOrigin(object):
                  initial_cutoff_t=None,
                  dt=1.,
                  dt_plus=1.,
-                 dt_minus=0.,
-                 data_class=None):
+                 dt_minus=0.):
 
         """
-        :param data:
+        :param data: N x M array, where N is the number of datapoints and M is the number of dimensions. The first
+        column is assumed to be the temporal dimension.
         :param data_index:
         :param initial_cutoff_t: Optionally supply the first cutoff time, otherwise the approximate midway point is used
         :param dt: The time interval by which the cutoff is advanced each iteration
@@ -22,18 +23,8 @@ class RollingOrigin(object):
         beyond the cutoff are used.
         :param dt_minus: The lower time range of the TESTING data, expressed relative to the cutoff time.
         Default is 0, meaning that all data >= cutoff are used (subject to dt_plus).
-        :param data_class: Optionally provide a class to contain the data. This should be derived from
-        SpaceTimeDataArray, or mimic that class.
-        If no data_class is provided, we either use a generic default or the existing data class.
         """
-
-        if data_class is None:
-            if isinstance(data, models.DataArray):
-                self.data_class = data.__class__
-            else:
-                self.data_class = models.SpaceTimeDataArray
-        else:
-            self.data_class = data_class
+        assert len(data.shape) == 2, "Data array must be 2D"
 
         self.data = None
         self.data_index = None
@@ -53,9 +44,9 @@ class RollingOrigin(object):
 
     def set_data(self, data, data_index=None):
         # sort data in increasing time
-        self.data = self.data_class(data)
+        self.data = data
         sort_idx = np.argsort(self.t)
-        self.data = self.data.getrows(sort_idx)
+        self.data = self.data[sort_idx]
         self.data_index = data_index
         if data_index is not None:
             self.data_index = np.array(data_index)
@@ -63,15 +54,15 @@ class RollingOrigin(object):
 
     @property
     def ndata(self):
-        return self.data.ndata
+        return len(self.data)
 
     @property
     def t(self):
-        return self.data.time.toarray()
+        return self.data[:, 0]
 
     @property
     def training(self):
-        return self.data.getrows(self.t < self.cutoff_t)
+        return self.data[self.t < self.cutoff_t]
 
     @property
     def testing_index(self):
@@ -91,7 +82,7 @@ class RollingOrigin(object):
         """
         :return: Testing data for comparison with predictions, based on value of cutoff_t.
         """
-        return self.data.getrows(self.testing_index)
+        return self.data[self.testing_index]
 
     @property
     def testing_data_index(self):

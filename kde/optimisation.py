@@ -196,13 +196,11 @@ class ForwardChainingValidationBase(object):
                  data,
                  data_index=None,
                  initial_cutoff=None,
-                 data_class=None,
                  parallel=True):
 
         self.roller = iterator.RollingOrigin(data,
                                              data_index=data_index,
-                                             initial_cutoff_t=initial_cutoff,
-                                             data_class=data_class)
+                                             initial_cutoff_t=initial_cutoff)
         self.data = self.roller.data
         self.data_index = self.roller.data_index
         self.grid = None

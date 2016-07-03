@@ -35,9 +35,10 @@ class BaseKernel(object):
         raise NotImplementedError()
 
     def prep_input(self, x, expctd_dims=None):
-        if not isinstance(x, self.data_class):
-            x = self.data_class(x, copy=False)
-        if expctd_dims and x.nd != expctd_dims:
+        nd = x.shape[1] if len(x.shape) == 2 else 1
+        # if not isinstance(x, self.data_class):
+        #     x = self.data_class(x, copy=False)
+        if expctd_dims and nd != expctd_dims:
             raise AttributeError("Incorrect dimensions for input variable")
         return x
 
@@ -693,7 +694,8 @@ class NetworkTemporalKernelEqualSplit(NetworkKernelEqualSplitLinear):
             # time component
             if target_times is None:
                 raise AttributeError("Must supply target times if time component is required")
-            t = target_times.toarray() - self.loc[0]
+            t = target_times - self.loc[0]
+            # import ipdb; ipdb.set_trace()
             res_t = np.exp(-t / self.bandwidth[0]) * (t > 0) / self.bandwidth[0]
             if self.time_cutoff is not None:
                 res_t *= (t <= self.time_cutoff)

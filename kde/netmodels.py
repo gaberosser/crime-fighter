@@ -1,6 +1,7 @@
 __author__ = 'gabriel'
 from models import KernelCluster, KdeBase
 from data.models import NetworkSpaceTimeData
+from network.point import NetTimePointArray
 from network.walker import NetworkWalker
 from kernels import NetworkTemporalKernelEqualSplit
 import operator
@@ -18,8 +19,9 @@ logger_nw = logging.getLogger('NetworkWalker')
 # logger_nw.addHandler(fh_nw)
 logger_nw.addHandler(logging.NullHandler())
 
+## TODO: refactor needed - switch to using new arrays
+
 class NetworkTemporalKde(KernelCluster):
-    data_class = NetworkSpaceTimeData
 
     def __init__(self, source_data, bandwidths,
                  ktype=NetworkTemporalKernelEqualSplit,
@@ -34,7 +36,6 @@ class NetworkTemporalKde(KernelCluster):
         else:
             self.logger.setLevel(logging.INFO)
         self.logger.info("NetworkTemporalKde __init__")
-        source_data = self.data_class(source_data)
         self.max_net_split = max_net_split
         # TODO: can't call parent class __init__ because it assumes data are in an np array. Switch to using data
         # objects for all classes?
@@ -55,11 +56,11 @@ class NetworkTemporalKde(KernelCluster):
 
     @property
     def ndim(self):
-        return self.data.nd
+        return self.data.shape[1]
 
     @property
     def ndata(self):
-        return self.data.ndata
+        return len(self.data)
 
     @property
     def norm_constant(self):
@@ -89,7 +90,7 @@ class NetworkTemporalKde(KernelCluster):
 
     def set_targets(self, targets):
         self.logger.info("set_targets")
-        self.targets = self.data_class(targets, copy=False)
+        self.targets = targets
         self.walker = NetworkWalker(self.data.graph,
                                     targets=self.targets.space,
                                     max_distance=self.cutoffs[1],
@@ -107,8 +108,8 @@ class NetworkTemporalKde(KernelCluster):
         return [self.ktype(self.data[i], self.bandwidths, time_cutoff=self.cutoffs[0]) for i in range(self.ndata)]
 
     def update_source_data(self, new_source_data, new_bandwidths=None):
-        new_source_data = self.data_class(new_source_data, copy=False)
-        self.logger.info("update_source_data with %d sources", new_source_data.ndata)
+        new_source_data = new_source_data
+        self.logger.info("update_source_data with %d sources", len(new_source_data))
         if new_bandwidths is None:
             new_bandwidths = self.bandwidths
         self.data = new_source_data
@@ -147,9 +148,9 @@ class NetworkTemporalKde(KernelCluster):
         (in which case all target times are set to this value)
         """
         if hasattr(target_times, '__iter__'):
-            target_times = DataArray(target_times, copy=False)
-            self.logger.info("update_target_times with an iterable of len %d", target_times.ndata)
-            if target_times.ndata != self.targets.ndata:
+            target_times = target_times
+            self.logger.info("update_target_times with an iterable of len %d", len(target_times))
+            if len(target_times) != len(self.targets):
                 raise AttributeError("The number of data points does not match existing data in the supplied array")
             self.targets.time = target_times
         else:
