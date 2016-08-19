@@ -3,9 +3,8 @@ import dill
 import numpy as np
 import os
 from matplotlib import pyplot as plt
-from kde import optimisation
-from scripts.optimal_bandwidth_birmingham_network import PARAM_EXTENT as NETWORK_PARAM, N_PT as NETWORK_NPT
-from scripts.optimal_bandwidth_birmingham_planar import PARAM_EXTENT as PLANAR_PARAM, N_PT as PLANAR_NPT
+from scripts.davies_rosser_network_prediction_2016.optimal_bandwidth_birmingham_network import PARAM_EXTENT as NETWORK_PARAM, N_PT as NETWORK_NPT
+from scripts.davies_rosser_network_prediction_2016.optimal_bandwidth_birmingham_planar import PARAM_EXTENT as PLANAR_PARAM, N_PT as PLANAR_NPT
 
 RESULTS_DIR = '/home/gabriel/Dropbox/research/results/bandwidth_optimisation/birmingham/start_date_2013_07_01/'
 NETWORK_DATA_DIR = os.path.join(RESULTS_DIR, 'network_linear_space_exponential_time')
@@ -39,12 +38,11 @@ def load_all_chunks_network():
         for j in range(n_per_file):
             z.append(np.array(x[j]))
 
-    opt = optimisation.NetworkFixedBandwidth(None)
-    opt.set_parameter_grid(NETWORK_NPT, *NETWORK_PARAM)
-    bandwidths = np.array(list(opt.args_kwargs_generator()))
-    t_grid = bandwidths[:, 0].reshape((NETWORK_NPT, NETWORK_NPT))
-    d_grid = bandwidths[:, 1].reshape((NETWORK_NPT, NETWORK_NPT))
-    return z, d_grid, t_grid
+    dd, tt = np.meshgrid(
+        np.linspace(NETWORK_PARAM[2], NETWORK_PARAM[3], NETWORK_NPT),
+        np.linspace(NETWORK_PARAM[0], NETWORK_PARAM[1], NETWORK_NPT),
+    )
+    return tt, dd, z
 
 
 def load_all_chunks_planar():
@@ -63,28 +61,34 @@ def load_all_chunks_planar():
     return z, d_grid, t_grid
 
 
-def combine_chunks(
-        raw_values,
-        shape=(100, 100),
-        min_ll=np.log(1e-12)):
-    """
-     The original run was carried our in chunks of 10 to speed things up. Now we need to stitch them back together.
-     The output is a flat list of len 10000, which represents the value at EVERY TARGET each day. We
-     need to log and sum those, then reshape. In later runs, the output is a dict that includes the parameter grid.
-    """
-    ll = []
+def load_all_chunks(filenames, min_logl=np.log(1e-16)):
+    tt = dd = None
+    z = []
+    for fn in filenames:
+        with open(fn, 'r') as f:
+            x = dill.load(f)
+        tt = x['tt']
+        dd = x['dd']
+        ll = x['ll']
+        for l in ll:
+            this_ll = np.log(np.array(l))
+            this_ll[this_ll < min_logl] = min_logl
+            this_ll = this_ll.sum(axis=1).reshape(tt.shape)
+            z.append(this_ll)
+    return tt, dd, z
 
-    for x in raw_values:
-        this_ll = np.log(x)
-        this_ll[this_ll < min_ll] = min_ll
-        # reshape default order should be correct, as 'flat' was used originally
-        this_ll = this_ll.sum(axis=1).reshape(shape)
-        ll.append(this_ll)
 
-    with open('start_date_2013_07_01_60_days.dill', 'w') as f:
-        dill.dump(ll, f)
+def get_max_likelihood_params(ll, tt, dd):
 
-    return ll
+    z = np.zeros_like(ll[0])
+    for l in ll:
+        z += l
+
+    i, j = np.unravel_index(np.argmax(z), z.shape)
+    topt = tt[i, j]
+    dopt = dd[i, j]
+
+    return topt, dopt
 
 
 def sum_surface_plot(ll, tt, dd, fmin=0.5, cmap='Reds'):
@@ -126,3 +130,33 @@ def log_likelihood_hist(raw_values):
     plt.hist(np.log(non_z), 50)
     plt.xlabel('Single crime log likelihood')
     plt.ylabel('Count')
+
+
+if __name__ == "__main__":
+    methods = (
+        'planar',
+        'network'
+    )
+    aors = (
+        'start',
+        'end',
+    )
+    mtws = (
+        None,
+        24
+    )
+
+    res = {}
+
+    for m in methods:
+        for a in aors:
+            for mt in mtws:
+                if mt is None:
+                    fn = '%s_linearexponentialkde_start_day_180_60_iterations_%s.dill' % (m, a)
+                else:
+                    fn = '%s_linearexponentialkde_start_day_180_60_iterations_%s_max%dhours.dill' % (m, a, mt)
+                if not os.path.exists(fn):
+                    continue
+                with open(fn, 'rb') as f:
+                    da = dill.load(f)
+                    res[(m, a, mt)] = get_max_likelihood_params(da['ll'], da['tt'], da['dd'])
