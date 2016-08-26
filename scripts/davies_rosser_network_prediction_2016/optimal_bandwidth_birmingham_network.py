@@ -3,7 +3,7 @@ from kde import optimisation
 from database.birmingham.loader import load_network, BirminghamCrimeLoader
 import dill
 import numpy as np
-from network.point import NetPointArray, NetTimePointArray
+# from network.point import NetPointArray, NetTimePointArray
 from data.models import NetworkSpaceTimeData, SpaceTimeDataArray
 import datetime
 import sys

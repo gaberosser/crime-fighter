@@ -1,7 +1,7 @@
 __author__ = 'gabriel'
 from models import KernelCluster, KdeBase
 from data.models import NetworkSpaceTimeData
-from network.walker import NetworkWalker
+from network.utils import NetworkWalker
 from kernels import NetworkTemporalKernelEqualSplit
 import operator
 import logging
